@@ -2,8 +2,6 @@
 
 Kaflux is a self-hosted Kafka operations console built with Go and React. It combines cluster inventory, message exploration, monitoring, balance planning, and audited reassignment workflows behind a backend API. Simulation is an explicitly enabled backend provider and is labeled in the UI.
 
-This is an initial implementation, not a production certification. [Feature status and evidence](docs/status.md) distinguish implemented behavior from external integrations and release gates. The original [design](docs/kaflux-design.md) contains the broader product roadmap; [architecture](docs/architecture.md) records the selected Go stack.
-
 ## Develop
 
 Prerequisites: Go 1.25 (or Go toolchain auto-download), Node.js 22, npm, and Docker for integration checks.
