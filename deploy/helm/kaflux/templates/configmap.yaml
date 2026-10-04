@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kaflux.fullname" . }}
+  labels:
+    {{- include "kaflux.labels" . | nindent 4 }}
+data:
+  clusters.json: {{ .Values.config.clusters | toJson | quote }}
+  config.yaml: |
+    {{- toYaml .Values.configuration | nindent 4 }}

@@ -1,0 +1,89 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: backend/go.sum
+      - run: go test -race ./...
+      - run: go vet ./...
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test -- --run
+      - run: npm run build
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.17.2
+      - run: helm lint deploy/helm/kaflux
+      - run: helm template kaflux deploy/helm/kaflux > /tmp/kaflux.yaml
+      - run: npx --yes @redocly/cli@1.34.5 lint docs/openapi.yaml --extends minimal
+      - run: KAFLUX_DB_PASSWORD=configuration-only docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration config --quiet
+      - run: docker build -t kaflux:ci .
+      - name: Start read-only non-root image
+        run: docker run -d --name kaflux-smoke --read-only --cap-drop ALL --security-opt no-new-privileges --user 65532:65532 -e KAFLUX_DEMO=true -p 127.0.0.1:18080:8080 kaflux:ci
+      - name: Verify image health, static application and simulator session
+        run: |
+          node <<'NODE'
+          (async () => {
+            const base = 'http://127.0.0.1:18080';
+            let healthy = false;
+            for (let attempt = 0; attempt < 30; attempt++) {
+              try { healthy = (await fetch(base + '/health', { signal: AbortSignal.timeout(2000) })).ok; } catch {}
+              if (healthy) break;
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            if (!healthy) throw new Error('Image did not become healthy');
+            for (const path of ['/health', '/ready', '/', '/api/v1/auth/session']) {
+              const response = await fetch(base + path, { signal: AbortSignal.timeout(5000) });
+              if (response.status !== 200) throw new Error(path + ': HTTP ' + response.status);
+              if (path === '/' && !(await response.text()).includes('<html')) throw new Error('Frontend HTML missing');
+              if (path === '/api/v1/auth/session' && (await response.json()).data.demo !== true) throw new Error('Explicit simulator session missing');
+            }
+            console.log('Read-only image health, readiness, static application and simulator session passed');
+          })().catch(error => { console.error(error.message); process.exitCode = 1; });
+          NODE
+      - if: always()
+        run: docker logs kaflux-smoke && docker rm -f kaflux-smoke
+  integration:
+    runs-on: ubuntu-latest
+    env:
+      KAFLUX_DB_PASSWORD: integration-only
+      KAFLUX_TEST_DATABASE_URL: postgres://kaflux:integration-only@127.0.0.1:15432/kaflux?sslmode=disable
+      KAFLUX_TEST_KAFKA_SEED: 127.0.0.1:19092
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: backend/go.sum
+      - run: docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration up -d --wait postgres kafka kafka2 kafka3
+      - run: go test -race -p 1 ./...
+        working-directory: backend
+      - if: always()
+        run: docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration down

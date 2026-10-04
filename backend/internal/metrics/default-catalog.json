@@ -1,0 +1,1594 @@
+[
+  {
+    "id": "panel-162-0",
+    "title": "Active Controller",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "Controller ID",
+    "expression": "max(kafka_server_MetadataLoader_Value{instance=~\"$instance\",name=\"CurrentControllerId\"})"
+  },
+  {
+    "id": "panel-165-0",
+    "title": "Broker Count",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "{{jmx_version}}",
+    "expression": "count(kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"LeaderCount\"})"
+  },
+  {
+    "id": "panel-167-0",
+    "title": "Topic Count",
+    "category": "topics",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "{{jmx_version}}",
+    "expression": "count(count by (topic) (kafka_cluster_Partition_Value{instance=~\"$instance\"}))"
+  },
+  {
+    "id": "panel-168-0",
+    "title": "Partition Count",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "{{jmx_version}}",
+    "expression": "sum(kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"PartitionCount\"})"
+  },
+  {
+    "id": "panel-169-0",
+    "title": "Total Data Size",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "{{jmx_version}}",
+    "expression": "sum(kafka_log_Log_Value{instance=~\"$instance\",name=\"Size\"})"
+  },
+  {
+    "id": "panel-172-0",
+    "title": "Total Req/s",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "__auto",
+    "expression": "sum(kafka_network_RequestMetrics_OneMinuteRate{instance=~\"$instance\",name=\"RequestsPerSec\"})"
+  },
+  {
+    "id": "panel-173-0",
+    "title": "Under Replicated Partitions",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "Under Replicated",
+    "expression": "sum(kafka_cluster_Partition_Value{instance=~\"$instance\",name=\"UnderReplicated\"})"
+  },
+  {
+    "id": "panel-174-0",
+    "title": "Offline Replicas",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "Offline",
+    "expression": "sum(kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"OfflineReplicaCount\"})"
+  },
+  {
+    "id": "panel-177-0",
+    "title": "Brokers Not Running",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "not running",
+    "expression": "count(kafka_server_KafkaServer_Value{instance=~\"$instance\",name=\"BrokerState\"} != 3) or vector(0)"
+  },
+  {
+    "id": "panel-210-0",
+    "title": "BytesInPerSec",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "BytesInPerSec",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesInPerSec\",topic=\"\"})"
+  },
+  {
+    "id": "panel-211-0",
+    "title": "BytesOutPerSec",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "BytesOutPerSec",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesOutPerSec\",topic=\"\"})"
+  },
+  {
+    "id": "panel-212-0",
+    "title": "ProducerFetchTime",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "ProducerFetchTime",
+    "expression": "avg(kafka_network_RequestMetrics_Mean{instance=~\"$instance\",name=\"TotalTimeMs\",request=\"Produce\"})"
+  },
+  {
+    "id": "panel-214-0",
+    "title": "ConsumerFetchTime",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "ConsumerFetchTime",
+    "expression": "avg(kafka_network_RequestMetrics_Mean{instance=~\"$instance\",name=\"TotalTimeMs\",request=\"FetchConsumer\"})"
+  },
+  {
+    "id": "panel-213-0",
+    "title": "FollowerFetchTime",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "FollowerFetchTime",
+    "expression": "avg(kafka_network_RequestMetrics_Mean{instance=~\"$instance\",name=\"TotalTimeMs\",request=\"FetchFollower\"})"
+  },
+  {
+    "id": "panel-68-0",
+    "title": "Offline Log Directories",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{instance}}",
+    "expression": "sum(kafka_log_LogManager_Value{instance=~\"$instance\",name=\"OfflineLogDirectoryCount\"}) by (instance)"
+  },
+  {
+    "id": "panel-67-0",
+    "title": "Log Flush Rate & Time (ms) (quantile: 0.999)",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "sum(kafka_log_LogFlushStats_999thPercentile{instance=~\"$instance\"}) by (instance)"
+  },
+  {
+    "id": "panel-66-0",
+    "title": "Log Cleaner Max Clean Time",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "s",
+    "legend": "{{instance}}",
+    "expression": "kafka_log_LogCleaner_Value{instance=~\"$instance\",name=\"max-clean-time-secs\"}"
+  },
+  {
+    "id": "panel-187-0",
+    "title": "Log Compaction Health",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "max dirty %",
+    "expression": "max(kafka_log_LogCleanerManager_Value{instance=~\"$instance\",name=\"max-dirty-percent\"})"
+  },
+  {
+    "id": "panel-187-1",
+    "title": "Log Compaction Health",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "uncleanable partitions",
+    "expression": "sum(kafka_log_LogCleanerManager_Value{instance=~\"$instance\",name=\"uncleanable-partitions-count\"})"
+  },
+  {
+    "id": "panel-187-2",
+    "title": "Log Compaction Health",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "time since last run (s)",
+    "expression": "max(kafka_log_LogCleanerManager_Value{instance=~\"$instance\",name=\"time-since-last-run-ms\"}) / 1000"
+  },
+  {
+    "id": "panel-178-0",
+    "title": "Consumer Lag - By Group (offsets)",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{groupId}}",
+    "expression": "sort_desc(sum by (groupId) (kafka_consumer_group_ConsumerLagMetrics_Value{instance=~\"$instance\",name=\"SumOffsetLag\"}))"
+  },
+  {
+    "id": "panel-179-0",
+    "title": "Consumer Lag - By Group (time behind)",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{groupId}}",
+    "expression": "sort_desc(max by (groupId) (kafka_consumer_group_ConsumerLagMetrics_Value{instance=~\"$instance\",name=\"EstimatedMaxTimeLag\"}))"
+  },
+  {
+    "id": "panel-180-0",
+    "title": "Consumer Lag - By Group/Topic",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{groupId}} / {{topic}}",
+    "expression": "sort_desc(max by (groupId, topic) (kafka_consumer_group_ConsumerLagMetrics_Value{instance=~\"$instance\",name=\"MaxOffsetLag\"}))"
+  },
+  {
+    "id": "panel-181-0",
+    "title": "Consumer Group States",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "total",
+    "expression": "sum(kafka_coordinator_group_GroupMetadataManager_Value{instance=~\"$instance\",name=\"NumGroups\"})"
+  },
+  {
+    "id": "panel-181-1",
+    "title": "Consumer Group States",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "stable",
+    "expression": "sum(kafka_coordinator_group_GroupMetadataManager_Value{instance=~\"$instance\",name=\"NumGroupsStable\"})"
+  },
+  {
+    "id": "panel-181-2",
+    "title": "Consumer Group States",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "empty",
+    "expression": "sum(kafka_coordinator_group_GroupMetadataManager_Value{instance=~\"$instance\",name=\"NumGroupsEmpty\"})"
+  },
+  {
+    "id": "panel-181-3",
+    "title": "Consumer Group States",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "preparing rebalance",
+    "expression": "sum(kafka_coordinator_group_GroupMetadataManager_Value{instance=~\"$instance\",name=\"NumGroupsPreparingRebalance\"})"
+  },
+  {
+    "id": "panel-181-4",
+    "title": "Consumer Group States",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "completing rebalance",
+    "expression": "sum(kafka_coordinator_group_GroupMetadataManager_Value{instance=~\"$instance\",name=\"NumGroupsCompletingRebalance\"})"
+  },
+  {
+    "id": "panel-181-5",
+    "title": "Consumer Group States",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "dead",
+    "expression": "sum(kafka_coordinator_group_GroupMetadataManager_Value{instance=~\"$instance\",name=\"NumGroupsDead\"})"
+  },
+  {
+    "id": "panel-182-0",
+    "title": "Committed Offsets Tracked",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "offsets",
+    "expression": "sum(kafka_coordinator_group_GroupMetadataManager_Value{instance=~\"$instance\",name=\"NumOffsets\"})"
+  },
+  {
+    "id": "panel-183-0",
+    "title": "Group Rebalance & Offset Commit Rate",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "rebalances/s",
+    "expression": "sum(rate(kafka_server_group_coordinator_metrics_group_completed_rebalance_count[5m]))"
+  },
+  {
+    "id": "panel-183-1",
+    "title": "Group Rebalance & Offset Commit Rate",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "offset commits/s",
+    "expression": "sum(rate(kafka_server_group_coordinator_metrics_offset_commit_count[5m]))"
+  },
+  {
+    "id": "panel-183-2",
+    "title": "Group Rebalance & Offset Commit Rate",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "offset expirations/s",
+    "expression": "sum(rate(kafka_server_group_coordinator_metrics_offset_expiration_count[5m]))"
+  },
+  {
+    "id": "panel-77-0",
+    "title": "Partition Count (Per Broker)",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"PartitionCount\"}"
+  },
+  {
+    "id": "panel-78-0",
+    "title": "Leader Count (Per Broker)",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"LeaderCount\"}"
+  },
+  {
+    "id": "panel-31-0",
+    "title": "Under Replicated Partitions (Per Broker)",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{instance}}",
+    "expression": "sum(kafka_cluster_Partition_Value{instance=~\"$instance\",name=\"UnderReplicated\"}) by (instance)"
+  },
+  {
+    "id": "panel-31-1",
+    "title": "Under Replicated Partitions (Per Broker)",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "Total",
+    "expression": "sum(kafka_cluster_Partition_Value{instance=~\"$instance\",name=\"UnderReplicated\"})"
+  },
+  {
+    "id": "panel-30-0",
+    "title": "Under Min. ISR Partitions (Per Broker)",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{instance}}",
+    "expression": "sum(kafka_cluster_Partition_Value{instance=~\"$instance\",name=\"UnderMinIsr\"}) by (instance)"
+  },
+  {
+    "id": "panel-30-1",
+    "title": "Under Min. ISR Partitions (Per Broker)",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "Total",
+    "expression": "sum(kafka_cluster_Partition_Value{instance=~\"$instance\",name=\"UnderMinIsr\"})"
+  },
+  {
+    "id": "panel-32-0",
+    "title": "Offline Partitions (Per Broker)",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"OfflineReplicaCount\"}"
+  },
+  {
+    "id": "panel-196-0",
+    "title": "Bytes In / Out Per Broker",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "in - {{instance}}",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesInPerSec\",topic=\"\"}) by (instance)"
+  },
+  {
+    "id": "panel-196-1",
+    "title": "Bytes In / Out Per Broker",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "out - {{instance}}",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesOutPerSec\",topic=\"\"}) by (instance)"
+  },
+  {
+    "id": "panel-197-0",
+    "title": "Bytes In Per Broker",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesInPerSec\",topic=\"\"}"
+  },
+  {
+    "id": "panel-198-0",
+    "title": "Bytes Out Per Broker",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesOutPerSec\",topic=\"\"}"
+  },
+  {
+    "id": "panel-199-0",
+    "title": "Messages In Per Broker",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"MessagesInPerSec\",topic=\"\"}"
+  },
+  {
+    "id": "panel-200-0",
+    "title": "Messages In Per Topic",
+    "category": "topics",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{topic}}",
+    "expression": "sort_desc(sum by (topic) (kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"MessagesInPerSec\",topic!=\"\"}))"
+  },
+  {
+    "id": "panel-215-0",
+    "title": "Bytes In Per Topic",
+    "category": "topics",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{topic}}",
+    "expression": "sort_desc(sum by (topic) (kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesInPerSec\",topic!=\"\"}))"
+  },
+  {
+    "id": "panel-201-0",
+    "title": "Bytes Out Per Topic",
+    "category": "topics",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{topic}}",
+    "expression": "sort_desc(sum by (topic) (kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesOutPerSec\",topic!=\"\"}))"
+  },
+  {
+    "id": "panel-202-0",
+    "title": "Log Size By Topic",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "{{topic}}",
+    "expression": "sort_desc(sum by (topic) (kafka_log_Log_Value{instance=~\"$instance\",name=\"Size\"}))"
+  },
+  {
+    "id": "panel-43-0",
+    "title": "Kafka Failed Re-authentication Rate",
+    "category": "authentication",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{listener}} - {{instance}}",
+    "expression": "sum(kafka_server_socket_server_metrics_failed_reauthentication_rate{instance=~\"$instance\"}) by (instance, listener)"
+  },
+  {
+    "id": "panel-40-0",
+    "title": "Kafka Failed Authentication Rate",
+    "category": "authentication",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{listener}} - {{instance}}",
+    "expression": "sum by (instance,listener) (kafka_server_socket_server_metrics_failed_authentication_rate{instance=~\"$instance\"})"
+  },
+  {
+    "id": "panel-44-0",
+    "title": "Kafka Successful Authentication Rate",
+    "category": "authentication",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{listener}} - {{instance}}",
+    "expression": "sum(kafka_server_socket_server_metrics_successful_authentication_rate{instance=~\"$instance\"}) by (instance, listener)"
+  },
+  {
+    "id": "panel-73-0",
+    "title": "Kafka Request Size (Avg)",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "{{listener}} - {{instance}}",
+    "expression": "sum(kafka_server_socket_server_metrics_request_size_avg{instance=~\"$instance\"}) by (instance, listener)"
+  },
+  {
+    "id": "panel-125-0",
+    "title": "Consume Rate By Topic",
+    "category": "topics",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{topic}}",
+    "expression": "sort_desc(sum by (topic) (kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesOutPerSec\",topic!=\"\"}))"
+  },
+  {
+    "id": "panel-126-0",
+    "title": "Produce Rate By Topic",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{topic}}",
+    "expression": "sort_desc(sum by (topic) (kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesInPerSec\",topic!=\"\"}))"
+  },
+  {
+    "id": "panel-127-0",
+    "title": "Messages Produce Rate By Topic",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{topic}}",
+    "expression": "sort_desc(sum by (topic) (kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"MessagesInPerSec\",topic!=\"\"}))"
+  },
+  {
+    "id": "panel-128-0",
+    "title": "Broker Throughput",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "Produce",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesInPerSec\",topic!=\"\"})"
+  },
+  {
+    "id": "panel-128-1",
+    "title": "Broker Throughput",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "Consume",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesOutPerSec\",topic!=\"\"})"
+  },
+  {
+    "id": "panel-91-0",
+    "title": "Total Producer Requests Per Second (by Topic)",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{topic}}",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"TotalProduceRequestsPerSec\",topic=~\".+\"}) by (topic)"
+  },
+  {
+    "id": "panel-89-0",
+    "title": "Total Fetch Requests Per Second (by Topic)",
+    "category": "topics",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{topic}}",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"TotalFetchRequestsPerSec\",topic=~\".+\"}) by (topic)"
+  },
+  {
+    "id": "panel-130-0",
+    "title": "Req/s (Total)",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{instance}}",
+    "expression": "sum by (instance) (kafka_network_RequestMetrics_OneMinuteRate{instance=~\"$instance\",name=\"RequestsPerSec\"})"
+  },
+  {
+    "id": "panel-131-0",
+    "title": "Req/s (For each request type)",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{request}}",
+    "expression": "sum by (request) (kafka_network_RequestMetrics_OneMinuteRate{instance=~\"$instance\",name=\"RequestsPerSec\"}) > 0"
+  },
+  {
+    "id": "panel-221-0",
+    "title": "Producer Compression Ratio By Topic (MirrorMaker2 / Connect)",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "percentunit",
+    "legend": "{{topic}}",
+    "expression": "sort_desc(avg by (topic) (kafka_producer_topic_compression_rate < 2))"
+  },
+  {
+    "id": "panel-221-1",
+    "title": "Producer Compression Ratio By Topic (MirrorMaker2 / Connect)",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "percentunit",
+    "legend": "cluster average",
+    "expression": "avg(kafka_producer_topic_compression_rate < 2)"
+  },
+  {
+    "id": "panel-41-0",
+    "title": "Replication Fetch Throughput",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{clientId}}",
+    "expression": "sum by (clientId) (kafka_server_FetcherStats_OneMinuteRate{instance=~\"$instance\",name=\"BytesPerSec\"})"
+  },
+  {
+    "id": "panel-79-0",
+    "title": "Fetcher(Follower) Lag",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "max lag (worst partition)",
+    "expression": "max(kafka_server_FetcherLagMetrics_Value{instance=~\"$instance\",name=\"ConsumerLag\"})"
+  },
+  {
+    "id": "panel-79-1",
+    "title": "Fetcher(Follower) Lag",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "total lag (all partitions)",
+    "expression": "sum(kafka_server_FetcherLagMetrics_Value{instance=~\"$instance\",name=\"ConsumerLag\"})"
+  },
+  {
+    "id": "panel-79-2",
+    "title": "Fetcher(Follower) Lag",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "partitions lagging",
+    "expression": "count(kafka_server_FetcherLagMetrics_Value{instance=~\"$instance\",name=\"ConsumerLag\"} > 0) or vector(0)"
+  },
+  {
+    "id": "panel-80-0",
+    "title": "Kafka ISR Shrinks Per Second",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{instance}}",
+    "expression": "sum(kafka_server_ReplicaManager_OneMinuteRate{instance=~\"$instance\",name=\"IsrShrinksPerSec\"}) by (instance)"
+  },
+  {
+    "id": "panel-81-0",
+    "title": "Failed ISR Updates Per Second",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "__auto",
+    "expression": "sum(kafka_server_ReplicaManager_OneMinuteRate{instance=~\"$instance\",name=\"FailedIsrUpdatesPerSec\"}) by (instance)"
+  },
+  {
+    "id": "panel-87-0",
+    "title": "Total Follower Fetch Requests Per Second (by Topic)",
+    "category": "topics",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{topic}}",
+    "expression": "sum(kafka_server_FetcherStats_OneMinuteRate{instance=~\"$instance\",name=\"RequestsPerSec\"}) by (clientId)"
+  },
+  {
+    "id": "panel-88-0",
+    "title": "Fetch from Follower Requests Per Second",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{instance}}",
+    "expression": "sum(kafka_network_RequestMetrics_OneMinuteRate{instance=~\"$instance\",name=\"RequestsPerSec\",request=\"FetchFollower\"}) by (instance)"
+  },
+  {
+    "id": "panel-85-0",
+    "title": "Replication Bytes In Per Second",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{instance}}",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"ReplicationBytesInPerSec\"}) by (instance)"
+  },
+  {
+    "id": "panel-86-0",
+    "title": "Replication Bytes Out Per Second",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{instance}}",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"ReplicationBytesOutPerSec\"}) by (instance)"
+  },
+  {
+    "id": "panel-120-0",
+    "title": "Follower - LocalTimeMS",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"LocalTimeMs\",request=\"FetchFollower\"}"
+  },
+  {
+    "id": "panel-121-0",
+    "title": "Follower - RemoteTimeMS",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"RemoteTimeMs\",request=\"FetchFollower\"}"
+  },
+  {
+    "id": "panel-118-0",
+    "title": "Follower - TotalTimeMS",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"TotalTimeMs\",request=\"FetchFollower\"}"
+  },
+  {
+    "id": "panel-119-0",
+    "title": "Follower - RequestQueueTimeMS",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"RequestQueueTimeMs\",request=\"FetchFollower\"}"
+  },
+  {
+    "id": "panel-122-0",
+    "title": "Follower - ResponseQueueTimeMS",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"ResponseQueueTimeMs\",request=\"FetchFollower\"}"
+  },
+  {
+    "id": "panel-123-0",
+    "title": "Follower - ResponseSendTimeMS",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"ResponseSendTimeMs\",request=\"FetchFollower\"}"
+  },
+  {
+    "id": "panel-225-0",
+    "title": "Partition Reassignment Throughput",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "reassignment out",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"ReassignmentBytesOutPerSec\"})"
+  },
+  {
+    "id": "panel-225-1",
+    "title": "Partition Reassignment Throughput",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "reassignment in",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"ReassignmentBytesInPerSec\"})"
+  },
+  {
+    "id": "panel-185-0",
+    "title": "Replica Fetcher Health",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "max lag - {{instance}}",
+    "expression": "max by (instance) (kafka_server_ReplicaFetcherManager_Value{instance=~\"$instance\",name=\"MaxLag\"})"
+  },
+  {
+    "id": "panel-185-1",
+    "title": "Replica Fetcher Health",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "failed partitions - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_ReplicaFetcherManager_Value{instance=~\"$instance\",name=\"FailedPartitionsCount\"})"
+  },
+  {
+    "id": "panel-185-2",
+    "title": "Replica Fetcher Health",
+    "category": "replication",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "dead fetcher threads - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_ReplicaFetcherManager_Value{instance=~\"$instance\",name=\"DeadThreadCount\"})"
+  },
+  {
+    "id": "panel-28-0",
+    "title": "Failed Produce Requests (Per Sec)",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "Total Failed Producer Requests",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"FailedProduceRequestsPerSec\"})"
+  },
+  {
+    "id": "panel-42-0",
+    "title": "Produce Request Size & Temp Memory (p99.9)",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "request bytes - {{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"RequestBytes\",request=\"Produce\"}"
+  },
+  {
+    "id": "panel-42-1",
+    "title": "Produce Request Size & Temp Memory (p99.9)",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "temp memory - {{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"TemporaryMemoryBytes\",request=\"Produce\"}"
+  },
+  {
+    "id": "panel-105-0",
+    "title": "Producer - TotalTimeMS",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"TotalTimeMs\",request=\"Produce\"}"
+  },
+  {
+    "id": "panel-109-0",
+    "title": "Producer - ResponseQueueTimeMS",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"ResponseQueueTimeMs\",request=\"Produce\"}"
+  },
+  {
+    "id": "panel-107-0",
+    "title": "Producer - LocalTimeMS",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"LocalTimeMs\",request=\"Produce\"}"
+  },
+  {
+    "id": "panel-108-0",
+    "title": "Producer - RemoteTimeMS",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"RemoteTimeMs\",request=\"Produce\"}"
+  },
+  {
+    "id": "panel-106-0",
+    "title": "Producer - RequestQueueTimeMS",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"RequestQueueTimeMs\",request=\"Produce\"}"
+  },
+  {
+    "id": "panel-110-0",
+    "title": "Producer - ResponseSendTimeMS",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"ResponseSendTimeMs\",request=\"Produce\"}"
+  },
+  {
+    "id": "panel-29-0",
+    "title": "Failed Fetch Requests (Per Sec)",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "Total Failed Fetch Requests",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"FailedFetchRequestsPerSec\"})"
+  },
+  {
+    "id": "panel-112-0",
+    "title": "Consumer - TotalTimeMS",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"TotalTimeMs\",request=\"FetchConsumer\"}"
+  },
+  {
+    "id": "panel-113-0",
+    "title": "Consumer - RequestQueueTimeMS",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"RequestQueueTimeMs\",request=\"FetchConsumer\"}"
+  },
+  {
+    "id": "panel-114-0",
+    "title": "Consumer - LocalTimeMS",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"LocalTimeMs\",request=\"FetchConsumer\"}"
+  },
+  {
+    "id": "panel-115-0",
+    "title": "Consumer - RemoteTimeMS",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"RemoteTimeMs\",request=\"FetchConsumer\"}"
+  },
+  {
+    "id": "panel-116-0",
+    "title": "Consumer - ResponseQueueTimeMS",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"ResponseQueueTimeMs\",request=\"FetchConsumer\"}"
+  },
+  {
+    "id": "panel-117-0",
+    "title": "Consumer - ResponseSendTimeMS",
+    "category": "consumer",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestMetrics_999thPercentile{instance=~\"$instance\",name=\"ResponseSendTimeMs\",request=\"FetchConsumer\"}"
+  },
+  {
+    "id": "panel-193-0",
+    "title": "Active Controller History",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{broker}} view",
+    "expression": "label_replace(kafka_server_MetadataLoader_Value{instance=~\"$instance\",name=\"CurrentControllerId\"},\"broker\",\"$1\",\"instance\",\"^(b-[0-9]+)\\\\..*\")"
+  },
+  {
+    "id": "panel-194-0",
+    "title": "KRaft Metadata Epoch",
+    "category": "kraft",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{broker}}",
+    "expression": "label_replace(kafka_server_raft_metrics_current_epoch{instance=~\"$instance\"},\"broker\",\"$1\",\"instance\",\"^(b-[0-9]+)\\\\..*\")"
+  },
+  {
+    "id": "panel-195-0",
+    "title": "KRaft Unknown Voter Connections",
+    "category": "kraft",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{broker}}",
+    "expression": "label_replace(kafka_server_raft_metrics_number_unknown_voter_connections{instance=~\"$instance\"},\"broker\",\"$1\",\"instance\",\"^(b-[0-9]+)\\\\..*\")"
+  },
+  {
+    "id": "panel-192-0",
+    "title": "Broker State by Broker",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{broker}}",
+    "expression": "label_replace(kafka_server_KafkaServer_Value{instance=~\"$instance\",name=\"BrokerState\"},\"broker\",\"$1\",\"instance\",\"^(b-[0-9]+)\\\\..*\")"
+  },
+  {
+    "id": "panel-136-0",
+    "title": "Stray Partitions Count",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "{{instance}}",
+    "expression": "kafka_log_LogManager_Value{instance=~\"$instance\",name=\"StrayPartitionsCount\"}"
+  },
+  {
+    "id": "panel-186-0",
+    "title": "Log File Missing On Leader",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "missing",
+    "expression": "sum(kafka_cluster_Partition_Value{instance=~\"$instance\",name=\"LogFileMissingOnLeader\"})"
+  },
+  {
+    "id": "panel-135-0",
+    "title": "Metadata Load & Apply Errors",
+    "category": "kraft",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "apply errors - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_broker_metadata_metrics_metadata_apply_error_count{instance=~\"$instance\"})"
+  },
+  {
+    "id": "panel-135-1",
+    "title": "Metadata Load & Apply Errors",
+    "category": "kraft",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "load errors - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_broker_metadata_metrics_metadata_load_error_count{instance=~\"$instance\"})"
+  },
+  {
+    "id": "panel-137-0",
+    "title": "Leader Imbalance (max-min across brokers)",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "leader spread",
+    "expression": "max(kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"LeaderCount\"}) - min(kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"LeaderCount\"})"
+  },
+  {
+    "id": "panel-137-1",
+    "title": "Leader Imbalance (max-min across brokers)",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "replica spread",
+    "expression": "max(kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"PartitionCount\"}) - min(kafka_server_ReplicaManager_Value{instance=~\"$instance\",name=\"PartitionCount\"})"
+  },
+  {
+    "id": "panel-222-0",
+    "title": "Cluster Rebalance In Progress (CloudWatch)",
+    "category": "cluster",
+    "kind": "cloudwatch",
+    "unit": "short",
+    "legend": "",
+    "cloudWatch": {
+      "namespace": "AWS/Kafka",
+      "metricName": "RebalanceInProgress",
+      "statistic": "Maximum",
+      "dimensions": {
+        "Cluster Name": "$cluster"
+      }
+    }
+  },
+  {
+    "id": "panel-223-0",
+    "title": "Active Controller Count (CloudWatch)",
+    "category": "cluster",
+    "kind": "cloudwatch",
+    "unit": "short",
+    "legend": "",
+    "cloudWatch": {
+      "namespace": "AWS/Kafka",
+      "metricName": "ActiveControllerCount",
+      "statistic": "Maximum",
+      "dimensions": {
+        "Cluster Name": "$cluster"
+      }
+    }
+  },
+  {
+    "id": "panel-224-0",
+    "title": "Global Partition & Topic Count (CloudWatch)",
+    "category": "topics",
+    "kind": "cloudwatch",
+    "unit": "short",
+    "legend": "",
+    "cloudWatch": {
+      "namespace": "AWS/Kafka",
+      "metricName": "GlobalPartitionCount",
+      "statistic": "Maximum",
+      "dimensions": {
+        "Cluster Name": "$cluster"
+      }
+    }
+  },
+  {
+    "id": "panel-224-1",
+    "title": "Global Partition & Topic Count (CloudWatch)",
+    "category": "topics",
+    "kind": "cloudwatch",
+    "unit": "short",
+    "legend": "",
+    "cloudWatch": {
+      "namespace": "AWS/Kafka",
+      "metricName": "GlobalTopicCount",
+      "statistic": "Maximum",
+      "dimensions": {
+        "Cluster Name": "$cluster"
+      }
+    }
+  },
+  {
+    "id": "panel-227-0",
+    "title": "Cluster Under-Provisioned (CloudWatch)",
+    "category": "cluster",
+    "kind": "cloudwatch",
+    "unit": "short",
+    "legend": "",
+    "cloudWatch": {
+      "namespace": "AWS/Kafka",
+      "metricName": "UnderProvisioned",
+      "statistic": "Maximum",
+      "dimensions": {
+        "Cluster Name": "$cluster"
+      }
+    }
+  },
+  {
+    "id": "panel-103-0",
+    "title": "CPU Usage",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "{{instance}}",
+    "expression": "(sum by (instance) (rate(node_cpu_seconds_total{job=\"node\",mode!=\"idle\"}[5m])) / on(instance) group_left count by (instance) (node_cpu_seconds_total{job=\"node\",mode=\"idle\"})) * 100"
+  },
+  {
+    "id": "panel-104-0",
+    "title": "Broker JVM Heap Usage %",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "{{instance}}",
+    "expression": "100 * java_lang_Memory_HeapMemoryUsage_used{instance=~\"$instance\"} / java_lang_Memory_HeapMemoryUsage_max{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-102-0",
+    "title": "Broker Disk I/O Throughput",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "write - {{instance}}",
+    "expression": "rate(kafka_server_KafkaServer_Value{instance=~\"$instance\",name=\"linux-disk-write-bytes\"}[5m])"
+  },
+  {
+    "id": "panel-102-1",
+    "title": "Broker Disk I/O Throughput",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "read - {{instance}}",
+    "expression": "rate(kafka_server_KafkaServer_Value{instance=~\"$instance\",name=\"linux-disk-read-bytes\"}[5m])"
+  },
+  {
+    "id": "panel-100-0",
+    "title": "Network Traffic",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "bps",
+    "legend": "recv {{instance}} - {{device}}",
+    "expression": "sum(kafka_server_socket_server_metrics_incoming_byte_rate{instance=~\"$instance\"}) by (instance) * 8"
+  },
+  {
+    "id": "panel-100-1",
+    "title": "Network Traffic",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "bps",
+    "legend": "trans {{instance}} - {{device}}",
+    "expression": "sum(kafka_server_socket_server_metrics_outgoing_byte_rate{instance=~\"$instance\"}) by (instance) * 8"
+  },
+  {
+    "id": "panel-99-0",
+    "title": "Broker CPU by Mode %",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "user",
+    "expression": "sum by (instance) (rate(node_cpu_seconds_total{job=\"node\",mode=\"user\"}[5m])) / on(instance) group_left count by (instance) (node_cpu_seconds_total{job=\"node\",mode=\"idle\"}) * 100"
+  },
+  {
+    "id": "panel-99-1",
+    "title": "Broker CPU by Mode %",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "system",
+    "expression": "sum by (instance) (rate(node_cpu_seconds_total{job=\"node\",mode=\"system\"}[5m])) / on(instance) group_left count by (instance) (node_cpu_seconds_total{job=\"node\",mode=\"idle\"}) * 100"
+  },
+  {
+    "id": "panel-99-2",
+    "title": "Broker CPU by Mode %",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "idle",
+    "expression": "sum by (instance) (rate(node_cpu_seconds_total{job=\"node\",mode=\"idle\"}[5m])) / on(instance) group_left count by (instance) (node_cpu_seconds_total{job=\"node\",mode=\"idle\"}) * 100"
+  },
+  {
+    "id": "panel-170-0",
+    "title": "JMX Scrape Duration (Max)",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "s",
+    "legend": "{{version}}",
+    "expression": "max(max_over_time(jmx_scrape_duration_seconds{job=\"jmx\"}[$__range])) by (instance)"
+  },
+  {
+    "id": "panel-203-0",
+    "title": "Log Size By Broker",
+    "category": "storage",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "{{instance}}",
+    "expression": "sum by (instance) (kafka_log_Log_Value{instance=~\"$instance\",name=\"Size\"})"
+  },
+  {
+    "id": "panel-166-0",
+    "title": "JMX Info",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "",
+    "legend": "{{jmx_version}}",
+    "expression": "label_replace(max(jmx_exporter_build_info{instance=~\"$instance\"}) by (version), \"jmx_version\", \"$1\", \"version\", \"(.+)\")"
+  },
+  {
+    "id": "panel-217-0",
+    "title": "Scrape Duration vs Timeout",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "s",
+    "legend": "{{job}} max",
+    "expression": "max by (job) (scrape_duration_seconds)"
+  },
+  {
+    "id": "panel-217-1",
+    "title": "Scrape Duration vs Timeout",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "s",
+    "legend": "{{job}} avg",
+    "expression": "avg by (job) (scrape_duration_seconds)"
+  },
+  {
+    "id": "panel-218-0",
+    "title": "Target Availability by Job",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "{{job}} up %",
+    "expression": "100 * avg by (job) (up)"
+  },
+  {
+    "id": "panel-218-1",
+    "title": "Target Availability by Job",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "{{job}} down",
+    "expression": "count by (job) (up == 0)"
+  },
+  {
+    "id": "panel-219-0",
+    "title": "Scrape Payload Size",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{job}} max",
+    "expression": "max by (job) (scrape_samples_scraped)"
+  },
+  {
+    "id": "panel-219-1",
+    "title": "Scrape Payload Size",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{job}} total",
+    "expression": "sum by (job) (scrape_samples_scraped)"
+  },
+  {
+    "id": "panel-220-0",
+    "title": "JMX Exporter Scrape Errors",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{job}}",
+    "expression": "sum by (job) (jmx_scrape_error)"
+  },
+  {
+    "id": "panel-226-0",
+    "title": "JMX Exporter Scrape Latency Max (per broker)",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "s",
+    "legend": "{{broker}}",
+    "expression": "label_replace(scrape_duration_seconds{instance=~\".*\", job=\"jmx\"}, \"broker\", \"$1\", \"instance\", \"(b-[0-9]+)[.].*\")"
+  },
+  {
+    "id": "panel-93-0",
+    "title": "Heap Usage",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "{{instance}}",
+    "expression": "java_lang_Memory_HeapMemoryUsage_used{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-93-1",
+    "title": "Heap Usage",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "{{instance}}",
+    "expression": "java_lang_Memory_HeapMemoryUsage_max{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-94-0",
+    "title": "Broker Non-Heap Memory Used",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "{{instance}}",
+    "expression": "java_lang_Memory_NonHeapMemoryUsage_used{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-95-0",
+    "title": "Heap Committed vs Max",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "decbytes",
+    "legend": "committed - {{instance}}",
+    "expression": "java_lang_Memory_HeapMemoryUsage_committed{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-96-0",
+    "title": "Objects Pending Finalization",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{instance}}",
+    "expression": "java_lang_Memory_ObjectPendingFinalizationCount{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-97-0",
+    "title": "Metadata Apply Lag (KRaft)",
+    "category": "kraft",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_broker_metadata_metrics_last_applied_record_lag_ms{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-36-0",
+    "title": "Request Queue Size",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestChannel_Value{instance=~\"$instance\",name=\"RequestQueueSize\"}"
+  },
+  {
+    "id": "panel-37-0",
+    "title": "Response Queue Size",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "none",
+    "legend": "{{instance}}",
+    "expression": "kafka_network_RequestChannel_Value{instance=~\"$instance\",name=\"ResponseQueueSize\",processor!~\".+\"}"
+  },
+  {
+    "id": "panel-70-0",
+    "title": "Kafka I/O Time (Avg)",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ns",
+    "legend": "{{instance}} - ({{listener}})",
+    "expression": "sum by (instance,listener) (kafka_server_socket_server_metrics_io_time_ns_avg{instance=~\"$instance\"})"
+  },
+  {
+    "id": "panel-71-0",
+    "title": "Kafka I/O Wait Time (Avg)",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ns",
+    "legend": "{{listener}} - {{instance}}",
+    "expression": "sum (kafka_server_socket_server_metrics_io_wait_time_ns_avg{instance=~\"$instance\"}) by (listener,instance)"
+  },
+  {
+    "id": "panel-72-0",
+    "title": "Kafka Network I/O Rate",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{listener}} - {{instance}}",
+    "expression": "sum(kafka_server_socket_server_metrics_network_io_rate{instance=~\"$instance\"}) by (instance,listener)"
+  },
+  {
+    "id": "panel-90-0",
+    "title": "Request Pipelined Count",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{listener}} - {{instance}}",
+    "expression": "sum(kafka_server_socket_server_metrics_request_rate{instance=~\"$instance\"}) by (instance,listener)"
+  },
+  {
+    "id": "panel-188-0",
+    "title": "Client Connections",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "open - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_socket_server_metrics_connection_count{instance=~\"$instance\"})"
+  },
+  {
+    "id": "panel-188-1",
+    "title": "Client Connections",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "new/s - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_socket_server_metrics_connection_creation_rate{instance=~\"$instance\"})"
+  },
+  {
+    "id": "panel-188-2",
+    "title": "Client Connections",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "closed/s - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_socket_server_metrics_connection_close_rate{instance=~\"$instance\"})"
+  },
+  {
+    "id": "panel-175-0",
+    "title": "Purgatory Size (Produce)",
+    "category": "producer",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_DelayedOperationPurgatory_Value{instance=~\"$instance\",name=\"PurgatorySize\",delayedOperation=\"Produce\"}"
+  },
+  {
+    "id": "panel-176-0",
+    "title": "Purgatory Size (by Operation)",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{delayedOperation}}",
+    "expression": "sum by (delayedOperation) (kafka_server_DelayedOperationPurgatory_Value{instance=~\"$instance\",name=\"PurgatorySize\"})"
+  },
+  {
+    "id": "panel-189-0",
+    "title": "Delayed Fetch Expirations",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{instance}}",
+    "expression": "sum by (instance) (kafka_server_DelayedFetchMetrics_OneMinuteRate{instance=~\"$instance\",name=\"ExpiresPerSec\"})"
+  },
+  {
+    "id": "panel-38-0",
+    "title": "Request Pool Usage",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "{{instance}}",
+    "expression": "(1 - kafka_server_KafkaRequestHandlerPool_OneMinuteRate{instance=~\"$instance\",name=\"RequestHandlerAvgIdlePercent\"}) * 100"
+  },
+  {
+    "id": "panel-39-0",
+    "title": "NetworkProcessor Usage",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "{{instance}}",
+    "expression": "(1-kafka_network_SocketServer_Value{instance=~\"$instance\",name=\"NetworkProcessorAvgIdlePercent\"})*100"
+  },
+  {
+    "id": "panel-204-0",
+    "title": "Network Processor Idle % (worst per broker)",
+    "category": "brokers",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "{{instance}}",
+    "expression": "min by (instance) (kafka_network_Processor_Value{instance=~\"$instance\",name=\"IdlePercent\"}) * 100"
+  },
+  {
+    "id": "panel-205-0",
+    "title": "Acceptor Blocked %",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "percent",
+    "legend": "{{instance}} {{listener}}",
+    "expression": "kafka_network_Acceptor_OneMinuteRate{instance=~\"$instance\",name=\"AcceptorBlockedPercent\"}"
+  },
+  {
+    "id": "panel-206-0",
+    "title": "Quota Throttling Queue Sizes",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "request - {{instance}}",
+    "expression": "kafka_server_Request_queue_size{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-206-1",
+    "title": "Quota Throttling Queue Sizes",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "produce - {{instance}}",
+    "expression": "kafka_server_Produce_queue_size{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-206-2",
+    "title": "Quota Throttling Queue Sizes",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "fetch - {{instance}}",
+    "expression": "kafka_server_Fetch_queue_size{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-207-0",
+    "title": "Forwarding Manager Queue",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "{{instance}}",
+    "expression": "kafka_server_ForwardingManager_QueueLength{instance=~\"$instance\"}"
+  },
+  {
+    "id": "panel-34-0",
+    "title": "Network Request Errors Per Second",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{request}} ({{error}}) - {{instance}}",
+    "expression": "sum(kafka_network_RequestMetrics_OneMinuteRate{instance=~\"$instance\",name=\"ErrorsPerSec\",error!=\"NONE\"}) by (instance, request, error)"
+  },
+  {
+    "id": "panel-208-0",
+    "title": "Request Errors by Type",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "reqps",
+    "legend": "{{request}} / {{error}}",
+    "expression": "sort_desc(sum by (error,request) (kafka_network_RequestMetrics_OneMinuteRate{instance=~\"$instance\",name=\"ErrorsPerSec\",error!=\"NONE\"}))"
+  },
+  {
+    "id": "panel-65-0",
+    "title": "Bytes Rejected Per Sec",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "Bps",
+    "legend": "{{topic}}",
+    "expression": "sum by (topic) (kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"BytesRejectedPerSec\"})"
+  },
+  {
+    "id": "panel-190-0",
+    "title": "Quota Throttling",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "ms",
+    "legend": "{{request}}",
+    "expression": "max by (request) (kafka_network_RequestMetrics_99thPercentile{instance=~\"$instance\",name=\"ThrottleTimeMs\"})"
+  },
+  {
+    "id": "panel-191-0",
+    "title": "Message Format Conversions & Invalid Records",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "produce conversions/s",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"ProduceMessageConversionsPerSec\"})"
+  },
+  {
+    "id": "panel-191-1",
+    "title": "Message Format Conversions & Invalid Records",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "fetch conversions/s",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"FetchMessageConversionsPerSec\"})"
+  },
+  {
+    "id": "panel-191-2",
+    "title": "Message Format Conversions & Invalid Records",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "invalid CRC/s",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"InvalidMessageCrcRecordsPerSec\"})"
+  },
+  {
+    "id": "panel-191-3",
+    "title": "Message Format Conversions & Invalid Records",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "invalid magic number/s",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"InvalidMagicNumberRecordsPerSec\"})"
+  },
+  {
+    "id": "panel-191-4",
+    "title": "Message Format Conversions & Invalid Records",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "no-key on compacted topic/s",
+    "expression": "sum(kafka_server_BrokerTopicMetrics_OneMinuteRate{instance=~\"$instance\",name=\"NoKeyCompactedTopicRecordsPerSec\"})"
+  },
+  {
+    "id": "panel-209-0",
+    "title": "Fetch Session Cache Evictions",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "evictions/s - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_FetchSessionCache_OneMinuteRate{instance=~\"$instance\",name=\"IncrementalFetchSessionEvictionsPerSec\"})"
+  },
+  {
+    "id": "panel-209-1",
+    "title": "Fetch Session Cache Evictions",
+    "category": "cluster",
+    "kind": "prometheus",
+    "unit": "short",
+    "legend": "active sessions - {{instance}}",
+    "expression": "sum by (instance) (kafka_server_FetchSessionCache_Value{instance=~\"$instance\",name=\"NumIncrementalFetchSessions\"})"
+  }
+]

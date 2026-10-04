@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "127.0.0.1:15432:5432"
+    environment:
+      POSTGRES_DB: kaflux
+      POSTGRES_USER: kaflux
+      POSTGRES_PASSWORD: ${KAFLUX_DB_PASSWORD:?Set KAFLUX_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U kaflux -d kaflux"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  kaflux:
+    build: .
+    image: kaflux:local
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      KAFLUX_LISTEN: ":8080"
+      KAFLUX_STATIC_DIR: /app/frontend
+      KAFLUX_DATABASE_URL: ${KAFLUX_DATABASE_URL:-postgres://kaflux:${KAFLUX_DB_PASSWORD:?Set KAFLUX_DB_PASSWORD}@postgres:5432/kaflux?sslmode=disable}
+      KAFLUX_STORAGE_BACKEND: postgres
+      KAFLUX_DEMO: ${KAFLUX_DEMO:-false}
+      KAFLUX_ADMIN_USER: ${KAFLUX_ADMIN_USER:-admin}
+      KAFLUX_ADMIN_PASSWORD_HASH: ${KAFLUX_ADMIN_PASSWORD_HASH:-}
+      KAFLUX_CONFIG: /app/config.yaml
+      KAFLUX_PROMETHEUS_URL: ${KAFLUX_PROMETHEUS_URL:-}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  kafka:
+    image: apache/kafka:3.9.1
+    profiles: [integration]
+    ports:
+      - "127.0.0.1:19092:19092"
+    environment:
+      CLUSTER_ID: 5L6g3nShT-eMCtK--X86sw
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://127.0.0.1:19092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: [CMD-SHELL, "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    profiles: [integration]
+    volumes:
+      - ./deploy/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+volumes:
+  postgres-data:

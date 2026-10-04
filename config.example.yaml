@@ -1,0 +1,71 @@
+# Copy to private config.yaml; set KAFLUX_CONFIG to its path if needed.
+# Environment variables override these settings. Optional JSON cluster array
+# configuration remains supported through KAFLUX_CLUSTERS_FILE.
+# Keep config.yaml, clusters.json and .env private. Secret values belong in env
+# or Kubernetes Secrets. The Helm chart exposes these settings as values.
+runtime:
+  listen: ":8080" # KAFLUX_LISTEN
+  staticDirectory: /app/frontend # KAFLUX_STATIC_DIR
+  demo: false # KAFLUX_DEMO; opt in to backend simulation
+  storageBackend: sqlite # KAFLUX_STORAGE_BACKEND; postgres for multiple replicas
+  sqlitePath: /var/lib/kaflux/kaflux.db # KAFLUX_SQLITE_PATH; mount the directory
+  # For postgres replace storageBackend and uncomment the secret reference:
+  # databaseURLEnv: KAFLUX_DATABASE_URL
+  adminUserEnv: KAFLUX_ADMIN_USER
+  adminPasswordHashEnv: KAFLUX_ADMIN_PASSWORD_HASH # bcrypt
+  prometheusURLEnv: KAFLUX_PROMETHEUS_URL
+clusters:
+  - id: local
+    name: Local integration
+    environment: development
+    seeds: [kafka:9092]
+    tls: false # Local Compose only; use TLS for remote clusters.
+    allowPlaintext: true # Explicit local-only transport opt-in.
+    sasl: ""
+    user: ""
+    passwordEnv: KAFLUX_KAFKA_PASSWORD
+# For a real MSK entry set region, SASL msk-iam (or configured SCRAM/TLS),
+# optional roleArn, and mskClusterArn. Manual reassignment must check ACTIVE
+# cluster state and is blocked when the state cannot be verified.
+grants:
+  - role: administrator
+    cluster: "*"
+    action: "*"
+    pattern: "*"
+  - role: viewer
+    cluster: "*"
+    action: read
+    pattern: "*"
+  - role: operator
+    cluster: "*"
+    action: read
+    pattern: "*"
+  - role: operator
+    cluster: "*"
+    action: consume
+    pattern: "*"
+  - role: operator
+    cluster: "*"
+    action: plan
+    pattern: "*"
+# Enable only with an authorized tenant and pre-created confidential client.
+# oidc:
+#   - id: authentik
+#     issuer: https://identity.example.invalid/application/o/kaflux/
+#     clientId: kaflux
+#     clientSecretEnv: KAFLUX_OIDC_SECRET
+#     redirectURL: https://console.example.invalid/api/v1/auth/oidc/authentik/callback
+#     groupClaim: groups
+#     groupRoles:
+#       kafka-operators: [operator]
+#       kafka-viewers: [viewer]
+# ldap:
+#   - id: directory
+#     url: ldaps://directory.example.invalid:636
+#     bindDN: cn=kaflux,ou=services,dc=example,dc=invalid
+#     bindPasswordEnv: KAFLUX_LDAP_BIND_PASSWORD
+#     baseDN: ou=people,dc=example,dc=invalid
+#     userFilter: '(sAMAccountName={username})'
+#     groupAttribute: memberOf
+#     groupRoles:
+#       cn=kafka-operators,ou=groups,dc=example,dc=invalid: [operator]

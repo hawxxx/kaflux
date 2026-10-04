@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: kaflux
+    static_configs:
+      - targets: [kaflux:8080]

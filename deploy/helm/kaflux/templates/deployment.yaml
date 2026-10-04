@@ -1,0 +1,158 @@
+{{- if not (has .Values.storage.backend (list "postgres" "sqlite" "memory")) }}
+{{- fail "storage.backend must be postgres, sqlite, or memory" }}
+{{- end }}
+{{- if and (eq .Values.storage.backend "memory") (not .Values.config.demo) }}
+{{- fail "memory storage requires demo mode" }}
+{{- end }}
+{{- if eq .Values.storage.backend "sqlite" }}
+{{- if or .Values.autoscaling.enabled (ne (int .Values.replicaCount) 1) }}
+{{- fail "SQLite requires replicaCount=1 and autoscaling.enabled=false" }}
+{{- end }}
+{{- if not (hasPrefix "/var/lib/kaflux/" .Values.storage.sqlite.path) }}
+{{- fail "SQLite path must be inside the mounted /var/lib/kaflux directory" }}
+{{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kaflux.fullname" . }}
+  labels:
+    {{- include "kaflux.labels" . | nindent 4 }}
+spec:
+  {{- if eq .Values.storage.backend "sqlite" }}
+  strategy:
+    type: Recreate
+  {{- end }}
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kaflux.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        app.kubernetes.io/name: {{ include "kaflux.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ include "kaflux.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: kaflux
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: KAFLUX_LISTEN
+              value: ":8080"
+            - name: KAFLUX_STATIC_DIR
+              value: /app/frontend
+            - name: KAFLUX_DEMO
+              value: {{ .Values.config.demo | quote }}
+            - name: KAFLUX_CLUSTERS_FILE
+              value: /app/config/clusters.json
+            - name: KAFLUX_CONFIG
+              value: /app/config/config.yaml
+            - name: KAFLUX_PROMETHEUS_URL
+              value: {{ .Values.config.prometheusURL | quote }}
+            - name: KAFLUX_DATABASE_URL
+              {{- if eq .Values.storage.backend "postgres" }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.secrets.databaseURLKey }}
+              {{- else }}
+              value: ""
+              {{- end }}
+            - name: KAFLUX_STORAGE_BACKEND
+              value: {{ .Values.storage.backend | quote }}
+            - name: KAFLUX_SQLITE_PATH
+              value: {{ .Values.storage.sqlite.path | quote }}
+            - name: KAFLUX_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.secrets.adminUserKey }}
+            - name: KAFLUX_ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.secrets.adminPasswordHashKey }}
+            {{- with .Values.secrets.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            {{- if eq .Values.storage.backend "sqlite" }}
+            - name: data
+              mountPath: /var/lib/kaflux
+            {{- end }}
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        {{- if eq .Values.storage.backend "sqlite" }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.sqlite.existingClaim | default (printf "%s-data" (include "kaflux.fullname" .)) }}
+        {{- end }}
+        - name: config
+          configMap:
+            name: {{ include "kaflux.fullname" . }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

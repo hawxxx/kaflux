@@ -1,0 +1,16 @@
+{{- if and (eq .Values.storage.backend "sqlite") (not .Values.storage.sqlite.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kaflux.fullname" . }}-data
+  labels:
+    {{- include "kaflux.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if .Values.storage.sqlite.storageClass }}
+  storageClassName: {{ .Values.storage.sqlite.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.sqlite.size }}
+{{- end }}

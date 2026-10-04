@@ -1,0 +1,69 @@
+replicaCount: 1
+storage:
+  backend: postgres
+  sqlite:
+    path: /var/lib/kaflux/kaflux.db
+    existingClaim: ""
+    size: 1Gi
+    storageClass: ""
+image:
+  repository: kaflux
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+extraVolumes: []
+extraVolumeMounts: []
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+service:
+  type: ClusterIP
+  port: 8080
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: kaflux.example.invalid
+  tls: []
+config:
+  demo: false
+  prometheusURL: ""
+  # Connection metadata only; credentials resolve from secret environment variables.
+  clusters: []
+configuration:
+  # Strict runtime YAML; provider client secrets must use environment references.
+  oidc: []
+  ldap: []
+  grants: []
+  integrations: []
+secrets:
+  existingSecret: kaflux-runtime
+  databaseURLKey: database-url
+  adminUserKey: admin-user
+  adminPasswordHashKey: admin-password-hash
+  extraEnv: []
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "2"
+    memory: 512Mi
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+networkPolicy:
+  enabled: true
+  # Replace permissive outbound defaults with known DB, Kafka and metrics peers.
+  egress:
+    - {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []

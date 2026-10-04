@@ -1,0 +1,26 @@
+# Single-instance durable deployment; no PostgreSQL service is required.
+# Run from repository root with docker compose -f deploy/docker-compose.sqlite.yaml up --build.
+services:
+  kaflux:
+    build: ..
+    image: kaflux:local
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      KAFLUX_LISTEN: ":8080"
+      KAFLUX_CONFIG: /app/config.yaml
+      KAFLUX_STORAGE_BACKEND: sqlite
+      KAFLUX_SQLITE_PATH: /var/lib/kaflux/kaflux.db
+      KAFLUX_DEMO: "false"
+      KAFLUX_ADMIN_USER: ${KAFLUX_ADMIN_USER:-admin}
+      KAFLUX_ADMIN_PASSWORD_HASH: ${KAFLUX_ADMIN_PASSWORD_HASH:?Set KAFLUX_ADMIN_PASSWORD_HASH to a bcrypt hash}
+      KAFLUX_PROMETHEUS_URL: ${KAFLUX_PROMETHEUS_URL:-}
+    volumes:
+      - ../config.yaml:/app/config.yaml:ro
+      - kaflux-data:/var/lib/kaflux
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+volumes:
+  kaflux-data:
