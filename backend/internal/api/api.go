@@ -13,11 +13,14 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/kafka"
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/hawxxx/kaflux/backend/internal/store"
+	"go.opentelemetry.io/otel/trace"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,10 +44,11 @@ type Options struct {
 	Integrations         map[string]*integrations.Client
 }
 type API struct {
-	o        Options
-	demo     auth.Session
-	mu       sync.Mutex
-	attempts map[string][]time.Time
+	o                  Options
+	demo               auth.Session
+	mu                 sync.Mutex
+	attempts           map[string][]time.Time
+	lastAttemptCleanup time.Time
 }
 
 func New(o Options) *API {
@@ -65,6 +69,31 @@ func fail(w http.ResponseWriter, status int, code, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": msg}})
+}
+
+var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
+
+// requestID correlates audit records with traces. A client-supplied
+// X-Request-ID is used only when no trace exists and it is short and plain.
+func requestID(r *http.Request) string {
+	if span := trace.SpanContextFromContext(r.Context()); span.IsValid() {
+		return span.TraceID().String()
+	}
+	if id := r.Header.Get("X-Request-ID"); requestIDPattern.MatchString(id) {
+		return id
+	}
+	return ""
+}
+
+// failCause logs the internal cause of a server-side failure, correlated with
+// the request trace, while the client receives only the sanitized message.
+func failCause(w http.ResponseWriter, r *http.Request, status int, code, msg string, cause error) {
+	attrs := []any{"code", code, "status", status, "path", r.URL.Path, "error", cause}
+	if span := trace.SpanContextFromContext(r.Context()); span.IsValid() {
+		attrs = append(attrs, "trace_id", span.TraceID().String())
+	}
+	slog.Error("request failed", attrs...)
+	fail(w, status, code, msg)
 }
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -92,8 +121,7 @@ func (a *API) session(r *http.Request) (auth.Session, error) {
 	return a.o.Store.Session(r.Context(), c.Value)
 }
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Cache-Control", "no-store")
+	securityHeaders(w)
 	path := r.URL.Path
 	if a.identity(w, r) {
 		return
@@ -105,7 +133,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path == "/ready" {
 		if a.o.Store.IsPersistent() {
 			if e := a.o.Store.Ping(r.Context()); e != nil {
-				fail(w, 503, "database_unavailable", "Database unavailable")
+				failCause(w, r, 503, "database_unavailable", "Database unavailable", e)
 				return
 			}
 		}
@@ -114,7 +142,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/metrics" {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprintf(w, "kaflux_configured_clusters %d\n", len(a.o.Clusters))
+		fmt.Fprintf(w, "# HELP kaflux_configured_clusters Configured Kafka clusters.\n# TYPE kaflux_configured_clusters gauge\nkaflux_configured_clusters %d\n", len(a.o.Clusters))
 		return
 	}
 	if path == "/api/v1/auth/login" {
@@ -154,7 +182,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := a.o.Store.DeleteSession(r.Context(), s.ID); err != nil {
-			fail(w, 503, "session_revocation_failed", "Sign out unavailable; retry")
+			failCause(w, r, 503, "session_revocation_failed", "Sign out unavailable; retry", err)
 			return
 		}
 		http.SetCookie(w, &http.Cookie{Name: "kaflux_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: !a.o.Demo, SameSite: http.SameSiteLaxMode})
@@ -179,7 +207,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		v, e := a.o.Store.Audits(r.Context())
 		if e != nil {
-			fail(w, 503, "store_unavailable", "Audit unavailable")
+			failCause(w, r, 503, "store_unavailable", "Audit unavailable", e)
 			return
 		}
 		respond(w, v)
@@ -274,7 +302,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		all, e := a.o.Store.Audits(r.Context())
 		if e != nil {
-			fail(w, 503, "store_unavailable", "Audit unavailable")
+			failCause(w, r, 503, "store_unavailable", "Audit unavailable", e)
 			return
 		}
 		out := []store.Audit{}
@@ -339,7 +367,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if endpoint == "consumer-groups" {
 		g, e := provider.Groups(r.Context())
 		if e != nil {
-			fail(w, 503, "broker_unavailable", "Consumer groups unavailable")
+			failCause(w, r, 503, "broker_unavailable", "Consumer groups unavailable", e)
 			return
 		}
 		if len(parts) > 5 {
@@ -378,7 +406,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	snap, e := provider.Snapshot(r.Context())
 	if e != nil {
-		fail(w, 503, "broker_unavailable", "Kafka metadata unavailable")
+		failCause(w, r, 503, "broker_unavailable", "Kafka metadata unavailable", e)
 		return
 	}
 	switch endpoint {
@@ -450,6 +478,15 @@ func (a *API) allowed(u auth.User, c, action, resource string, w http.ResponseWr
 	return false
 }
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
+	if !loginRequestAllowed(w, r) {
+		return
+	}
+	if !a.loginAllowed(r.RemoteAddr, time.Now()) {
+		slog.Warn("login rate limited", "remoteAddr", r.RemoteAddr)
+		w.Header().Set("Retry-After", "60")
+		fail(w, 429, "rate_limited", "Too many login attempts")
+		return
+	}
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -457,28 +494,10 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	a.mu.Lock()
-	now := time.Now()
-	old := a.attempts[ip]
-	recent := []time.Time{}
-	for _, t := range old {
-		if now.Sub(t) < time.Minute {
-			recent = append(recent, t)
-		}
-	}
-	limited := len(recent) >= 5
-	if len(a.attempts) > 10000 {
-		a.attempts = map[string][]time.Time{}
-	}
-	a.attempts[ip] = append(recent, now)
-	a.mu.Unlock()
-	if limited {
-		fail(w, 429, "rate_limited", "Too many login attempts")
-		return
-	}
 	u := auth.User{ID: body.Username, Username: body.Username, Roles: []string{"administrator"}, Provider: "local"}
-	valid := body.Username == a.o.AdminUser && auth.Verify(a.o.AdminHash, body.Password)
+	// Always run bcrypt so response time does not reveal the local username.
+	passwordValid := auth.Verify(a.o.AdminHash, body.Password)
+	valid := subtle.ConstantTimeCompare([]byte(body.Username), []byte(a.o.AdminUser)) == 1 && passwordValid
 	if !valid {
 		for _, provider := range a.o.LDAP {
 			candidate, e := auth.AuthenticateLDAP(r.Context(), provider, body.Username, body.Password)
@@ -487,9 +506,12 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 				valid = true
 				break
 			}
+			// LDAP errors are sanitized; they distinguish outages from rejected credentials.
+			slog.Warn("ldap authentication failed", "provider", provider.ID, "error", e)
 		}
 	}
 	if !valid {
+		slog.Warn("login failed", "username", truncate(body.Username, 128), "remoteAddr", r.RemoteAddr)
 		fail(w, 401, "invalid_credentials", "Invalid credentials")
 		return
 	}
@@ -601,7 +623,7 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		out, e := p.Produce(r.Context(), m)
 		if e != nil {
 			_ = a.audit(w, r, u, "produce", m.Topic, "uncertain")
-			fail(w, 503, "produce_uncertain", "Production outcome uncertain; inspect offsets before retrying")
+			failCause(w, r, 503, "produce_uncertain", "Production outcome uncertain; inspect offsets before retrying", e)
 			return
 		}
 		_ = a.audit(w, r, u, "produce", m.Topic, "success")
@@ -663,13 +685,13 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		}
 		offset, e = resolver.OffsetAt(r.Context(), q.Get("topic"), int32(part), at)
 		if e != nil {
-			fail(w, 503, "offset_lookup_failed", "Timestamp offset unavailable")
+			failCause(w, r, 503, "offset_lookup_failed", "Timestamp offset unavailable", e)
 			return
 		}
 	}
 	m, e := p.Messages(r.Context(), q.Get("topic"), int32(part), offset, limit)
 	if e != nil {
-		fail(w, 503, "consume_failed", "Unable to read messages")
+		failCause(w, r, 503, "consume_failed", "Unable to read messages", e)
 		return
 	}
 	if registry != nil {
@@ -684,9 +706,9 @@ func (a *API) audit(w http.ResponseWriter, r *http.Request, u auth.User, action,
 	if len(segments) >= 4 && segments[0] == "api" && segments[1] == "v1" && segments[2] == "clusters" {
 		cluster = segments[3]
 	}
-	e := a.o.Store.Audit(r.Context(), store.Audit{Actor: u.ID, Provider: u.Provider, ClusterID: cluster, Action: action, Resource: resource, Result: result, RequestID: r.Header.Get("X-Request-ID"), SourceIP: ip})
+	e := a.o.Store.Audit(r.Context(), store.Audit{Actor: u.ID, Provider: u.Provider, ClusterID: cluster, Action: action, Resource: resource, Result: result, RequestID: requestID(r), SourceIP: ip})
 	if e != nil {
-		fail(w, 503, "audit_unavailable", "Audit persistence required")
+		failCause(w, r, 503, "audit_unavailable", "Audit persistence required", e)
 		return false
 	}
 	return true
@@ -696,7 +718,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		if r.Method == "GET" {
 			all, e := a.o.Store.Jobs(r.Context())
 			if e != nil {
-				fail(w, 503, "store_unavailable", "Jobs unavailable")
+				failCause(w, r, 503, "store_unavailable", "Jobs unavailable", e)
 				return
 			}
 			out := []model.Plan{}
@@ -738,7 +760,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		}
 		snap, e := jobs.FreshSnapshot(r.Context(), provider)
 		if e != nil {
-			fail(w, 503, "broker_unavailable", "Metadata unavailable")
+			failCause(w, r, 503, "broker_unavailable", "Metadata unavailable", e)
 			return
 		}
 		p, e := balance.Generate(snap, req)
@@ -811,7 +833,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		if a.adminMutation(w, r, u, id, "cancel", p.ID, map[string]string{"state": p.State}, map[string]bool{"cancellationRequested": true}, func() error { return a.o.Store.RequestCancel(r.Context(), p.ID) }) {
 			updated, e := a.o.Store.Job(r.Context(), p.ID)
 			if e != nil {
-				fail(w, 503, "store_unavailable", "Cancellation requested; job status unavailable")
+				failCause(w, r, 503, "store_unavailable", "Cancellation requested; job status unavailable", e)
 				return
 			}
 			respond(w, updated)
@@ -824,7 +846,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 	}
 	snap, e := jobs.FreshSnapshot(r.Context(), provider)
 	if e != nil {
-		fail(w, 503, "broker_unavailable", "Metadata unavailable")
+		failCause(w, r, 503, "broker_unavailable", "Metadata unavailable", e)
 		return
 	}
 	if parts[6] == "rollback" {
@@ -903,7 +925,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		}
 		pending, e := provider.Pending(r.Context())
 		if e != nil {
-			fail(w, 503, "broker_unavailable", "Cannot verify active assignments")
+			failCause(w, r, 503, "broker_unavailable", "Cannot verify active assignments", e)
 			return
 		}
 		if len(pending) > 0 {
@@ -935,7 +957,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 	}
 	pending, e := provider.Pending(r.Context())
 	if e != nil {
-		fail(w, 503, "broker_unavailable", "Cannot verify active assignments")
+		failCause(w, r, 503, "broker_unavailable", "Cannot verify active assignments", e)
 		return
 	}
 	if len(pending) > 0 {

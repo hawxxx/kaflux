@@ -36,7 +36,7 @@ func (a *API) identity(w http.ResponseWriter, r *http.Request) bool {
 	case "start":
 		url, state, e := provider.StartURL()
 		if e != nil {
-			fail(w, 503, "provider_unavailable", "Identity provider unavailable")
+			failCause(w, r, 503, "provider_unavailable", "Identity provider unavailable", e)
 			return true
 		}
 		http.SetCookie(w, &http.Cookie{Name: "kaflux_oidc_state", Value: state, Path: "/api/v1/auth/oidc/", HttpOnly: true, Secure: !a.o.Demo, SameSite: http.SameSiteLaxMode, MaxAge: 600})
@@ -71,7 +71,7 @@ func (a *API) establish(w http.ResponseWriter, r *http.Request, u auth.User) boo
 func (a *API) establishSession(w http.ResponseWriter, r *http.Request, u auth.User) (auth.Session, bool) {
 	s := auth.NewSession(u, a.o.SessionLifetime)
 	if e := a.o.Store.SaveSession(r.Context(), s); e != nil {
-		fail(w, 503, "store_unavailable", "Unable to create session")
+		failCause(w, r, 503, "store_unavailable", "Unable to create session", e)
 		return auth.Session{}, false
 	}
 	http.SetCookie(w, &http.Cookie{Name: "kaflux_session", Value: s.ID, Path: "/", HttpOnly: true, Secure: !a.o.Demo, SameSite: http.SameSiteLaxMode, Expires: s.Expires})

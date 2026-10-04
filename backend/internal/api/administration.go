@@ -75,11 +75,11 @@ func (a *API) adminAudit(r *http.Request, u auth.User, id, action, resource, res
 	if a.o.Demo {
 		provider = "development-simulator"
 	}
-	return a.o.Store.Audit(r.Context(), store.Audit{Actor: u.ID, ClusterID: id, Provider: provider, Action: action, Resource: resource, Result: result, RequestID: r.Header.Get("X-Request-ID"), AdminBefore: before, AdminAfter: after})
+	return a.o.Store.Audit(r.Context(), store.Audit{Actor: u.ID, ClusterID: id, Provider: provider, Action: action, Resource: resource, Result: result, RequestID: requestID(r), AdminBefore: before, AdminAfter: after})
 }
 func (a *API) adminMutation(w http.ResponseWriter, r *http.Request, u auth.User, id, action, resource string, before, after any, run func() error) bool {
 	if e := a.adminAudit(r, u, id, action, resource, "intent", before, after); e != nil {
-		fail(w, 503, "audit_unavailable", "Mutation blocked because audit storage is unavailable")
+		failCause(w, r, 503, "audit_unavailable", "Mutation blocked because audit storage is unavailable", e)
 		return false
 	}
 	e := run()
@@ -92,7 +92,7 @@ func (a *API) adminMutation(w http.ResponseWriter, r *http.Request, u auth.User,
 	defer cancel()
 	auditErr := a.adminAudit(r.WithContext(ctx), u, id, action, resource, result, before, after)
 	if auditErr != nil {
-		fail(w, 503, "audit_uncertain", "Broker operation attempted but result audit failed; inspect the resource before retrying")
+		failCause(w, r, 503, "audit_uncertain", "Broker operation attempted but result audit failed; inspect the resource before retrying", auditErr)
 		return false
 	}
 	if e != nil {
@@ -124,7 +124,7 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 		start := time.Now()
 		snap, e := p.Snapshot(r.Context())
 		if e != nil {
-			fail(w, 503, "connection_failed", "Configured Kafka connection failed; verify TLS, authentication and broker availability")
+			failCause(w, r, 503, "connection_failed", "Configured Kafka connection failed; verify TLS, authentication and broker availability", e)
 			return true
 		}
 		respond(w, map[string]any{"status": "connected", "configured": true, "brokerCount": len(snap.Brokers), "latencyMs": time.Since(start).Milliseconds(), "checkedAt": time.Now().UTC()})

@@ -207,7 +207,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 		current, e := client.Do(r.Context(), "GET", path, nil)
 		if e != nil {
 			a.audit(w, r, user, action, resource, "failed")
-			fail(w, 503, "configuration_unavailable", "Cannot preserve existing credentials; configuration was not changed")
+			failCause(w, r, 503, "configuration_unavailable", "Cannot preserve existing credentials; configuration was not changed", e)
 			return true
 		}
 		merged, e := external.PreserveRedacted(payload, current)
@@ -227,7 +227,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 		if errors.As(e, &upstream) && upstream.Status >= 400 && upstream.Status < 500 {
 			fail(w, upstream.Status, "integration_error", e.Error())
 		} else {
-			fail(w, 503, "integration_unavailable", e.Error())
+			failCause(w, r, 503, "integration_unavailable", e.Error(), e)
 		}
 		return true
 	}
@@ -249,7 +249,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 	}
 	safe, e := external.Redact(raw)
 	if e != nil {
-		fail(w, 502, "invalid_response", "Integration returned invalid response")
+		failCause(w, r, 502, "invalid_response", "Integration returned invalid response", e)
 		return true
 	}
 	if mutation && !a.audit(w, r, user, action, resource, "success") {

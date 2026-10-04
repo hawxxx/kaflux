@@ -56,7 +56,7 @@ func (a *API) adminSessions(w http.ResponseWriter, r *http.Request, s auth.Sessi
 			items, more, e = a.o.Store.ListSessions(r.Context(), s.ID, limit, offset)
 		}
 		if e != nil {
-			fail(w, 503, "store_unavailable", "Session inventory unavailable; retry")
+			failCause(w, r, 503, "store_unavailable", "Session inventory unavailable; retry", e)
 			return true
 		}
 		respond(w, items, map[string]any{"limit": limit, "offset": offset, "hasMore": more})
@@ -98,14 +98,14 @@ func (a *API) adminSessions(w http.ResponseWriter, r *http.Request, s auth.Sessi
 	if splitErr != nil {
 		sourceIP = r.RemoteAddr
 	}
-	v, e := a.o.Store.RevokeSession(r.Context(), handle, s.ID, func(v store.SessionSummary) bool { return az.Allowed(s.User, "*", "manage-sessions", v.UserID) }, store.Audit{Actor: s.User.ID, Provider: s.User.Provider, ClusterID: "*", Action: "manage-sessions", RequestID: r.Header.Get("X-Request-ID"), SourceIP: sourceIP})
+	v, e := a.o.Store.RevokeSession(r.Context(), handle, s.ID, func(v store.SessionSummary) bool { return az.Allowed(s.User, "*", "manage-sessions", v.UserID) }, store.Audit{Actor: s.User.ID, Provider: s.User.Provider, ClusterID: "*", Action: "manage-sessions", RequestID: requestID(r), SourceIP: sourceIP})
 	switch {
 	case errors.Is(e, store.ErrSessionForbidden):
 		fail(w, 403, "forbidden", "Permission denied")
 	case errors.Is(e, store.ErrSessionNotFound):
 		fail(w, 404, "session_not_found", "Session is no longer active")
 	case e != nil:
-		fail(w, 503, "session_revocation_failed", "Session revocation unavailable; retry")
+		failCause(w, r, 503, "session_revocation_failed", "Session revocation unavailable; retry", e)
 	default:
 		if v.Current {
 			http.SetCookie(w, &http.Cookie{Name: "kaflux_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})

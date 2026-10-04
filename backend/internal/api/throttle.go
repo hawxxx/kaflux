@@ -48,7 +48,7 @@ func (a *API) requestThrottle(w http.ResponseWriter, r *http.Request, user auth.
 	}
 	updated, e := a.o.Store.Job(r.Context(), p.ID)
 	if e != nil {
-		fail(w, 503, "store_unavailable", "Throttle change requested; job status unavailable")
+		failCause(w, r, 503, "store_unavailable", "Throttle change requested; job status unavailable", e)
 		return
 	}
 	respond(w, updated)

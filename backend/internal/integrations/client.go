@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -105,6 +106,8 @@ func (c *Client) Do(ctx context.Context, method, path string, payload []byte) ([
 	response, e := c.http.Do(request)
 	if e != nil {
 		c.failure()
+		// Callers receive a generic message; operators need the transport cause.
+		slog.Warn("integration request failed", "integration", c.config.ID, "error", e)
 		return nil, errors.New("integration request failed or timed out")
 	}
 	defer response.Body.Close()

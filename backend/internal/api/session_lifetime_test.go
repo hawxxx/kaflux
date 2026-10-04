@@ -56,6 +56,7 @@ func TestLocalLoginUsesConfiguredLifetime(t *testing.T) {
 	a := New(Options{Store: st, AdminUser: "fixture", AdminHash: string(hash), SessionLifetime: 5 * time.Minute})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"username":"fixture","password":"fixture-password"}`))
+	r.Header.Set("Content-Type", "application/json")
 	before := time.Now()
 	a.ServeHTTP(w, r)
 	if w.Code != 200 {

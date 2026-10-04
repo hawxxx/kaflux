@@ -84,7 +84,7 @@ See [authentication](docs/authentication.md), [storage](docs/storage.md), and [m
 
 ## Development
 
-Requires Go 1.25, Node.js 22, npm, and Make.
+Requires Go 1.26.8 or newer, Node.js 22, npm, and Make.
 
 Start the simulator backend:
 
