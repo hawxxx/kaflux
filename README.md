@@ -1,49 +1,127 @@
 # Kaflux
 
-Kaflux is a self-hosted Kafka operations console built with Go and React. It combines cluster inventory, message exploration, monitoring, balance planning, and audited reassignment workflows behind a backend API. Simulation is an explicitly enabled backend provider and is labeled in the UI.
+Kaflux is a Kafka operations console built with Go and React. Explore clusters and messages, monitor activity, and manage rebalancing from one interface.
 
-## Develop
+## Features
 
-Prerequisites: Go 1.25 (or Go toolchain auto-download), Node.js 22, npm, and Docker for integration checks.
+- **Cluster management:** brokers, topics, partitions, consumer groups, and access controls.
+- **Message exploration:** filtering, JSON previews, and Avro/Protobuf decoding through Schema Registry.
+- **Monitoring:** metrics, consumer lag, and partition balance.
+- **Rebalancing:** plan review, approval, audited execution, and live throttle controls.
+- **Integrations:** Kafka Connect, Schema Registry, OIDC, and LDAP.
 
-Run `make test` for backend race tests/vet and frontend tests/build. Run `make dev` to start the explicit simulator backend on localhost:8080; in another terminal run `cd frontend && npm ci && npm run dev`. Vite proxies `/api` to the backend. The development simulator's sign-in behavior is described by the login screen; production requires a bcrypt password hash.
+## Installation
 
-## Container
+### Docker Compose
 
-Build with `make docker`. The image serves the compiled frontend and API on port 8080 as a non-root user. It supports a read-only filesystem.
+Requires Git, Docker with Compose, and access to a Kafka cluster. Go and Node.js are not needed for container installation.
 
-Compose requires `KAFLUX_DB_PASSWORD` and a private `config.yaml` copied from [config.example.yaml](config.example.yaml). Set `KAFLUX_ADMIN_USER` and `KAFLUX_ADMIN_PASSWORD_HASH` for real mode. YAML accepts secret environment references; environment variables override configured settings. Compose generates `KAFLUX_DATABASE_URL` by default; for a password containing URI-reserved characters, set an explicit database URL with a URL-encoded password. Protect private files and use a TLS ingress when exposing the service beyond localhost.
+**1. Clone the repository and copy the configuration.**
 
-For local simulation, copy the example to `config.yaml`, remove optional secret references that you have not set, set `KAFLUX_DB_PASSWORD` to a local password, then run `KAFLUX_DEMO=true docker compose up --build`. Open http://localhost:8080. Demo mode must be explicitly enabled; its data and operations are simulated.
+```sh
+git clone https://github.com/hawxxx/kaflux.git
+cd kaflux
+cp config.example.yaml config.yaml
+```
 
-For a real local Kafka integration, use the example's cluster entry with `seeds: ["kafka:9092"]`, `tls: false`, and `allowPlaintext: true`. Run `docker compose --profile integration up --build` with configured admin credentials. The profile includes single-node KRaft Kafka and Prometheus. It is a local integration fixture with plaintext Kafka, not a hardened broker deployment. Prometheus scrapes application metrics; broker monitoring requires Kafka/JMX exporters configured separately.
+**2. Configure your cluster and sign-in credentials.**
 
-The optional `deploy/docker-compose.integration.yaml` override adds two brokers for reassignment tests. Start the fixture with `docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration up -d --wait postgres kafka kafka2 kafka3`. Host test clients use `KAFLUX_TEST_KAFKA_SEED=127.0.0.1:19092` and `KAFLUX_TEST_DATABASE_URL=postgres://kaflux:YOUR_LOCAL_PASSWORD@127.0.0.1:15432/kaflux?sslmode=disable`; use a URL-encoded database password. Run `cd backend && go test -race -p 1 ./...`; serialize test packages because they change broker throttle settings on the shared fixture. Kafka security and controller redundancy are intentionally simplified in this fixture.
+Edit `config.yaml` with Kafka broker addresses reachable from the container and the appropriate TLS/SASL settings. Set referenced secret environment variables, or remove unused references such as `passwordEnv` for a cluster without SASL.
 
-Kafka fixture storage belongs to each container. If the single controller is recreated, recreate all three Kafka containers together with `docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration up -d --force-recreate --wait kafka kafka2 kafka3` to avoid stale broker metadata from the prior controller. This resets local Kafka test data and preserves the PostgreSQL volume.
+Set your administrator username and a bcrypt hash of your chosen login password. Replace the placeholder below with the hash; use single quotes to preserve its `$` characters.
 
-## Kubernetes
+```sh
+export KAFLUX_ADMIN_USER=admin
+export KAFLUX_ADMIN_PASSWORD_HASH='YOUR_BCRYPT_PASSWORD_HASH'
+```
 
-The [Helm chart](deploy/helm/kaflux) provides Deployment, Service, optional ingress/TLS, HPA, PDB, topology spread/affinity, secret references, probes, and a NetworkPolicy. Supply an existing Secret with `database-url`, `admin-user`, and `admin-password-hash`. The chart never generates credentials. Connection configuration is a ConfigMap; cluster passwords resolve through environment variables added with `secrets.extraEnv`. Use `extraVolumes` and read-only `extraVolumeMounts` for CA certificates or Kafka mTLS Secrets; configure cluster `caFile`, `certFile`, and `keyFile` paths accordingly.
+**3. Start Kaflux.**
 
-Configure OIDC providers (including authentik) and LDAP under `configuration.oidc` and `configuration.ldap`; map verified groups to roles and configure least-privilege `configuration.grants`. Refer to the commented examples in the YAML configuration. Provider secrets resolve through `secrets.extraEnv` Secret references. OIDC uses discovery, signature/issuer/audience validation, authorization-code PKCE, state and nonce; LDAP requires LDAPS or StartTLS.
+```sh
+docker compose -f deploy/docker-compose.sqlite.yaml up --build -d
+```
 
-Kafka SASL OAuth bearer uses a token environment reference in cluster `oauthTokenEnv` with TLS enabled. Kaflux does not acquire or automatically refresh client-credentials tokens; manage their lifetime externally.
+Open **http://localhost:8080** and sign in with your administrator username and original password. This setup uses SQLite with a persistent Docker volume.
 
-Use one replica until restart and multi-worker recovery gates pass. Additional replicas require shared PostgreSQL persistence for sessions, OIDC login flows, audit, jobs, and worker coordination. Pending OIDC state is bounded, expires after five minutes, and is consumed atomically from PostgreSQL. Configure workload identity via `serviceAccount.annotations` (for example the EKS role annotation). IAM configuration alone does not prove MSK interoperability. The default egress rule permits outbound traffic; replace it with database, broker, metrics, identity-provider, and DNS rules for your network. `make helm` validates and renders locally; it does not install resources.
+To stop it:
 
-## API and operations
+```sh
+docker compose -f deploy/docker-compose.sqlite.yaml down
+```
 
-The browser accesses `/api/v1`; Kafka and datasource credentials remain on the backend. The [OpenAPI document](docs/openapi.yaml) describes the HTTP contract. Cookie-authenticated changes require CSRF protection and backend role checks. Plans require review and approval before execution, and successful execution must be established from broker state.
+### Try the demo
 
-Use `/health` for process liveness and `/ready` for database readiness. Broker and metrics connectivity are reported through their cluster API responses and UI status; `/ready` does not certify those dependencies. PostgreSQL schema setup runs at startup; review migration and backup policies before upgrades. See [security](docs/security.md), [authentication](docs/authentication.md), [metrics](docs/metrics.md), and [rebalancing](docs/rebalancing.md) for requirements and verification boundaries.
+After cloning the repository, create a minimal configuration and start the simulator with PostgreSQL. If you already have a `config.yaml`, use a separate checkout for the demo.
 
-Stop every consumer in a group before previewing or applying an offset reset, and keep them stopped until the operation finishes. Kaflux checks that the group is inactive and requires a matching fresh preview, but Kafka does not provide an atomic lock against a consumer starting between the inactivity check and offset commit.
+```sh
+printf 'runtime:\n  demo: true\n' > config.yaml
+export KAFLUX_DB_PASSWORD=local-demo-password
+KAFLUX_DEMO=true docker compose up --build -d
+```
 
-Schema Registry and Kafka Connect use configured backend integrations with `id`, `clusterID`, `kind` (`schemas` or `connect`), `url`, and optional `username`, `passwordEnv` and `tokenEnv`. Set the top-level `integrations` array in runtime YAML, or `configuration.integrations` in Helm values. Supply credentials through secret environment variables. Resource grants use `schema-read`/`schema-update` and `connector-read`/`connector-update`; configured URLs stay on the backend. See the status document for current external-service evidence.
+Open **http://localhost:8080**. Demo access is automatic; cluster data and operations are simulated. Stop it with `docker compose down` before starting another setup on the same port.
 
-Running reassignments support audited, asynchronous throttle changes with typed job confirmation. The UI distinguishes the requested rate from the last verified rate; zero is not a pause operation. See [live throttle controls](docs/live-throttle.md) for ownership, recovery and safety guarantees, and [implementation status](docs/status.md) for remaining production qualification.
+### PostgreSQL and Kubernetes
 
-The message explorer supports opt-in Confluent-wire Avro and Protobuf value decoding through configured registries, with subject authorization, bounded previews, paged JSON trees and per-record errors. See [message decoding](docs/message-decoding.md) for supported schema types and limits.
+For PostgreSQL, use the root `docker-compose.yaml` and set `KAFLUX_DB_PASSWORD` in addition to your administrator credentials. Start it with `docker compose up --build -d`. If the database password contains URI-reserved characters, provide `KAFLUX_DATABASE_URL` with a URL-encoded password.
 
-Licensed under [MIT](LICENSE).
+For Kubernetes, use the [Helm chart](deploy/helm/kaflux). See the [deployment guide](docs/deployment.md) for storage, secrets, ingress, and replica configuration.
+
+## Configuration
+
+[config.example.yaml](config.example.yaml) documents cluster connections, permissions, and identity providers. Environment variables override YAML settings. Keep credentials in environment variables or Kubernetes Secrets, and keep `config.yaml` private.
+
+| Setting | Purpose |
+| --- | --- |
+| `KAFLUX_ADMIN_USER` | Local administrator username |
+| `KAFLUX_ADMIN_PASSWORD_HASH` | Bcrypt hash for local sign-in |
+| `KAFLUX_STORAGE_BACKEND` | `sqlite` or `postgres`; supplied by the Compose files |
+| `KAFLUX_DATABASE_URL` | PostgreSQL connection string |
+| `KAFLUX_PROMETHEUS_URL` | Prometheus endpoint for metrics |
+| `KAFLUX_DEMO` | Enables simulated data and operations |
+
+See [authentication](docs/authentication.md), [storage](docs/storage.md), and [metrics](docs/metrics.md) for details. Use TLS when exposing Kaflux beyond localhost.
+
+## Development
+
+Requires Go 1.25, Node.js 22, npm, and Make.
+
+Start the simulator backend:
+
+```sh
+make dev
+```
+
+In another terminal, start the frontend and open the URL printed by Vite:
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+| Command | Purpose |
+| --- | --- |
+| `make test` | Backend race tests and vet, frontend tests and build |
+| `make build` | Build the backend and frontend |
+| `make docker` | Build the Docker image |
+| `make helm` | Validate and render the Helm chart locally |
+
+For local Kafka fixtures and reassignment tests, see [integration testing](docs/integration-testing.md).
+
+## Documentation
+
+| Guide | Topics |
+| --- | --- |
+| [Deployment](docs/deployment.md) | Docker, Kubernetes, and storage setup |
+| [Authentication](docs/authentication.md) | Local sign-in, OIDC, LDAP, and Kafka authentication |
+| [Security](docs/security.md) | Authorization, credentials, and audit controls |
+| [Rebalancing](docs/rebalancing.md) | Planning, approval, execution, and recovery |
+| [Live throttle controls](docs/live-throttle.md) | Rate changes during reassignment |
+| [Message decoding](docs/message-decoding.md) | Avro and Protobuf support |
+| [API reference](docs/openapi.yaml) | HTTP endpoints under `/api/v1` |
+| [Architecture](docs/architecture.md) | Backend and frontend structure |
+
+## License
+
+[MIT](LICENSE).
