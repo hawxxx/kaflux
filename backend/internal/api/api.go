@@ -434,6 +434,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if sizeKnown {
 			tot["dataSize"] = sizeTotal
 		}
+		// Same replica coefficient of variation the balance advisor reports, as a percentage.
+		if replicas := balance.Analyze(snap)[0]; replicas.Status != "UNAVAILABLE" {
+			tot["balanceSkew"] = replicas.CV * 100
+		}
 		if a.o.Demo {
 			groups, _ := provider.Groups(r.Context())
 			lag := int64(0)

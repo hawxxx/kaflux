@@ -47,3 +47,12 @@ func TestMSKIntelligentRebalancingBlocksManualPlan(t *testing.T) {
 		t.Fatal("blocked MSK plan persisted")
 	}
 }
+func TestOverviewReportsReplicaBalanceSkew(t *testing.T) {
+	s, _ := store.New(context.Background(), "")
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: []model.Cluster{{ID: "demo", Mode: "demo"}}})
+	r := httptest.NewRecorder()
+	a.ServeHTTP(r, httptest.NewRequest("GET", "/api/v1/clusters/demo/overview", nil))
+	if r.Code != 200 || !strings.Contains(r.Body.String(), `"balanceSkew":`) {
+		t.Fatalf("overview lacks balance skew: %d %s", r.Code, r.Body.String())
+	}
+}

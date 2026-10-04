@@ -39,3 +39,12 @@
 .table-toolbar,.toolbar-right{flex-wrap:wrap}
 .toolbar-right{justify-content:flex-end}
 .demo-label,.global-search kbd{white-space:nowrap}
+
+/* Toolbar selects match the adjacent search field instead of the browser default size. */
+.table-toolbar>select{font-size:11px;padding-block:9px}
+
+/* Phone overview: keep all twelve statistics within roughly one screen. */
+@media(max-width:700px){
+  .stat-card{min-height:0;padding:12px 14px}
+  .stat-card>strong{font-size:22px;margin:6px 0}
+}
