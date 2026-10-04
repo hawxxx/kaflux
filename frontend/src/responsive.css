@@ -17,6 +17,7 @@
   .sidebar.open{padding-top:48px}
   .nav-item,.sidebar-bottom>button{min-height:44px}
   .table-scroll input[type=checkbox]{width:24px;height:24px}
+  .plan-note,.plan-progress{padding:0 14px}
   .button,.tabs button,.segmented button{min-height:44px}
   .panel-title>button{min-height:44px;padding:0 4px}
   main input[type=checkbox]{width:24px;height:24px}
