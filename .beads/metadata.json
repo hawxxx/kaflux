@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "kaflux",
+  "project_id": "2f90a5bd-d32c-4bbc-81d3-19fcab34cc42"
+}

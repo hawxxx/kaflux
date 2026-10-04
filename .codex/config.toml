@@ -1,0 +1,42 @@
+[mcp_servers.context-mode]
+command = "npx"
+args = ["-y", "context-mode"]
+startup_timeout_sec = 120
+
+[mcp_servers.context-mode.tools.ctx_execute_file]
+approval_mode = "approve"
+
+[mcp_servers.context-mode.tools.ctx_batch_execute]
+approval_mode = "approve"
+
+[mcp_servers.context-mode.tools.ctx_execute]
+approval_mode = "approve"
+
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp/oauth"
+
+[mcp_servers.magicui]
+command = "npx"
+args = ["-y", "@magicuidesign/mcp"]
+startup_timeout_sec = 120
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@latest"]
+startup_timeout_sec = 120
+
+[mcp_servers.sequential-thinking]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+startup_timeout_sec = 120
+
+[mcp_servers.shadcn]
+command = "npx"
+args = ["-y", "shadcn@latest", "mcp"]
+startup_timeout_sec = 120
+
+[mcp_servers.vercel]
+url = "https://mcp.vercel.com"
+
+[features]
+hooks = true
