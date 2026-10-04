@@ -6,9 +6,9 @@ info:
     name: MIT
     url: https://opensource.org/license/mit/
   description: >-
-    Cookie sessions with backend authorization. Mutations require X-CSRF-Token.
-    Simulation is explicitly enabled and returned as demo=true. Missing telemetry
-    is null. Kafka and datasource credentials are never returned to browsers.
+    Cookie sessions with backend authorization. Mutations require X-CSRF-Token. Simulation is
+    explicitly enabled and returned as demo=true. Missing telemetry is null. Kafka and datasource
+    credentials are never returned to browsers.
 servers:
   - url: /api/v1
 security:
@@ -18,12 +18,22 @@ paths:
     get:
       summary: Inventory active sessions using global manage-sessions authorization
       operationId: listAdminSessions
-      description: Requires global manage-sessions permission for resource '*'. Expired sessions are omitted. Simulator returns its synthetic current session. Never returns bearer IDs or CSRF tokens.
+      description:
+        Requires global manage-sessions permission for resource '*'. Expired sessions are omitted.
+        Simulator returns its synthetic current session. Never returns bearer IDs or CSRF tokens.
       parameters:
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
+        - {
+            name: offset,
+            in: query,
+            schema: { type: integer, minimum: 0, maximum: 10000, default: 0 },
+          }
       responses:
-        '200':
+        "200":
           description: Bounded active session inventory
           content:
             application/json:
@@ -37,7 +47,14 @@ paths:
                       type: object
                       required: [handle, userId, provider, roles, expires, current]
                       properties:
-                        handle: { type: string, pattern: '^[0-9a-f]{64}$', description: SHA-256 digest of the opaque session identifier; cannot authenticate requests }
+                        handle:
+                          {
+                            type: string,
+                            pattern: "^[0-9a-f]{64}$",
+                            description:
+                              SHA-256 digest of the opaque session identifier; cannot authenticate
+                              requests,
+                          }
                         userId: { type: string }
                         provider: { type: string }
                         roles: { type: array, items: { type: string } }
@@ -50,18 +67,26 @@ paths:
                       limit: { type: integer }
                       offset: { type: integer }
                       hasMore: { type: boolean }
-        '400': { $ref: '#/components/responses/Error' }
-        '401': { $ref: '#/components/responses/Error' }
-        '403': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /admin/sessions/{handle}/revoke:
     post:
       summary: Revoke an active session with atomic audit persistence
       operationId: revokeAdminSession
-      description: Requires global manage-sessions authorization for the target user ID. Self-revocation clears the session cookie. Simulator rejects mutation. Missing or already expired sessions return 404. Persistence errors return 503 and may be retried; refresh inventory before retrying.
+      description:
+        Requires global manage-sessions authorization for the target user ID. Self-revocation clears
+        the session cookie. Simulator rejects mutation. Missing or already expired sessions return
+        404. Persistence errors return 503 and may be retried; refresh inventory before retrying.
       parameters:
-        - { name: handle, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{64}$' } }
-        - { $ref: '#/components/parameters/CSRF' }
+        - {
+            name: handle,
+            in: path,
+            required: true,
+            schema: { type: string, pattern: "^[0-9a-f]{64}$" },
+          }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
@@ -73,7 +98,7 @@ paths:
               properties:
                 confirm: { type: boolean, enum: [true] }
       responses:
-        '200':
+        "200":
           description: Revocation committed with intent and success audit entries
           content:
             application/json:
@@ -86,26 +111,26 @@ paths:
                     properties:
                       ok: { type: boolean, enum: [true] }
                       current: { type: boolean }
-        '400': { $ref: '#/components/responses/Error' }
-        '401': { $ref: '#/components/responses/Error' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /auth/providers:
     get:
       security: []
       summary: List configured local, OIDC and LDAP login providers
       operationId: listAuthProviders
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
+        "200": { $ref: "#/components/responses/Envelope" }
   /auth/session:
     get:
       summary: Get current identity, CSRF token and simulation flag
       operationId: getSession
       responses:
-        '200': { $ref: '#/components/responses/Session' }
-        '401': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Session" }
+        "401": { $ref: "#/components/responses/Error" }
   /auth/login:
     post:
       security: []
@@ -123,18 +148,18 @@ paths:
                 username: { type: string }
                 password: { type: string, format: password }
       responses:
-        '200': { $ref: '#/components/responses/Session' }
-        '401': { $ref: '#/components/responses/Error' }
-        '429': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Session" }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /auth/logout:
     post:
       summary: Delete session
       operationId: logout
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
   /auth/oidc/{provider}/start:
     parameters:
       - { name: provider, in: path, required: true, schema: { type: string } }
@@ -143,8 +168,8 @@ paths:
       summary: Start discovery-backed OIDC authorization-code login with PKCE
       operationId: startOIDC
       responses:
-        '302': { description: Redirect to configured identity provider }
-        '503': { $ref: '#/components/responses/Error' }
+        "302": { description: Redirect to configured identity provider }
+        "503": { $ref: "#/components/responses/Error" }
   /auth/oidc/{provider}/callback:
     parameters:
       - { name: provider, in: path, required: true, schema: { type: string } }
@@ -156,89 +181,95 @@ paths:
         - { name: state, in: query, required: true, schema: { type: string } }
         - { name: code, in: query, required: true, schema: { type: string } }
       responses:
-        '302': { description: Redirect to console with HttpOnly session cookie }
-        '401': { $ref: '#/components/responses/Error' }
-        '403': { $ref: '#/components/responses/Error' }
+        "302": { description: Redirect to console with HttpOnly session cookie }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /clusters:
     get:
       summary: Authorized cluster inventory and connectivity status
       operationId: listClusters
       responses:
-        '200':
+        "200":
           description: Cluster inventory
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { type: array, items: { $ref: '#/components/schemas/Cluster' } }
+                  data: { type: array, items: { $ref: "#/components/schemas/Cluster" } }
   /clusters/{cluster}/capabilities:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Get observed cluster capability and manual reassignment restrictions
       description: >-
-        MSK intelligent rebalancing must be verified before manual reassignment.
-        ACTIVE and UNKNOWN block planning, execution, rollback and native
-        reassignment calls. Kaflux never automatically pauses MSK rebalancing.
+        MSK intelligent rebalancing must be verified before manual reassignment. ACTIVE and UNKNOWN
+        block planning, execution, rollback and native reassignment calls. Kaflux never
+        automatically pauses MSK rebalancing.
       operationId: getClusterCapabilities
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/configuration:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Get sanitized cluster capability configuration
-      description: Returns capability status; broker credentials and mutable broker configuration are not exposed.
+      description:
+        Returns capability status; broker credentials and mutable broker configuration are not
+        exposed.
       operationId: getClusterConfiguration
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/overview:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Cluster, broker summary, observedAt and nullable totals
       operationId: getOverview
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/topics:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Search, sort and page topic metadata on the server
       operationId: listTopics
       parameters:
         - { name: q, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - {
+            name: pageSize,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+          }
         - { name: sort, in: query, schema: { type: string, enum: [name, partitions, urp] } }
         - { name: order, in: query, schema: { type: string, enum: [asc, desc] } }
       responses:
-        '200':
+        "200":
           description: Topic rows and pagination metadata
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { type: array, items: { $ref: '#/components/schemas/TopicRow' } }
+                  data: { type: array, items: { $ref: "#/components/schemas/TopicRow" } }
                   meta:
                     type: object
                     properties:
                       total: { type: integer }
                       page: { type: integer }
                       pageSize: { type: integer }
-        '503': { $ref: '#/components/responses/Error' }
+        "503": { $ref: "#/components/responses/Error" }
     post:
       summary: Create a topic with authorized and audited broker administration
       operationId: createTopic
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
@@ -253,24 +284,24 @@ paths:
                 replicationFactor: { type: integer, minimum: 1 }
                 config: { type: object, additionalProperties: { type: string } }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/topics/{topic}:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: topic, in: path, required: true, schema: { type: string } }
     get:
       summary: Topic details with partition assignments and offsets
       operationId: getTopic
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '404': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "404": { $ref: "#/components/responses/Error" }
     delete:
       summary: Delete a topic after explicit topic-name confirmation
       operationId: deleteTopic
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
@@ -282,24 +313,24 @@ paths:
               properties:
                 confirmation: { type: string, description: Exact topic name }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/topics/{topic}/config:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: topic, in: path, required: true, schema: { type: string } }
     get:
       summary: Read sanitized topic configuration
       operationId: getTopicConfiguration
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
     post:
       summary: Change supported topic settings with explicit confirmation
       operationId: updateTopicConfiguration
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
@@ -312,18 +343,18 @@ paths:
                 config: { type: object, additionalProperties: { type: string } }
                 confirmation: { type: boolean, enum: [true] }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/topics/{topic}/partitions:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: topic, in: path, required: true, schema: { type: string } }
     post:
       summary: Increase topic partition count with explicit confirmation
       operationId: increaseTopicPartitions
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
@@ -336,46 +367,48 @@ paths:
                 count: { type: integer, minimum: 1 }
                 confirmation: { type: boolean, enum: [true] }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/brokers:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Broker inventory and replica/leader distribution
       operationId: listBrokers
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/consumer-groups:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Consumer group state, membership, topics and nullable lag
       operationId: listConsumerGroups
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
+        "200": { $ref: "#/components/responses/Envelope" }
   /clusters/{cluster}/consumer-groups/{group}:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: group, in: path, required: true, schema: { type: string } }
     get:
       summary: Consumer group detail with committed offsets, bounds and nullable lag
       operationId: getConsumerGroup
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '404': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "404": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/consumer-groups/{group}/reset-offsets:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: group, in: path, required: true, schema: { type: string } }
     post:
       summary: Preview or apply an inactive consumer group's offset reset
-      description: Applying requires exact group confirmation and a matching fresh preview hash; all affected topics require authorization.
+      description:
+        Applying requires exact group confirmation and a matching fresh preview hash; all affected
+        topics require authorization.
       operationId: resetConsumerOffsets
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
@@ -394,12 +427,12 @@ paths:
                 confirmation: { type: string }
                 previewHash: { type: string }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/acls:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: List authorized Kafka ACL bindings using bounded filters
       operationId: listKafkaACLs
@@ -410,103 +443,103 @@ paths:
         - { name: operation, in: query, schema: { type: string } }
         - { name: permission, in: query, schema: { type: string } }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { description: Kafka authorizer is not configured; error code acl_unsupported }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { description: Kafka authorizer is not configured; error code acl_unsupported }
     post:
       summary: Create one confirmed Kafka ACL binding with manage-acls authorization and audit
       operationId: createKafkaACL
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/ACLMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/ACLMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
     delete:
       summary: Delete one exact confirmed Kafka ACL binding without broad deletion filters
       operationId: deleteKafkaACL
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/ACLMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/ACLMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/schemas:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: List configured Schema Registry integration IDs
       operationId: listSchemaIntegrations
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/schemas/{integration}:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
     get:
       summary: List subjects filtered by schema-read authorization
       operationId: listSchemaSubjects
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/schemas/{integration}/{subject}:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: subject, in: path, required: true, schema: { type: string } }
     get:
       summary: Read latest subject version
       operationId: getLatestSchema
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     post:
       summary: Register a schema version with confirmation and audit
       operationId: registerSchema
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     delete:
       summary: Delete a confirmed subject with schema-update authorization
       operationId: deleteSchemaSubject
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/schemas/{integration}/{subject}/versions:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: subject, in: path, required: true, schema: { type: string } }
     get:
       summary: List subject versions
       operationId: listSchemaVersions
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/schemas/{integration}/{subject}/versions/{version}:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: subject, in: path, required: true, schema: { type: string } }
       - { name: version, in: path, required: true, schema: { type: string } }
@@ -514,207 +547,207 @@ paths:
       summary: Read one schema version
       operationId: getSchemaVersion
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     delete:
       summary: Delete one confirmed schema version
       operationId: deleteSchemaVersion
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/schemas/{integration}/{subject}/configuration:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: subject, in: path, required: true, schema: { type: string } }
     get:
       summary: Read subject compatibility configuration
       operationId: getSchemaCompatibility
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     put:
       summary: Set confirmed compatibility configuration
       operationId: setSchemaCompatibility
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/schemas/{integration}/{subject}/compatibility:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: subject, in: path, required: true, schema: { type: string } }
     post:
       summary: Check a submitted schema against the latest version
       operationId: checkSchemaCompatibility
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: List configured Kafka Connect integration IDs
       operationId: listConnectIntegrations
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors/{integration}:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
     get:
       summary: List connector names filtered by connector-read authorization
       operationId: listConnectors
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors/{integration}/{connector}:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: connector, in: path, required: true, schema: { type: string } }
     get:
       summary: Read a connector with secret redaction
       operationId: getConnector
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     put:
       summary: Create or update a confirmed connector configuration
       operationId: putConnector
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     delete:
       summary: Delete a confirmed connector with audit
       operationId: deleteConnector
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors/{integration}/{connector}/config:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: connector, in: path, required: true, schema: { type: string } }
     get:
       summary: Read a connector configuration with secret redaction
       operationId: getConnectorConfig
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     put:
       summary: Create or update a confirmed connector configuration
       operationId: putConnectorConfig
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors/{integration}/{connector}/status:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: connector, in: path, required: true, schema: { type: string } }
     get:
       summary: Read connector and task status
       operationId: getConnectorStatus
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors/{integration}/{connector}/pause:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: connector, in: path, required: true, schema: { type: string } }
     post:
       summary: Pause a confirmed connector with audit
       operationId: pauseConnector
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors/{integration}/{connector}/resume:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: connector, in: path, required: true, schema: { type: string } }
     post:
       summary: Resume a confirmed connector with audit
       operationId: resumeConnector
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors/{integration}/{connector}/restart:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: connector, in: path, required: true, schema: { type: string } }
     post:
       summary: Restart a confirmed connector with audit
       operationId: restartConnector
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/connectors/{integration}/{connector}/tasks/{task}/restart:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
       - { name: connector, in: path, required: true, schema: { type: string } }
       - { name: task, in: path, required: true, schema: { type: string } }
@@ -722,21 +755,21 @@ paths:
       summary: Restart one confirmed connector task
       operationId: restartConnectorTask
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/IntegrationMutation' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/test:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     post:
       summary: Test a configured cluster connection without accepting arbitrary addresses
       operationId: testClusterConnection
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
@@ -748,72 +781,99 @@ paths:
               properties:
                 confirmation: { type: boolean, enum: [true] }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/audit:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Read cluster-scoped audit events with affected-resource authorization
       operationId: getClusterAudit
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/messages:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Bounded read from a topic partition starting at an offset
       operationId: consumeMessages
       parameters:
         - { name: topic, in: query, required: true, schema: { type: string } }
         - { name: partition, in: query, required: true, schema: { type: integer, minimum: 0 } }
-        - { name: offset, in: query, required: true, schema: { type: integer, format: int64, minimum: 0 } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
-        - { name: decoder, in: query, description: 'Opt-in schema value decoding; raw bytes are preserved and failures are per record', schema: { type: string, enum: [avro, protobuf] } }
-        - { name: decoderTarget, in: query, description: 'Decode keys, values or both using the selected decoder and registry; limits are shared', schema: { type: string, enum: [value, key, both], default: value } }
-        - { name: registry, in: query, description: 'Configured cluster schema registry ID; required when decoder is set', schema: { type: string } }
+        - {
+            name: offset,
+            in: query,
+            required: true,
+            schema: { type: integer, format: int64, minimum: 0 },
+          }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
+          }
+        - {
+            name: decoder,
+            in: query,
+            description:
+              "Opt-in schema value decoding; raw bytes are preserved and failures are per record",
+            schema: { type: string, enum: [avro, protobuf] },
+          }
+        - {
+            name: decoderTarget,
+            in: query,
+            description:
+              "Decode keys, values or both using the selected decoder and registry; limits are
+              shared",
+            schema: { type: string, enum: [value, key, both], default: value },
+          }
+        - {
+            name: registry,
+            in: query,
+            description: "Configured cluster schema registry ID; required when decoder is set",
+            schema: { type: string },
+          }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     post:
       summary: Produce one bounded record with separate authorization and audit
       operationId: produceMessage
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Message' }
+            schema: { $ref: "#/components/schemas/Message" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/balance:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Replica/leader distribution with explicit capacity evidence flag
       operationId: getBalance
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
+        "200": { $ref: "#/components/responses/Envelope" }
   /clusters/{cluster}/rebalances:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: List persisted plans and execution jobs
       operationId: listRebalances
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
+        "200": { $ref: "#/components/responses/Envelope" }
     post:
       summary: Generate deterministic dry-run plan; no Kafka mutation
       operationId: generateRebalance
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
+        - { $ref: "#/components/parameters/CSRF" }
       requestBody:
         required: true
         content:
@@ -827,121 +887,135 @@ paths:
                 rackAware: { type: boolean }
                 throttleBytesPerSec: { type: integer, format: int64, minimum: 0 }
       responses:
-        '200': { $ref: '#/components/responses/Plan' }
-        '422': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Plan" }
+        "422": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/rebalances/{job}:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
-      - { $ref: '#/components/parameters/Job' }
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
     get:
       summary: Observe job state, progress and broker reconciliation outcome
       operationId: getRebalance
       responses:
-        '200': { $ref: '#/components/responses/Plan' }
-        '404': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Plan" }
+        "404": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/rebalances/{job}/execute:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
-      - { $ref: '#/components/parameters/Job' }
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
     post:
       summary: Explicitly approve matching plan hash and enqueue execution
       operationId: executeRebalance
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/Approval' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        '200': { $ref: '#/components/responses/Plan' }
-        '409': { $ref: '#/components/responses/Error' }
-        '403': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Plan" }
+        "409": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/rebalances/{job}/rollback:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
-      - { $ref: '#/components/parameters/Job' }
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
     post:
       summary: Create a validated reverse plan using saved original assignments
       operationId: rollbackRebalance
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/Approval' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        '200': { $ref: '#/components/responses/Plan' }
-        '409': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Plan" }
+        "409": { $ref: "#/components/responses/Error" }
   /audit:
     get:
       summary: Read authorized persisted audit events
       operationId: listAudit
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/rebalances/{job}/dry-run:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
-      - { $ref: '#/components/parameters/Job' }
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
     post:
       summary: Validate a planned operation against fresh broker state without mutation
-      description: Requires topic plan authorization, CSRF and the confirmed plan hash. Checks capabilities, cluster health, stale assignments and conflicting reassignments; returns warnings for unknown capacity. Does not mutate Kafka or persist job changes.
+      description:
+        Requires topic plan authorization, CSRF and the confirmed plan hash. Checks capabilities,
+        cluster health, stale assignments and conflicting reassignments; returns warnings for
+        unknown capacity. Does not mutate Kafka or persist job changes.
       operationId: dryRunRebalance
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/Approval' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '403': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/rebalances/{job}/cancel:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
-      - { $ref: '#/components/parameters/Job' }
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
     post:
       summary: Request durable cancellation and worker throttle cleanup
-      description: Requires affected-topic execute authorization, CSRF and a matching confirmed plan hash. Broker cancellation is reconciled before the final canceled state.
+      description:
+        Requires affected-topic execute authorization, CSRF and a matching confirmed plan hash.
+        Broker cancellation is reconciled before the final canceled state.
       operationId: cancelRebalance
       parameters:
-        - { $ref: '#/components/parameters/CSRF' }
-      requestBody: { $ref: '#/components/requestBodies/Approval' }
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        '200': { $ref: '#/components/responses/Plan' }
-        '403': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Plan" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /metrics/catalog:
     get:
       summary: Normalized native metric panel catalog
       operationId: getMetricCatalog
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
+        "200": { $ref: "#/components/responses/Envelope" }
   /clusters/{cluster}/metrics/catalog:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Authorized cluster metric panel catalog
       operationId: getClusterMetricCatalog
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
+        "200": { $ref: "#/components/responses/Envelope" }
   /clusters/{cluster}/metrics/query:
     parameters:
-      - { $ref: '#/components/parameters/Cluster' }
+      - { $ref: "#/components/parameters/Cluster" }
     get:
       summary: Query configured cluster datasource with bounds and partial status
       operationId: queryClusterMetric
       parameters:
         - { name: metric, in: query, required: true, schema: { type: string } }
-        - { name: range, in: query, schema: { type: string, default: 15m }, description: Server-bounded lookback duration; timestamps and step are server controlled }
+        - {
+            name: range,
+            in: query,
+            schema: { type: string, default: 15m },
+            description:
+              Server-bounded lookback duration; timestamps and step are server controlled,
+          }
       responses:
-        '200': { $ref: '#/components/responses/Envelope' }
-        '503': { $ref: '#/components/responses/Error' }
+        "200": { $ref: "#/components/responses/Envelope" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/rebalances/{job}/throttle:
     parameters:
-      - $ref: '#/components/parameters/Cluster'
-      - $ref: '#/components/parameters/Job'
+      - $ref: "#/components/parameters/Cluster"
+      - $ref: "#/components/parameters/Job"
     post:
       operationId: requestReassignmentThrottle
       summary: Request an audited live replication throttle change
-      description: Requires execute permission on every affected topic, a running job, an allowed MSK capability, and no pending throttle request or cancellation. The durable worker applies and verifies configuration asynchronously. Zero is not a pause operation.
+      description:
+        Requires execute permission on every affected topic, a running job, an allowed MSK
+        capability, and no pending throttle request or cancellation. The durable worker applies and
+        verifies configuration asynchronously. Zero is not a pause operation.
       parameters:
-        - $ref: '#/components/parameters/CSRF'
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -955,12 +1029,19 @@ paths:
                 planHash: { type: string }
                 bytesPerSec: { type: integer, format: int64, minimum: 1, maximum: 1000000000000 }
       responses:
-        '200':
-          description: Updated plan with a pending throttleRequest; throttleBytesPerSec remains the last verified job rate until the worker acknowledges the request
-        '403': { description: Authorization or CSRF denied }
-        '409': { description: 'Invalid job state, stale approval, pending request, cancellation, or MSK capability denial' }
-        '422': { description: Invalid rate or unsupported provider }
-        '503': { description: Audit or durable storage unavailable }
+        "200":
+          description:
+            Updated plan with a pending throttleRequest; throttleBytesPerSec remains the last
+            verified job rate until the worker acknowledges the request
+        "403": { description: Authorization or CSRF denied }
+        "409":
+          {
+            description:
+              "Invalid job state, stale approval, pending request, cancellation, or MSK capability
+              denial",
+          }
+        "422": { description: Invalid rate or unsupported provider }
+        "503": { description: Audit or durable storage unavailable }
 components:
   securitySchemes:
     sessionCookie:
@@ -985,7 +1066,9 @@ components:
               payload:
                 type: object
                 additionalProperties: true
-                description: Upstream schema, compatibility or connector configuration object; required for configuration writes
+                description:
+                  Upstream schema, compatibility or connector configuration object; required for
+                  configuration writes
     ACLMutation:
       required: true
       content:
@@ -997,7 +1080,8 @@ components:
             properties:
               acl:
                 type: object
-                required: [resourceType, resourceName, patternType, principal, host, operation, permission]
+                required:
+                  [resourceType, resourceName, patternType, principal, host, operation, permission]
                 properties:
                   resourceType: { type: string }
                   resourceName: { type: string }
@@ -1060,10 +1144,15 @@ components:
               data:
                 type: object
                 properties:
-                  user: { $ref: '#/components/schemas/User' }
+                  user: { $ref: "#/components/schemas/User" }
                   csrfToken: { type: string }
                   demo: { type: boolean }
-                  canManageSessions: { type: boolean, description: Effective global session inventory permission; returned by GET /auth/session }
+                  canManageSessions:
+                    {
+                      type: boolean,
+                      description:
+                        Effective global session inventory permission; returned by GET /auth/session,
+                    }
     Plan:
       description: Persisted plan or execution job
       content:
@@ -1071,7 +1160,7 @@ components:
           schema:
             type: object
             properties:
-              data: { $ref: '#/components/schemas/Plan' }
+              data: { $ref: "#/components/schemas/Plan" }
   schemas:
     User:
       type: object
@@ -1119,9 +1208,19 @@ components:
         decodedKey: { readOnly: true, description: JSON preview of an opt-in decoded message key }
         keyDecodedFormat: { type: string, enum: [avro, protobuf], readOnly: true }
         keySchemaId: { type: integer, minimum: 1, readOnly: true }
-        keyDecodeError: { type: string, readOnly: true, description: Key-specific decoding failure; original key bytes remain available }
+        keyDecodeError:
+          {
+            type: string,
+            readOnly: true,
+            description: Key-specific decoding failure; original key bytes remain available,
+          }
         schemaId: { type: integer, minimum: 1, readOnly: true }
-        decodeError: { type: string, readOnly: true, description: Per-record decoding failure; raw bytes remain available }
+        decodeError:
+          {
+            type: string,
+            readOnly: true,
+            description: Per-record decoding failure; raw bytes remain available,
+          }
         timestamp: { type: string, format: date-time }
         headers:
           type: array
