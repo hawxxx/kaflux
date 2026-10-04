@@ -9,7 +9,7 @@ test('sign out retries failures and returns an authenticated user to login',asyn
     attempts++;
     return route.fulfill(attempts===1?{status:503,json:{error:{message:'Session store unavailable'}}}:{json:{data:{ok:true}}});
   });
-  await page.goto('/clusters/demo/overview');
+  await page.goto('/clusters/demo/overview?q=private-topic&sort=name&page=2');
   const button=page.getByRole('button',{name:'Sign out',exact:true});
   await button.scrollIntoViewIfNeeded();await button.click();
   await expect(page.getByRole('alert')).toContainText('Session store unavailable');

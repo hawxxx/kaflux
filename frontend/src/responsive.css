@@ -1,0 +1,40 @@
+.navigation-backdrop{position:fixed;inset:0;background:#06080eb8;z-index:29}
+.navigation-close{position:absolute;right:8px;top:4px;min-width:44px;min-height:44px;justify-content:center}
+
+@media(min-width:701px) and (max-width:1100px){
+  .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@media(max-width:700px){
+  .topbar{padding:0 8px;gap:4px}
+  .breadcrumb{min-width:0;overflow:hidden}
+  .breadcrumb>span,.breadcrumb>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .breadcrumb>span{flex:1}
+  .breadcrumb>strong{max-width:55%}
+  .breadcrumb>svg{flex-shrink:0}
+  .top-actions{gap:2px;flex-shrink:0}
+  .topbar .icon-button,.global-search{min-width:44px;min-height:44px;justify-content:center}
+  .sidebar.open{padding-top:48px}
+  .nav-item,.sidebar-bottom>button{min-height:44px}
+  .table-scroll input[type=checkbox]{width:24px;height:24px}
+  .button,.tabs button,.segmented button{min-height:44px}
+  .panel-title>button{min-height:44px;padding:0 4px}
+  main input[type=checkbox]{width:24px;height:24px}
+  .group-link{min-height:44px;text-align:left}
+}
+
+@media(max-width:380px){
+  .topbar .demo-label{display:none}
+}
+
+/* Native select is the hit target; keep it tall enough for touch and pointer use. */
+.cluster-select{padding-block:6px}
+.cluster-select select{min-height:32px;cursor:pointer}
+
+/* Hover legends are unreliable on touch screens and crowd narrow charts. */
+@media(max-width:640px){.chart-area .u-legend{display:none}}
+
+/* Toolbars wrap instead of clipping actions between the phone and desktop layouts. */
+.table-toolbar,.toolbar-right{flex-wrap:wrap}
+.toolbar-right{justify-content:flex-end}
+.demo-label,.global-search kbd{white-space:nowrap}

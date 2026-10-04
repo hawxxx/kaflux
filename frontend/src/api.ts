@@ -16,4 +16,7 @@ export async function api<T>(path:string,options:RequestInit={}):Promise<Envelop
 export function pretty(value:unknown){if(typeof value==='string'){try{return JSON.stringify(JSON.parse(value),null,2)}catch{return value}}return JSON.stringify(value,null,2)??'null'}
 export function asJson(value:unknown):unknown{if(typeof value==='string'){try{return JSON.parse(value)}catch{return value}}return value}
 export function hex(value:unknown){return Array.from(new TextEncoder().encode(typeof value==='string'?value:JSON.stringify(value)??'')).map(x=>x.toString(16).padStart(2,'0')).join(' ')}
-export function bytes(value:number|null|undefined){if(value==null)return 'Unavailable';if(value<1024)return `${value} B`;const n=Math.min(Math.floor(Math.log(value)/Math.log(1024)),4);return `${(value/1024**n).toFixed(1)} ${['B','KiB','MiB','GiB','TiB'][n]}`}
+export function bytes(value:number|null|undefined){if(value==null)return 'Unavailable';if(value<1024)return `${Number.isInteger(value)?value:value.toFixed(1)} B`;const n=Math.min(Math.floor(Math.log(value)/Math.log(1024)),4);return `${(value/1024**n).toFixed(1)} ${['B','KiB','MiB','GiB','TiB'][n]}`}
+const compact=new Intl.NumberFormat(undefined,{notation:'compact',maximumFractionDigits:1});
+// Units follow the Grafana unit identifiers used by the metric catalog.
+export function metricValue(value:number,unit=''){switch(unit){case 'Bps':return `${bytes(value)}/s`;case 'decbytes':return bytes(value);case 'bps':return `${compact.format(value)} b/s`;case 'reqps':return `${compact.format(value)}/s`;case 'percent':return `${compact.format(value)}%`;case 'percentunit':return `${compact.format(value*100)}%`;case 'ms':case 'ns':case 's':return `${compact.format(value)} ${unit}`;default:return compact.format(value)}}
