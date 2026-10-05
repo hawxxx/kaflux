@@ -98,3 +98,15 @@ test('phone loading and failure states remain usable and refresh recovers',async
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByText('No records match this view.')).toBeVisible();
 });
+
+test('tablet header keeps the current page name whole and the logo visible',async({page})=>{
+  for(const width of [768,1024]){
+    await page.setViewportSize({width,height:900});
+    await page.goto('/clusters/demo/consumer-groups');
+    const current=page.locator('.breadcrumb>strong');
+    await expect(current).toHaveText('Consumer groups');
+    expect(await current.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+    expect((await page.locator('.breadcrumb').boundingBox())!.height).toBeLessThanOrEqual(20);
+    expect((await page.locator('.brand svg').boundingBox())!.width).toBeGreaterThanOrEqual(24);
+  }
+});

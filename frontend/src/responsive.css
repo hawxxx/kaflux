@@ -5,14 +5,20 @@
   .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
+/* Breadcrumb stays on one line and truncates instead of wrapping into the actions. */
+.topbar{gap:16px}
+.breadcrumb{min-width:0;overflow:hidden}
+.breadcrumb>span,.breadcrumb>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.breadcrumb>svg,.breadcrumb>strong{flex-shrink:0}
+.top-actions{flex-shrink:0}
+@media(max-width:950px){.breadcrumb>span:first-child,.breadcrumb>svg:first-of-type{display:none}}
+
 @media(max-width:700px){
   .topbar{padding:0 8px;gap:4px}
-  .breadcrumb{min-width:0;overflow:hidden}
-  .breadcrumb>span,.breadcrumb>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .breadcrumb>span{flex:1}
   .breadcrumb>strong{max-width:55%}
-  .breadcrumb>svg{flex-shrink:0}
-  .top-actions{gap:2px;flex-shrink:0}
+  .top-actions{gap:2px}
+  .table-toolbar>.search-input{flex-basis:100%}
   .topbar .icon-button,.global-search{min-width:44px;min-height:44px;justify-content:center}
   .sidebar.open{padding-top:48px}
   .nav-item,.sidebar-bottom>button{min-height:44px}
@@ -48,3 +54,7 @@
   .stat-card{min-height:0;padding:12px 14px}
   .stat-card>strong{font-size:22px;margin:6px 0}
 }
+
+/* Logo keeps its size; the narrower tablet sidebar gets a smaller wordmark instead. */
+.brand svg{flex-shrink:0}
+@media(max-width:1200px){.brand{font-size:24px;padding:0 4px}.brand svg{width:30px;height:30px}}
