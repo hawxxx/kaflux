@@ -46,7 +46,7 @@ test('Avro value decoding retains raw bytes and explains individual failures',as
  await page.setViewportSize({width:390,height:844});
  await expect.poll(()=>page.locator('.sidebar').evaluate(node=>node.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
- await page.screenshot({path:'artifacts/avro-inspection-mobile.png',fullPage:true});
+ await page.screenshot({path:'artifacts/avro-inspection-mobile.png',fullPage:true,animations:'disabled'});
 });
 test('live throttle review distinguishes a pending request from the verified rate',async({page})=>{
   const id='a'.repeat(64);
@@ -66,7 +66,7 @@ test('live throttle review distinguishes a pending request from the verified rat
   await expect(page.getByRole('button',{name:'Request throttle change'})).toBeDisabled();
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
-  await page.screenshot({path:'artifacts/throttle-review-mobile.png',fullPage:true});
+  await page.screenshot({path:'artifacts/throttle-review-mobile.png',fullPage:true,animations:'disabled'});
   await page.getByLabel('Confirm job ID').fill(id);
   await page.getByRole('button',{name:'Request throttle change'}).click();
   await expect(page.getByText('Requested: 200 B/s — awaiting worker verification')).toBeVisible();
@@ -81,14 +81,14 @@ test('configured integration workspaces explain missing services',async({page})=
   await expect(page.getByRole('button',{name:'Register schema',exact:true})).toHaveCount(0);
   await page.goto('/clusters/demo/connect');
   await expect(page.getByText(/No Kafka Connect integration is configured/)).toBeVisible();
-  await page.screenshot({path:'artifacts/connect-unconfigured.png',fullPage:true});
+  await page.screenshot({path:'artifacts/connect-unconfigured.png',fullPage:true,animations:'disabled'});
 });
 test('configured cluster wizard returns real sanitized diagnostics',async({page})=>{
   await page.goto('/clusters/demo/settings');
   await page.getByRole('button',{name:'Review diagnostic'}).click();
   await page.getByRole('button',{name:'Test connection',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Connection diagnostic result'})).toBeVisible();
-  await page.screenshot({path:'artifacts/cluster-diagnostic.png',fullPage:true});
+  await page.screenshot({path:'artifacts/cluster-diagnostic.png',fullPage:true,animations:'disabled'});
 });
 test('Kafka ACL bindings create, filter, raw inspect and exact delete',async({page})=>{
   const name=`User:kaflux-e2e-${Date.now()}`;
@@ -105,7 +105,7 @@ test('Kafka ACL bindings create, filter, raw inspect and exact delete',async({pa
   await page.getByRole('button',{name:'Raw Kafka',exact:true}).click();
   await expect(page.locator('.acl-raw')).toContainText('"raw"');
   await page.getByRole('button',{name:'Readable',exact:true}).click();
-  await page.screenshot({path:'artifacts/access-control.png',fullPage:true});
+  await page.screenshot({path:'artifacts/access-control.png',fullPage:true,animations:'disabled'});
   await page.getByRole('button',{name:'Delete ACL',exact:true}).click();
   await expect(page.getByRole('button',{name:'Confirm deletion'})).toBeDisabled();
   await page.getByLabel('I reviewed this exact ACL binding.').check();
@@ -160,7 +160,7 @@ test('topic administration creates, configures, expands and deletes a reviewed t
   await page.getByLabel('New total partition count').fill('4');
   await page.getByRole('button',{name:'Confirm change'}).click();
   await expect(page.getByRole('status')).toContainText('completed');
-  await page.screenshot({path:'artifacts/topic-administration.png',fullPage:true});
+  await page.screenshot({path:'artifacts/topic-administration.png',fullPage:true,animations:'disabled'});
   await page.getByRole('button',{name:'Delete topic',exact:true}).click();
   await expect(page.getByRole('button',{name:'Confirm deletion'})).toBeDisabled();
   await page.getByLabel('Type the topic name to confirm').fill(name);
@@ -178,7 +178,7 @@ test('inactive group offset reset requires preview and typed approval',async({pa
   await expect(page.getByRole('heading',{name:'Reviewed partition changes'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Confirm offset reset'})).toBeDisabled();
   await page.getByLabel('Type the group ID to confirm').fill('demo-inactive');
-  await page.screenshot({path:'artifacts/consumer-reset-review.png',fullPage:true});
+  await page.screenshot({path:'artifacts/consumer-reset-review.png',fullPage:true,animations:'disabled'});
   await page.getByRole('button',{name:'Confirm offset reset'}).click();
   await expect(page.getByRole('status')).toHaveText('Consumer offsets reset.');
 });
@@ -187,7 +187,7 @@ test('demo inventory, record inspection, live tail, theme and deep links',async(
   await expect(page.getByText('DEMO SIMULATOR')).toBeVisible();
   await expect(page.getByRole('heading',{name:'Overview',exact:true})).toBeVisible();
   await expect(page.getByText('Broker distribution',{exact:true})).toBeVisible();
-  await page.screenshot({path:'artifacts/overview-desktop.png',fullPage:true});
+  await page.screenshot({path:'artifacts/overview-desktop.png',fullPage:true,animations:'disabled'});
   await page.getByRole('button',{name:'Topics',exact:false}).first().click();
   await expect(page.getByRole('textbox',{name:'Search topics'})).toBeVisible();
   await expect(page.locator('.topic-name').first()).toBeVisible();
@@ -202,7 +202,7 @@ test('demo inventory, record inspection, live tail, theme and deep links',async(
   await page.getByRole('button',{name:'Start live tail'}).click();
   await expect(page.getByRole('button',{name:'Pause live tail'})).toBeVisible();
   await page.getByRole('button',{name:'Pause live tail'}).click();
-  await page.screenshot({path:'artifacts/messages-desktop.png',fullPage:true});
+  await page.screenshot({path:'artifacts/messages-desktop.png',fullPage:true,animations:'disabled'});
   await page.getByRole('button',{name:'Toggle light theme'}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','light');
   await page.setViewportSize({width:390,height:844});
@@ -210,7 +210,7 @@ test('demo inventory, record inspection, live tail, theme and deep links',async(
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
   await page.goto('/clusters/demo/overview');
   await expect(page.getByRole('button',{name:'Toggle navigation'})).toBeVisible();
-  await page.screenshot({path:'artifacts/overview-mobile.png',fullPage:true});
+  await page.screenshot({path:'artifacts/overview-mobile.png',fullPage:true,animations:'disabled'});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
 });
 test('mutation authorization and exact plan approval',async({page})=>{
