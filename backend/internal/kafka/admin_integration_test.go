@@ -33,7 +33,9 @@ func TestNativeAdministrationIntegration(t *testing.T) {
 	defer p.DeleteTopic(context.Background(), topic)
 	var cfg map[string]string
 	for attempt := 0; attempt < 50; attempt++ {
-		cfg, e = p.TopicConfig(ctx, topic)
+		var entries []model.ConfigEntry
+		entries, e = p.TopicConfig(ctx, topic)
+		cfg = model.ConfigValues(entries)
 		if e == nil {
 			break
 		}
@@ -42,11 +44,13 @@ func TestNativeAdministrationIntegration(t *testing.T) {
 	if e != nil || cfg["retention.ms"] != "60000" {
 		t.Fatalf("config create %v %v", cfg, e)
 	}
-	if e = p.AlterTopicConfig(ctx, topic, map[string]string{"retention.ms": "120000"}); e != nil {
+	if e = p.AlterTopicConfig(ctx, topic, map[string]string{"retention.ms": "120000"}, nil); e != nil {
 		t.Fatal(e)
 	}
 	for attempt := 0; attempt < 50; attempt++ {
-		cfg, e = p.TopicConfig(ctx, topic)
+		var entries []model.ConfigEntry
+		entries, e = p.TopicConfig(ctx, topic)
+		cfg = model.ConfigValues(entries)
 		if e == nil && cfg["retention.ms"] == "120000" {
 			break
 		}

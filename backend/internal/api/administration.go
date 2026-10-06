@@ -48,6 +48,31 @@ func validTopicConfig(cfg map[string]string) bool {
 	}
 	return true
 }
+
+// validConfigChange accepts only keys the broker describes for this topic,
+// excluding sensitive ones, each changed at most once.
+func validConfigChange(described []model.ConfigEntry, set map[string]string, reset []string) bool {
+	if len(set)+len(reset) == 0 || len(set)+len(reset) > 128 {
+		return false
+	}
+	known := map[string]bool{}
+	for _, e := range described {
+		known[e.Name] = !e.Sensitive
+	}
+	for k, v := range set {
+		if !known[k] || len(v) > 4096 {
+			return false
+		}
+	}
+	seen := map[string]bool{}
+	for _, k := range reset {
+		if _, both := set[k]; !known[k] || both || seen[k] {
+			return false
+		}
+		seen[k] = true
+	}
+	return true
+}
 func adminError(w http.ResponseWriter, e error) {
 	switch {
 	case errors.Is(e, store.ErrThrottleConflict):
@@ -286,7 +311,7 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 			adminError(w, e)
 			return true
 		}
-		if a.adminMutation(w, r, u, id, "delete", resource, before, nil, func() error { return admin.DeleteTopic(r.Context(), resource) }) {
+		if a.adminMutation(w, r, u, id, "delete", resource, model.ConfigValues(before), nil, func() error { return admin.DeleteTopic(r.Context(), resource) }) {
 			respond(w, map[string]bool{"ok": true})
 		}
 		return true
@@ -304,20 +329,28 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 		if r.Method == "POST" {
 			var in struct {
 				Config       map[string]string `json:"config"`
+				Reset        []string          `json:"reset"`
 				Confirmation bool              `json:"confirmation"`
 			}
 			if !decode(w, r, &in) {
 				return true
 			}
-			if !in.Confirmation || len(in.Config) == 0 || !validTopicConfig(in.Config) {
+			if !in.Confirmation || !validConfigChange(before, in.Config, in.Reset) {
 				fail(w, 400, "invalid_request", "Supported configuration and confirmation required")
 				return true
 			}
+			current := model.ConfigValues(before)
 			selected := map[string]string{}
 			for k := range in.Config {
-				selected[k] = before[k]
+				selected[k] = current[k]
 			}
-			if a.adminMutation(w, r, u, id, "alter-config", resource, selected, in.Config, func() error { return admin.AlterTopicConfig(r.Context(), resource, in.Config) }) {
+			for _, k := range in.Reset {
+				selected[k] = current[k]
+			}
+			after := map[string]any{"set": in.Config, "reset": in.Reset}
+			if a.adminMutation(w, r, u, id, "alter-config", resource, selected, after, func() error {
+				return admin.AlterTopicConfig(r.Context(), resource, in.Config, in.Reset)
+			}) {
 				respond(w, map[string]bool{"ok": true})
 			}
 			return true

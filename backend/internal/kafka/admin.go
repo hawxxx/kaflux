@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kmsg"
 	"math"
 	"sort"
 	"time"
@@ -19,8 +20,8 @@ var ErrStaleOffsets = errors.New("offset preview changed; preview again")
 type AdminProvider interface {
 	CreateTopic(context.Context, model.TopicCreate) error
 	DeleteTopic(context.Context, string) error
-	TopicConfig(context.Context, string) (map[string]string, error)
-	AlterTopicConfig(context.Context, string, map[string]string) error
+	TopicConfig(context.Context, string) ([]model.ConfigEntry, error)
+	AlterTopicConfig(context.Context, string, map[string]string, []string) error
 	IncreasePartitions(context.Context, string, int32) error
 	GroupDetail(context.Context, string) (model.GroupDetail, error)
 	TopicConsumers(context.Context, string) ([]model.GroupDetail, error)
@@ -59,7 +60,7 @@ func (n *Native) DeleteTopic(ctx context.Context, name string) error {
 	n.invalidateAdminMetadata()
 	return out.Error()
 }
-func (n *Native) TopicConfig(ctx context.Context, name string) (map[string]string, error) {
+func (n *Native) TopicConfig(ctx context.Context, name string) ([]model.ConfigEntry, error) {
 	c, done, e := n.bounded(ctx)
 	if e != nil {
 		return nil, e
@@ -69,29 +70,35 @@ func (n *Native) TopicConfig(ctx context.Context, name string) (map[string]strin
 	if e != nil {
 		return nil, e
 	}
-	cfg := map[string]string{}
+	cfg := []model.ConfigEntry{}
 	for _, resource := range out {
 		if resource.Err != nil {
 			return nil, resource.Err
 		}
 		for _, v := range resource.Configs {
-			if !v.Sensitive && v.Value != nil {
-				cfg[v.Key] = *v.Value
+			entry := model.ConfigEntry{Name: v.Key, Source: v.Source.String(), Override: v.Source == kmsg.ConfigSourceDynamicTopicConfig, Sensitive: v.Sensitive}
+			if !v.Sensitive {
+				entry.Value = v.Value
 			}
+			cfg = append(cfg, entry)
 		}
 	}
+	sort.Slice(cfg, func(i, j int) bool { return cfg[i].Name < cfg[j].Name })
 	return cfg, nil
 }
-func (n *Native) AlterTopicConfig(ctx context.Context, name string, cfg map[string]string) error {
+func (n *Native) AlterTopicConfig(ctx context.Context, name string, set map[string]string, reset []string) error {
 	c, done, e := n.bounded(ctx)
 	if e != nil {
 		return e
 	}
 	defer done()
 	changes := []kadm.AlterConfig{}
-	for k, v := range cfg {
+	for k, v := range set {
 		value := v
 		changes = append(changes, kadm.AlterConfig{Op: kadm.SetConfig, Name: k, Value: &value})
+	}
+	for _, k := range reset {
+		changes = append(changes, kadm.AlterConfig{Op: kadm.DeleteConfig, Name: k})
 	}
 	out, e := n.admin.AlterTopicConfigs(c, changes, name)
 	if e != nil {

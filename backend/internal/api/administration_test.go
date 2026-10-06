@@ -221,3 +221,48 @@ func TestClusterRenameIsAuthorizedAuditedAndResettable(t *testing.T) {
 		t.Fatalf("reset kept override %v", names)
 	}
 }
+
+func TestTopicConfigEditsAnyDescribedKey(t *testing.T) {
+	s, _ := store.New(context.Background(), "")
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: []model.Cluster{{ID: "demo"}}})
+	request := func(method, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(method, "/api/v1/clusters/demo/topics/orders.created/config", strings.NewReader(body))
+		r.Header.Set("X-CSRF-Token", a.demo.CSRF)
+		a.ServeHTTP(w, r)
+		return w
+	}
+	entry := func(name string) model.ConfigEntry {
+		var envelope struct{ Data []model.ConfigEntry }
+		if e := json.Unmarshal(request("GET", "").Body.Bytes(), &envelope); e != nil {
+			t.Fatal(e)
+		}
+		for _, x := range envelope.Data {
+			if x.Name == name {
+				return x
+			}
+		}
+		t.Fatalf("%s not described", name)
+		return model.ConfigEntry{}
+	}
+	if e := entry("compression.type"); e.Override || *e.Value != "producer" {
+		t.Fatalf("default %+v", e)
+	}
+	if w := request("POST", `{"config":{"compression.type":"zstd","min.insync.replicas":"2"},"confirmation":true}`); w.Code != 200 {
+		t.Fatalf("set %d %s", w.Code, w.Body.String())
+	}
+	if e := entry("compression.type"); !e.Override || *e.Value != "zstd" {
+		t.Fatalf("override %+v", e)
+	}
+	if w := request("POST", `{"reset":["compression.type"],"confirmation":true}`); w.Code != 200 {
+		t.Fatalf("reset %d %s", w.Code, w.Body.String())
+	}
+	if e := entry("compression.type"); e.Override || *e.Value != "producer" {
+		t.Fatalf("reset %+v", e)
+	}
+	for _, body := range []string{`{"config":{"not.a.config":"1"},"confirmation":true}`, `{"config":{"compression.type":"lz4"},"reset":["compression.type"],"confirmation":true}`, `{"config":{"compression.type":"lz4"}}`, `{"confirmation":true}`} {
+		if w := request("POST", body); w.Code != 400 {
+			t.Fatalf("%s accepted: %d", body, w.Code)
+		}
+	}
+}

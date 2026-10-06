@@ -52,3 +52,51 @@
 .sort-button{display:inline-flex;align-items:center;gap:5px;color:inherit;white-space:nowrap}.sort-button svg{opacity:.4;transition:opacity .15s}.sort-button:hover svg,.sort-button.sorted svg{opacity:1}.sort-button.sorted{color:var(--text)}
 .distribution-sort{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}.distribution-sort h3{margin:0}.distribution-sort>div{display:flex;gap:14px;font-size:10px;color:var(--muted)}
 .topic-picker{position:relative}.topic-picker>input{width:100%;font-size:11px;padding-right:28px}.topic-picker>svg{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}.topic-picker-popup{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);overflow:hidden}.topic-picker-popup ul{list-style:none;margin:0;padding:4px;max-height:280px;overflow:auto}.topic-picker-popup li{padding:8px 10px;border-radius:4px;font:11px 'IBM Plex Mono',monospace;color:var(--text);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.topic-picker-popup li[aria-selected=true]{background:var(--hover)}.topic-picker-popup li.current{color:var(--purple)}.topic-picker-popup p{margin:0;padding:8px 12px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}.topic-picker-popup ul:empty+p{border-top:0}
+.dialog-wide{width:min(880px,calc(100vw - 32px))}
+.config-group{border:0;margin:0;padding:6px 20px 14px;min-width:0}
+.config-group h3,.config-group legend{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;padding:0}
+.config-group h3 span{font:10px 'IBM Plex Mono',monospace;color:var(--muted);opacity:.7}
+.config-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) 112px;align-items:center;gap:16px;padding:10px 12px;border:1px solid transparent;border-bottom-color:var(--border)}
+.config-row:last-child{border-bottom-color:transparent}
+.config-row.override{background:color-mix(in srgb,var(--purple) 5%,transparent)}
+.config-row.changed{border-color:color-mix(in srgb,var(--warn) 55%,transparent);border-radius:6px;background:color-mix(in srgb,var(--warn) 7%,transparent)}
+.config-row .config-name{display:flex;flex-direction:column;align-items:flex-start;gap:3px;margin:0;padding:0;border:0;background:none;letter-spacing:0;min-width:0}
+.config-name .mono{font-size:12px;color:var(--text);overflow-wrap:anywhere}
+.config-name small{font-size:11px;color:var(--muted);line-height:1.4}
+.config-value{display:flex;flex-direction:column;gap:2px;min-width:0}
+.config-value strong{font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.config-value .mono,.config-input small{font-size:10px;color:var(--muted);overflow-wrap:anywhere}
+.config-input{display:flex;flex-direction:column;gap:4px;min-width:0}
+.config-input input,.config-input select{width:100%;font:11px 'IBM Plex Mono',monospace;padding:7px 9px}
+.config-row .tag{justify-self:end;white-space:nowrap}
+.tag.config-override{color:var(--purple);border-color:color-mix(in srgb,var(--purple) 45%,transparent)}
+.config-row .icon-button{justify-self:end;border:1px solid var(--border);border-radius:5px}
+.config-row .icon-button.active{color:var(--warn);border-color:var(--warn)}
+.dialog .table-toolbar{padding:0;border:0;min-height:0}
+.config-editor{max-height:min(52vh,560px);overflow:auto;border:1px solid var(--border);border-radius:7px}
+.config-editor .config-group{padding:4px 10px 10px}
+.config-review{border:1px solid var(--border);border-radius:7px;padding:12px 14px;background:var(--raised);font-size:11px}
+.config-review ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:140px;overflow:auto}
+.config-review li{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center}
+.config-review li .mono{font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.config-review li .mono:first-child{color:var(--text)}
+.key-settings .mono{text-transform:none;display:flex;gap:8px;align-items:center}
+.key-settings em{font:normal 9px 'IBM Plex Mono',monospace;color:var(--purple);border:1px solid color-mix(in srgb,var(--purple) 45%,transparent);border-radius:3px;padding:1px 4px}
+.key-settings strong{font:600 14px 'DM Sans Variable',sans-serif}
+.key-settings small{display:block;margin-top:4px;font-size:10px;color:var(--muted)}
+.stat-card>small>i.warn{background:var(--warn)}
+.text-button{background:none;border:0;padding:0;color:var(--purple);font:inherit;cursor:pointer}
+.replica-list{display:flex;gap:4px;flex-wrap:wrap}
+.replica-list .tag{margin:0}
+.tag.replica-leader{color:var(--purple);border-color:color-mix(in srgb,var(--purple) 45%,transparent)}
+.replica-lagging,.tag.replica-lagging{color:var(--bad)}
+.config-editor .config-row{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) 64px}
+@media (max-width:720px){.config-row,.config-editor .config-row{grid-template-columns:1fr;gap:8px}.config-row .tag,.config-row .icon-button{justify-self:start}.config-review li{grid-template-columns:1fr auto 1fr}.config-review li .mono:first-child{grid-column:1/-1}}
+.config-mode{--mode:var(--green);display:inline-block;font:9px 'IBM Plex Mono',monospace;letter-spacing:.3px;color:var(--mode);background:color-mix(in srgb,var(--mode) 10%,transparent);border:1px solid color-mix(in srgb,var(--mode) 45%,transparent);border-radius:3px;padding:1px 5px;margin-right:6px;white-space:nowrap;cursor:help}
+.config-mode.static{--mode:var(--warn)}
+.config-mode.topic{--mode:var(--blue)}
+.config-name .config-mode{margin-top:3px}
+.config-legend{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;padding:12px 20px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)}
+.config-legend>span{display:flex;align-items:center}
+.config-legend small{flex-basis:100%;font-size:10px}
+.dialog .config-legend{padding:0 0 4px;border:0}

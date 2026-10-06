@@ -57,7 +57,7 @@ func TestNativeAdministrationAPIIntegration(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if config.Code != 200 || !strings.Contains(config.Body.String(), `"retention.ms":"60000"`) {
+	if config.Code != 200 || !strings.Contains(config.Body.String(), `"name":"retention.ms","value":"60000","source":"DYNAMIC_TOPIC_CONFIG","override":true`) {
 		t.Fatalf("config %d %s", config.Code, config.Body.String())
 	}
 	diagnostic := request("POST", "test", `{"confirmation":true}`)

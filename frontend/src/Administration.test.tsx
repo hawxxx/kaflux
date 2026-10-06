@@ -3,12 +3,22 @@ import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,expect,it,vi} from 'vitest';
 import {ClusterSettings,TopicAdministration} from './Administration';
 afterEach(()=>vi.restoreAllMocks());
-it('loads authoritative topic configuration before editing retention and cleanup',async()=>{
-  vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({data:{'retention.ms':'123456','cleanup.policy':'compact'}})} as Response)));
+it('edits any broker-described topic config and sends only the changes',async()=>{
+  const entries=[{name:'retention.ms',value:'123456',source:'DYNAMIC_TOPIC_CONFIG',override:true,sensitive:false},{name:'cleanup.policy',value:'compact',source:'DYNAMIC_TOPIC_CONFIG',override:true,sensitive:false},{name:'compression.type',value:'producer',source:'DEFAULT_CONFIG',override:false,sensitive:false},{name:'segment.bytes',value:'1073741824',source:'DEFAULT_CONFIG',override:false,sensitive:false}];
+  const fetch=vi.fn(async(_url:string,init?:RequestInit)=>({ok:true,json:async()=>({data:init?.method==='POST'?{ok:true}:entries})} as Response));
+  vi.stubGlobal('fetch',fetch);
   render(<QueryClientProvider client={new QueryClient()}><TopicAdministration clusterId="demo" topic="events" session={{user:{username:'admin',role:'administrator'},csrfToken:'test',demo:true}}/></QueryClientProvider>);
   fireEvent.click(screen.getByRole('button',{name:'Edit configuration'}));
-  await waitFor(()=>expect(screen.getByLabelText('Retention · milliseconds')).toHaveValue(123456));
-  expect(screen.getByLabelText('Cleanup policy')).toHaveValue('compact');
+  await waitFor(()=>expect(screen.getByLabelText(/^retention\.ms/)).toHaveValue('123456'));
+  expect(screen.getByLabelText(/^cleanup\.policy/)).toHaveValue('compact');
+  expect(screen.getByLabelText(/^segment\.bytes/)).toHaveValue('1073741824');
+  expect(screen.getByRole('button',{name:'No changes'})).toBeDisabled();
+  fireEvent.change(screen.getByLabelText(/^compression\.type/),{target:{value:'zstd'}});
+  fireEvent.click(screen.getByRole('button',{name:'Reset retention.ms to default'}));
+  fireEvent.click(screen.getByRole('button',{name:/Apply 2 changes/}));
+  await waitFor(()=>expect(fetch).toHaveBeenCalledWith('/api/v1/clusters/demo/topics/events/config',expect.objectContaining({method:'POST'})));
+  const post=fetch.mock.calls.find(([,init])=>init?.method==='POST');
+  expect(JSON.parse(String(post?.[1]?.body))).toEqual({config:{'compression.type':'zstd'},reset:['retention.ms'],confirmation:true});
 });
 it('disables topic mutations for a viewer',()=>{
   render(<QueryClientProvider client={new QueryClient()}><TopicAdministration clusterId="demo" session={{user:{username:'viewer',role:'viewer'},csrfToken:'test',demo:true}}/></QueryClientProvider>);

@@ -153,9 +153,13 @@ test('topic administration creates, configures, expands and deletes a reviewed t
   await page.getByRole('button',{name:'Confirm creation'}).click();
   await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Edit configuration'}).click();
-  await page.getByLabel('Retention · milliseconds').fill('86400000');
-  await page.getByRole('button',{name:'Confirm change'}).click();
+  await page.getByLabel(/^retention\.ms/).fill('86400000');
+  await page.getByLabel(/^compression\.type/).selectOption('zstd');
+  await expect(page.getByLabel('Pending changes')).toContainText('2 pending changes');
+  await page.getByRole('button',{name:'Apply 2 changes'}).click();
   await expect(page.getByRole('status')).toContainText('completed');
+  await page.getByRole('button',{name:'Configuration',exact:true}).click();
+  await expect(page.locator('.config-row.override').filter({hasText:'compression.type'})).toContainText('zstd');
   await page.getByRole('button',{name:'Add partitions'}).click();
   await page.getByLabel('New total partition count').fill('4');
   await page.getByRole('button',{name:'Confirm change'}).click();

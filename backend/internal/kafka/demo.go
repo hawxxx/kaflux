@@ -16,10 +16,13 @@ type Demo struct {
 	messages     map[string][]model.Message
 	groupOffsets map[string]int64
 	acls         map[string]model.ACL
+	// topicConfigs holds per-topic overrides beyond the cleanup policy and
+	// retention already modelled on model.Topic.
+	topicConfigs map[string]map[string]string
 }
 
 func NewDemo() *Demo {
-	d := &Demo{messages: map[string][]model.Message{}, groupOffsets: map[string]int64{}}
+	d := &Demo{messages: map[string][]model.Message{}, groupOffsets: map[string]int64{}, topicConfigs: map[string]map[string]string{}}
 	controller := int32(1)
 	d.state.Controller = &controller
 	for i := int32(1); i <= 6; i++ {
