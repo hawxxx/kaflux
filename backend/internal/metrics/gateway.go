@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -529,7 +530,7 @@ func (g *Gateway) Handler() http.Handler {
 			end := time.Now().Unix() / 15 * 15
 			step := max(int64(15), int64(span.Seconds())/300)
 			limit := 0
-			if def.Kind != "cloudwatch" && strings.Contains(def.Legend, "{{") {
+			if def.Kind != "cloudwatch" && splitsByEntity(def.Legend) {
 				limit = g.seriesLimit(int64(span.Seconds())/step + 1)
 				expr = boundSeries(expr, limit, duration, step)
 			}
@@ -541,6 +542,25 @@ func (g *Gateway) Handler() http.Handler {
 			json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "NOT_FOUND", "message": "Unknown metrics endpoint"}})
 		}
 	})
+}
+
+// unboundedLabels name series that do not multiply with the number of topics, consumer
+// groups or clients. instance is one series per broker, so a cluster never has thousands of
+// them, and jmx_version only labels single-value tiles such as broker or topic counts.
+// Rewriting those adds cost and risk without bounding anything.
+var unboundedLabels = map[string]bool{"instance": true, "jmx_version": true}
+
+var legendLabel = regexp.MustCompile(`\{\{\s*(\w+)\s*\}\}`)
+
+// splitsByEntity reports whether a legend splits the result by a label whose cardinality grows
+// with the workload, such as topic or groupId. Only those definitions are bounded to the top N.
+func splitsByEntity(legend string) bool {
+	for _, m := range legendLabel.FindAllStringSubmatch(legend, -1) {
+		if !unboundedLabels[m[1]] {
+			return true
+		}
+	}
+	return false
 }
 
 // seriesLimit picks how many series a bounded query may return so the response stays within

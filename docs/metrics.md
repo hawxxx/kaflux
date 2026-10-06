@@ -21,12 +21,15 @@ work shared by others.
 
 Adapters must disclose compatibility limits.
 
-Multi-series definitions (a legend containing `{{label}}`, such as per-topic rates) are bounded
-in PromQL to the top 50 series by average over the selected range, so clusters with thousands of
-topics stay within series and point limits. The ranking uses the `@ end()` modifier, which
-requires Prometheus 2.33 or newer (or a compatible API). Query-shape errors, including rejected
+Definitions whose legend splits the result by a label that grows with the workload, such as
+`{{topic}}`, `{{groupId}}` or `{{listener}}`, are bounded in PromQL to the top 50 series by average
+over the selected range, so clusters with thousands of topics stay within series and point limits.
+Legends that use only `{{instance}}` (one series per broker) or `{{jmx_version}}` (single-value
+tiles such as broker and topic counts) are sent unchanged. The ranking uses the `@ end()` modifier,
+which requires Prometheus 2.33 or newer (or a compatible API). A bounded chart says so in its
+footer, for example `Limited to top 50 series by datasource`. Query-shape errors, including rejected
 PromQL and exceeded limits, are reported on the affected chart and do not open the datasource
-circuit.
+circuit, so one heavy chart cannot make every other chart unavailable.
 
 ## Presentation
 
