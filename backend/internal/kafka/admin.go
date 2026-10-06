@@ -378,6 +378,7 @@ func (n *Native) ResetOffsets(ctx context.Context, id string, in model.OffsetRes
 		offsets.Add(kadm.Offset{Topic: v.Topic, Partition: v.Partition, At: v.After, LeaderEpoch: -1})
 	}
 	result, e := n.admin.CommitOffsets(c, id, offsets)
+	n.invalidateGroups() // even a failed commit may have changed some partitions
 	if e != nil {
 		return out, e
 	}

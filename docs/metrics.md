@@ -30,7 +30,12 @@ and source status. Display “Metrics temporarily unavailable” while preservin
 ## Correctness
 
 Escape `$instance` values and interpret `$__range` using bounded server-side durations. Preserve
-metric units. Replica bytes are physical storage; leader bytes approximate logical topic size.
+metric units. Broker and topic sizes come from the brokers' log directories, the same source
+Kafka admin tools use. A broker's size is every replica it stores. A topic's size is the sum
+over all of its replicas, and is unknown when any replica did not report. A partition's size is one
+replica, which the balance analysis and reassignment planner scale by the replicas they place.
+Consumer lag is `max(logEndOffset - committedOffset, 0)` summed over a group's committed
+partitions; commits on topics the cluster no longer lists are ignored.
 Missing telemetry is unknown. Fetch waiting time alone is not failure; correlate queues, local time,
 errors, ISR, and follower lag.
 

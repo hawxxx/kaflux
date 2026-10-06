@@ -467,15 +467,24 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if replicas := balance.Analyze(snap)[0]; replicas.Status != "UNAVAILABLE" {
 			tot["balanceSkew"] = replicas.CV * 100
 		}
-		if a.o.Demo {
-			groups, _ := provider.Groups(r.Context())
-			lag := int64(0)
+		// Sum of the groups whose lag is known. consumerLag stays null when the
+		// groups cannot be read or none has a known lag; consumerLagUnknownGroups
+		// says how many were left out of the sum.
+		if groups, ge := provider.Groups(r.Context()); ge == nil {
+			lag, unknown := int64(0), 0
 			for _, g := range groups {
 				if g.Lag != nil {
 					lag += *g.Lag
+				} else {
+					unknown++
 				}
 			}
-			tot["consumerLag"] = lag
+			if len(groups) == 0 || unknown < len(groups) {
+				tot["consumerLag"] = lag
+			}
+			if unknown > 0 {
+				tot["consumerLagUnknownGroups"] = unknown
+			}
 		}
 		var c model.Cluster
 		for _, x := range a.o.Clusters {

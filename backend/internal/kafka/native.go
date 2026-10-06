@@ -60,6 +60,12 @@ type Native struct {
 	msk         *msk.Checker
 	knownMSK    bool
 	oauthTokens *oauthTokens
+	sizeMu      sync.Mutex
+	sizeCache   *logSizes
+	sizeRetryAt time.Time
+	groupsMu    sync.Mutex
+	groupsCache []model.Group
+	groupsUntil time.Time
 }
 
 func NewNative(c Config) (*Native, error) {
@@ -201,12 +207,15 @@ func (n *Native) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	if e != nil {
 		return model.Snapshot{}, e
 	}
-	defer done()
 	m, e := n.admin.Metadata(c)
+	// Release the slot before sizes() takes its own: holding one while waiting
+	// for another could exhaust the budget under concurrent refreshes.
+	done()
 	if e != nil {
 		return model.Snapshot{}, e
 	}
 	s := snapshotFromMetadata(m, time.Now().UTC())
+	n.sizes(ctx).apply(&s)
 	n.mu.Lock()
 	n.cached = s
 	n.expires = time.Now().Add(5 * time.Second)
@@ -269,7 +278,35 @@ func snapshotFromMetadata(m kadm.Metadata, observedAt time.Time) model.Snapshot 
 	}
 	return s
 }
+
+// groupsTTL bounds how often the full group list and its lag are computed. The
+// list page and the overview both read it on every poll.
+const groupsTTL = 10 * time.Second
+
+// Groups lists all consumer groups with lag. Concurrent callers share one
+// computation, and the result is reused for groupsTTL or until offsets change.
 func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
+	n.groupsMu.Lock()
+	defer n.groupsMu.Unlock()
+	if time.Now().Before(n.groupsUntil) {
+		return append([]model.Group(nil), n.groupsCache...), nil
+	}
+	out, e := n.loadGroups(ctx)
+	if e != nil {
+		return nil, e
+	}
+	n.groupsCache, n.groupsUntil = out, time.Now().Add(groupsTTL)
+	return append([]model.Group(nil), out...), nil
+}
+
+// invalidateGroups drops the cached list so the next read reflects a change
+// made through Kaflux, such as an offset reset.
+func (n *Native) invalidateGroups() {
+	n.groupsMu.Lock()
+	n.groupsUntil = time.Time{}
+	n.groupsMu.Unlock()
+}
+func (n *Native) loadGroups(ctx context.Context) ([]model.Group, error) {
 	c, done, e := n.bounded(ctx)
 	if e != nil {
 		return nil, e
@@ -283,11 +320,7 @@ func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
 		return nil, e
 	}
 	out := []model.Group{}
-	ids := []string{}
-	for _, x := range g {
-		ids = append(ids, x.Group)
-	}
-	lags, lagErr := n.admin.Lag(c, ids...)
+	lags := n.groupLags(c, g)
 	for _, x := range g {
 		if x.Err != nil {
 			out = append(out, model.Group{ID: x.Group, State: "Unavailable", Topics: []string{}})
@@ -298,24 +331,7 @@ func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
 			topics = append(topics, t)
 		}
 		sort.Strings(topics)
-		var lag *int64
-		if lagErr == nil {
-			if observed, ok := lags[x.Group]; ok && observed.Error() == nil {
-				known := true
-				for _, parts := range observed.Lag {
-					for _, p := range parts {
-						if p.Err != nil || p.Lag < 0 {
-							known = false
-						}
-					}
-				}
-				if known {
-					v := observed.Lag.Total()
-					lag = &v
-				}
-			}
-		}
-		out = append(out, model.Group{ID: x.Group, State: x.State, Members: len(x.Members), Topics: topics, Lag: lag})
+		out = append(out, model.Group{ID: x.Group, State: x.State, Members: len(x.Members), Topics: topics, Lag: lags[x.Group]})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
