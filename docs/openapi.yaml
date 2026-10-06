@@ -316,6 +316,23 @@ paths:
         "200": { $ref: "#/components/responses/Envelope" }
         "403": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/topics/{topic}/balance:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { name: topic, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Topic placement across every broker with skew, replica health and findings
+      description: >-
+        Per-broker replica, leader, preferred-replica, out-of-sync and estimated byte counts;
+        per-partition leader, replicas, ISR and state flags; replica, leader and byte skew
+        dimensions using the cluster balance formula; preferred-leader ratio, URP, offline and
+        single-rack counts; and findings ordered critical, warning, info. Brokers without a
+        replica of the topic count as zero. A count spread of at most one is reported as GOOD.
+      operationId: getTopicBalance
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/topics/{topic}/config:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }

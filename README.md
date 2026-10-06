@@ -6,7 +6,7 @@ Kaflux is a Kafka operations console built with Go and React. Explore clusters a
 
 - **Cluster management:** brokers, topics, partitions, consumer groups, and access controls.
 - **Message exploration:** filtering, JSON previews, and Avro/Protobuf decoding through Schema Registry.
-- **Monitoring:** metrics, consumer lag, and partition balance.
+- **Monitoring:** metrics, consumer lag, partition balance, and per-topic broker distribution.
 - **Rebalancing:** plan review, approval, audited execution, and live throttle controls.
 - **Integrations:** Kafka Connect, Schema Registry, OIDC, and LDAP.
 

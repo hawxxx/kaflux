@@ -389,6 +389,21 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respond(w, filtered)
 		return
 	}
+	if endpoint == "topics" && len(parts) == 7 && parts[6] == "balance" {
+		snap, e := provider.Snapshot(r.Context())
+		if e != nil {
+			failCause(w, r, 503, "broker_unavailable", "Kafka metadata unavailable", e)
+			return
+		}
+		for _, t := range snap.Topics {
+			if t.Name == parts[5] {
+				respond(w, balance.AnalyzeTopic(snap, t))
+				return
+			}
+		}
+		fail(w, 404, "not_found", "Topic not found")
+		return
+	}
 	if endpoint == "topics" && len(parts) > 5 {
 		if detail, ok := provider.(interface {
 			TopicDetail(context.Context, string) (model.Topic, error)

@@ -56,3 +56,17 @@ func TestOverviewReportsReplicaBalanceSkew(t *testing.T) {
 		t.Fatalf("overview lacks balance skew: %d %s", r.Code, r.Body.String())
 	}
 }
+func TestTopicBalanceReportsBrokerPlacement(t *testing.T) {
+	s, _ := store.New(context.Background(), "")
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: []model.Cluster{{ID: "demo", Mode: "demo"}}})
+	r := httptest.NewRecorder()
+	a.ServeHTTP(r, httptest.NewRequest("GET", "/api/v1/clusters/demo/topics/orders.created/balance", nil))
+	if r.Code != 200 || !strings.Contains(r.Body.String(), `"preferredLeaderRatio":1`) || !strings.Contains(r.Body.String(), `"preferredReplicas":2`) {
+		t.Fatalf("topic balance missing placement: %d %s", r.Code, r.Body.String())
+	}
+	r = httptest.NewRecorder()
+	a.ServeHTTP(r, httptest.NewRequest("GET", "/api/v1/clusters/demo/topics/missing/balance", nil))
+	if r.Code != 404 {
+		t.Fatalf("missing topic: %d", r.Code)
+	}
+}
