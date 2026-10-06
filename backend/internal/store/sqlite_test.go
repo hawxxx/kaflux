@@ -302,3 +302,33 @@ func TestSQLiteThrottleOwnershipSurvivesRestart(t *testing.T) {
 		t.Fatal("ownership not deleted", got, e)
 	}
 }
+
+func TestSQLiteClusterNamesSurviveRestart(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "kaflux.db")
+	s, e := NewSQLite(ctx, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.SetClusterName(ctx, "prod", "Old"); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.SetClusterName(ctx, "prod", "Payments"); e != nil {
+		t.Fatal(e)
+	}
+	s.Close()
+	s, e = NewSQLite(ctx, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	if names, e := s.ClusterNames(ctx); e != nil || len(names) != 1 || names["prod"] != "Payments" {
+		t.Fatalf("names %v %v", names, e)
+	}
+	if e = s.SetClusterName(ctx, "prod", ""); e != nil {
+		t.Fatal(e)
+	}
+	if names, _ := s.ClusterNames(ctx); len(names) != 0 {
+		t.Fatalf("cleared name kept %v", names)
+	}
+}

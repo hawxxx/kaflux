@@ -147,3 +147,77 @@ func TestTopicAdministrationLifecycle(t *testing.T) {
 		}
 	}
 }
+
+func TestTopicConsumersFiltersReadableGroups(t *testing.T) {
+	s, _ := store.New(context.Background(), "")
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Grants: []auth.Grant{{Role: "viewer", Cluster: "demo", Action: "read", Pattern: "orders.*"}, {Role: "viewer", Cluster: "demo", Action: "read", Pattern: "demo-order-*"}}})
+	a.demo.User.Roles = []string{"viewer"}
+	get := func(topic string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		a.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/clusters/demo/topics/"+topic+"/consumers", nil))
+		return w
+	}
+	w := get("orders.created")
+	var envelope struct{ Data []model.GroupDetail }
+	if e := json.Unmarshal(w.Body.Bytes(), &envelope); e != nil || w.Code != 200 || len(envelope.Data) != 1 || envelope.Data[0].ID != "demo-order-service" {
+		t.Fatalf("consumers %d %s", w.Code, w.Body.String())
+	}
+	g := envelope.Data[0]
+	total := int64(0)
+	for _, o := range g.Offsets {
+		if o.Topic != "orders.created" {
+			t.Fatalf("foreign topic offset %+v", o)
+		}
+		total += o.Lag
+	}
+	if len(g.Offsets) == 0 || g.Lag == nil || *g.Lag != total {
+		t.Fatalf("lag %+v", g)
+	}
+	if denied := get("payments.authorized"); denied.Code != 403 {
+		t.Fatalf("unreadable topic %d", denied.Code)
+	}
+}
+
+func TestClusterRenameIsAuthorizedAuditedAndResettable(t *testing.T) {
+	s, _ := store.New(context.Background(), "")
+	clusters := []model.Cluster{{ID: "demo", Name: "Development simulator"}}
+	request := func(a *API, method, path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("X-CSRF-Token", a.demo.CSRF)
+		a.ServeHTTP(w, r)
+		return w
+	}
+	viewer := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: clusters, Grants: []auth.Grant{{Role: "viewer", Cluster: "demo", Action: "read", Pattern: "*"}}})
+	viewer.demo.User.Roles = []string{"viewer"}
+	if w := request(viewer, "PUT", "/api/v1/clusters/demo/name", `{"name":"Hijacked"}`); w.Code != 403 {
+		t.Fatalf("viewer rename accepted %d %s", w.Code, w.Body.String())
+	}
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: clusters})
+	if w := request(a, "PUT", "/api/v1/clusters/demo/name", `{"name":"bad\nname"}`); w.Code != 400 {
+		t.Fatalf("control character accepted %d", w.Code)
+	}
+	if w := request(a, "PUT", "/api/v1/clusters/demo/name", `{"name":"  Payments prod  "}`); w.Code != 200 {
+		t.Fatalf("rename %d %s", w.Code, w.Body.String())
+	}
+	list := request(a, "GET", "/api/v1/clusters", "")
+	if !strings.Contains(list.Body.String(), `"name":"Payments prod","configuredName":"Development simulator"`) {
+		t.Fatalf("list missing override %s", list.Body.String())
+	}
+	audits, _ := s.Audits(context.Background())
+	renamed := 0
+	for _, event := range audits {
+		if event.Action == "rename" && event.Result == "success" && event.AdminAfter == "Payments prod" {
+			renamed++
+		}
+	}
+	if renamed != 1 {
+		t.Fatalf("rename not audited: %+v", audits)
+	}
+	if w := request(a, "PUT", "/api/v1/clusters/demo/name", `{"name":""}`); w.Code != 200 {
+		t.Fatalf("reset %d %s", w.Code, w.Body.String())
+	}
+	if names, _ := s.ClusterNames(context.Background()); len(names) != 0 {
+		t.Fatalf("reset kept override %v", names)
+	}
+}

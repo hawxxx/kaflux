@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 var topicName = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,249}$`)
@@ -77,6 +79,72 @@ func (a *API) adminAudit(r *http.Request, u auth.User, id, action, resource, res
 	}
 	return a.o.Store.Audit(r.Context(), store.Audit{Actor: u.ID, ClusterID: id, Provider: provider, Action: action, Resource: resource, Result: result, RequestID: requestID(r), AdminBefore: before, AdminAfter: after})
 }
+
+// renameCluster sets the cluster's display-name override; an empty name or the
+// configured name clears it.
+func (a *API) renameCluster(w http.ResponseWriter, r *http.Request, u auth.User, id string) {
+	if r.Method != "PUT" {
+		fail(w, 405, "method_not_allowed", "PUT required")
+		return
+	}
+	if !a.allowed(u, id, "rename", "*", w) {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if utf8.RuneCountInString(name) > 64 || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		fail(w, 400, "invalid_request", "Cluster name must be at most 64 characters without control characters")
+		return
+	}
+	configured := id
+	for _, c := range a.o.Clusters {
+		if c.ID == id {
+			configured = c.Name
+		}
+	}
+	names, e := a.o.Store.ClusterNames(r.Context())
+	if e != nil {
+		failCause(w, r, 503, "store_unavailable", "Cluster names unavailable", e)
+		return
+	}
+	before := configured
+	if names[id] != "" {
+		before = names[id]
+	}
+	if name == configured {
+		name = ""
+	}
+	after := name
+	if after == "" {
+		after = configured
+	}
+	if e = a.adminAudit(r, u, id, "rename", id, "intent", before, after); e != nil {
+		failCause(w, r, 503, "audit_unavailable", "Rename blocked because audit storage is unavailable", e)
+		return
+	}
+	e = a.o.Store.SetClusterName(r.Context(), id, name)
+	result := "success"
+	if e != nil {
+		result = "failed"
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+	defer cancel()
+	auditErr := a.adminAudit(r.WithContext(ctx), u, id, "rename", id, result, before, after)
+	if e != nil {
+		failCause(w, r, 503, "store_unavailable", "Cluster name could not be saved", e)
+		return
+	}
+	if auditErr != nil {
+		failCause(w, r, 503, "audit_uncertain", "Cluster renamed but result audit failed", auditErr)
+		return
+	}
+	respond(w, map[string]string{"id": id, "name": after, "configuredName": configured})
+}
 func (a *API) adminMutation(w http.ResponseWriter, r *http.Request, u auth.User, id, action, resource string, before, after any, run func() error) bool {
 	if e := a.adminAudit(r, u, id, action, resource, "intent", before, after); e != nil {
 		failCause(w, r, 503, "audit_unavailable", "Mutation blocked because audit storage is unavailable", e)
@@ -130,7 +198,7 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 		respond(w, map[string]any{"status": "connected", "configured": true, "brokerCount": len(snap.Brokers), "latencyMs": time.Since(start).Milliseconds(), "checkedAt": time.Now().UTC()})
 		return true
 	}
-	handled := endpoint == "topics" && (r.Method != "GET" || (len(parts) == 7 && parts[6] == "config")) || endpoint == "consumer-groups" && len(parts) >= 6
+	handled := endpoint == "topics" && (r.Method != "GET" || (len(parts) == 7 && (parts[6] == "config" || parts[6] == "consumers"))) || endpoint == "consumer-groups" && len(parts) >= 6
 	if !handled {
 		return false
 	}
@@ -163,6 +231,26 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 	}
 	if endpoint == "consumer-groups" {
 		a.groupAdministration(w, r, u, id, resource, admin, parts)
+		return true
+	}
+	if len(parts) == 7 && parts[6] == "consumers" {
+		if r.Method != "GET" {
+			fail(w, 405, "method_not_allowed", "GET required")
+			return true
+		}
+		groups, e := admin.TopicConsumers(r.Context(), resource)
+		if e != nil {
+			adminError(w, e)
+			return true
+		}
+		authorizer := auth.Authorizer{Grants: a.o.Grants}
+		out := []model.GroupDetail{}
+		for _, g := range groups {
+			if authorizer.Allowed(u, id, "read", g.ID) {
+				out = append(out, g)
+			}
+		}
+		respond(w, out)
 		return true
 	}
 	if r.Method == "POST" && len(parts) == 5 {

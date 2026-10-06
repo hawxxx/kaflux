@@ -87,6 +87,10 @@ func TestNativeAdministrationIntegration(t *testing.T) {
 	if e != nil || detail.Members != 0 || len(detail.Offsets) != 1 || detail.Offsets[0].Lag != 2 {
 		t.Fatalf("lag detail %v %+v", e, detail)
 	}
+	consumers, e := p.TopicConsumers(ctx, topic)
+	if e != nil || len(consumers) != 1 || consumers[0].ID != group || len(consumers[0].Offsets) != 1 || *consumers[0].Lag != 2 {
+		t.Fatalf("topic consumers %v %+v", e, consumers)
+	}
 	for _, mode := range []string{"earliest", "latest", "absolute", "shift", "timestamp"} {
 		req := model.OffsetReset{Mode: mode, Offset: 1, Shift: -1, Timestamp: time.Now().Add(-time.Hour)}
 		preview, e := p.PreviewOffsets(ctx, group, req)

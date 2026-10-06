@@ -216,9 +216,15 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/v1/clusters" {
 		list := []model.Cluster{}
+		// Name overrides are cosmetic; on store failure fall back to configured names.
+		names, _ := a.o.Store.ClusterNames(r.Context())
 		for _, c := range a.o.Clusters {
 			if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(s.User, c.ID, "read") {
 				continue
+			}
+			c.ConfiguredName = c.Name
+			if name := names[c.ID]; name != "" {
+				c.Name = name
 			}
 			list = append(list, c)
 		}
@@ -282,6 +288,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	provider := a.o.Providers[id]
 	if provider == nil {
 		fail(w, 404, "not_found", "Cluster not found")
+		return
+	}
+	if endpoint == "name" && len(parts) == 5 {
+		a.renameCluster(w, r, s.User, id)
 		return
 	}
 	if a.integrationRoutes(w, r, s.User, id, parts) {

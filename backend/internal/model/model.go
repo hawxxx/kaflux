@@ -8,6 +8,7 @@ import (
 type Cluster struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
+	ConfiguredName string `json:"configuredName"`
 	Environment    string `json:"environment"`
 	Kind           string `json:"kind"`
 	Mode           string `json:"mode"`

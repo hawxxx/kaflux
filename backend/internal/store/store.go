@@ -36,6 +36,7 @@ type Store struct {
 	jobs     map[string]model.Plan
 	audit    []Audit
 	leases   map[string]lease
+	names    map[string]string
 }
 type lease struct {
 	Owner string
@@ -56,7 +57,7 @@ func New(ctx context.Context, url string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	_, e = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS kaflux_sessions (id text PRIMARY KEY, payload jsonb NOT NULL, expires timestamptz NOT NULL);CREATE INDEX IF NOT EXISTS kaflux_sessions_handle ON kaflux_sessions ((encode(sha256(id::bytea),'hex')));CREATE INDEX IF NOT EXISTS kaflux_sessions_inventory ON kaflux_sessions (expires,(encode(sha256(id::bytea),'hex')));CREATE TABLE IF NOT EXISTS kaflux_jobs (id text PRIMARY KEY, cluster_id text NOT NULL, state text NOT NULL, payload jsonb NOT NULL, lease_until timestamptz, lease_owner text);CREATE TABLE IF NOT EXISTS kaflux_audit (id text PRIMARY KEY, payload jsonb NOT NULL, created_at timestamptz NOT NULL);CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id text primary key,payload jsonb not null);CREATE UNIQUE INDEX IF NOT EXISTS kaflux_one_active_job ON kaflux_jobs(cluster_id) WHERE state IN ('queued','running','rollback-queued');`)
+	_, e = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS kaflux_sessions (id text PRIMARY KEY, payload jsonb NOT NULL, expires timestamptz NOT NULL);CREATE INDEX IF NOT EXISTS kaflux_sessions_handle ON kaflux_sessions ((encode(sha256(id::bytea),'hex')));CREATE INDEX IF NOT EXISTS kaflux_sessions_inventory ON kaflux_sessions (expires,(encode(sha256(id::bytea),'hex')));CREATE TABLE IF NOT EXISTS kaflux_jobs (id text PRIMARY KEY, cluster_id text NOT NULL, state text NOT NULL, payload jsonb NOT NULL, lease_until timestamptz, lease_owner text);CREATE TABLE IF NOT EXISTS kaflux_audit (id text PRIMARY KEY, payload jsonb NOT NULL, created_at timestamptz NOT NULL);CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id text primary key,payload jsonb not null);CREATE TABLE IF NOT EXISTS kaflux_cluster_names(cluster_id text PRIMARY KEY, name text NOT NULL);CREATE UNIQUE INDEX IF NOT EXISTS kaflux_one_active_job ON kaflux_jobs(cluster_id) WHERE state IN ('queued','running','rollback-queued');`)
 	if e != nil {
 		db.Close()
 		return nil, e
@@ -360,6 +361,62 @@ func (s *Store) Audit(ctx context.Context, a Audit) error {
 	if len(s.audit) > 1000 {
 		s.audit = s.audit[len(s.audit)-1000:]
 	}
+	return nil
+}
+
+// ClusterNames returns display-name overrides keyed by cluster ID.
+func (s *Store) ClusterNames(ctx context.Context) (map[string]string, error) {
+	if s.sqlite != nil {
+		return s.sqlite.clusterNames(ctx)
+	}
+	out := map[string]string{}
+	if s.DB != nil {
+		r, e := s.DB.Query(ctx, "SELECT cluster_id,name FROM kaflux_cluster_names")
+		if e != nil {
+			return nil, e
+		}
+		defer r.Close()
+		for r.Next() {
+			var id, name string
+			if e = r.Scan(&id, &name); e != nil {
+				return nil, e
+			}
+			out[id] = name
+		}
+		return out, r.Err()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, name := range s.names {
+		out[id] = name
+	}
+	return out, nil
+}
+
+// SetClusterName stores a display-name override; an empty name removes it.
+func (s *Store) SetClusterName(ctx context.Context, id, name string) error {
+	if s.sqlite != nil {
+		return s.sqlite.setClusterName(ctx, id, name)
+	}
+	if s.DB != nil {
+		var e error
+		if name == "" {
+			_, e = s.DB.Exec(ctx, "DELETE FROM kaflux_cluster_names WHERE cluster_id=$1", id)
+		} else {
+			_, e = s.DB.Exec(ctx, "INSERT INTO kaflux_cluster_names VALUES($1,$2) ON CONFLICT(cluster_id) DO UPDATE SET name=EXCLUDED.name", id, name)
+		}
+		return e
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if name == "" {
+		delete(s.names, id)
+		return nil
+	}
+	if s.names == nil {
+		s.names = map[string]string{}
+	}
+	s.names[id] = name
 	return nil
 }
 func (s *Store) Audits(ctx context.Context) ([]Audit, error) {

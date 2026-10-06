@@ -146,6 +146,33 @@ func (d *Demo) GroupDetail(ctx context.Context, id string) (model.GroupDetail, e
 	}
 	return model.GroupDetail{}, fmt.Errorf("group not found")
 }
+func (d *Demo) TopicConsumers(ctx context.Context, topic string) ([]model.GroupDetail, error) {
+	groups, e := d.Groups(ctx)
+	if e != nil {
+		return nil, e
+	}
+	out := []model.GroupDetail{}
+	for _, g := range groups {
+		detail, e := d.GroupDetail(ctx, g.ID)
+		if e != nil {
+			return nil, e
+		}
+		offsets := []model.GroupOffset{}
+		total := int64(0)
+		for _, o := range detail.Offsets {
+			if o.Topic == topic {
+				offsets = append(offsets, o)
+				total += o.Lag
+			}
+		}
+		if len(offsets) == 0 {
+			continue
+		}
+		detail.Topics, detail.Offsets, detail.Lag = []string{topic}, offsets, &total
+		out = append(out, detail)
+	}
+	return out, nil
+}
 func (d *Demo) PreviewOffsets(ctx context.Context, id string, in model.OffsetReset) (model.OffsetPreview, error) {
 	return previewOffsets(ctx, d, id, in)
 }

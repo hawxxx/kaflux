@@ -122,6 +122,7 @@ func NewSQLite(ctx context.Context, path string) (*Store, error) {
  CREATE INDEX IF NOT EXISTS kaflux_audit_created ON kaflux_audit(created_at);
  CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id TEXT PRIMARY KEY,payload BLOB NOT NULL);
  CREATE TABLE IF NOT EXISTS oidc_flows(id TEXT PRIMARY KEY,nonce TEXT NOT NULL,verifier TEXT NOT NULL,expires INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS kaflux_cluster_names(cluster_id TEXT PRIMARY KEY,name TEXT NOT NULL);
  INSERT OR IGNORE INTO kaflux_schema(version) VALUES(1);`)
 	if e == nil {
 		e = tx.Commit()
@@ -281,6 +282,31 @@ func (q *sqliteStore) audits(ctx context.Context) ([]Audit, error) {
 		out = append(out, a)
 	}
 	return out, r.Err()
+}
+func (q *sqliteStore) clusterNames(ctx context.Context) (map[string]string, error) {
+	r, e := q.db.QueryContext(ctx, "SELECT cluster_id,name FROM kaflux_cluster_names")
+	if e != nil {
+		return nil, e
+	}
+	defer r.Close()
+	out := map[string]string{}
+	for r.Next() {
+		var id, name string
+		if e = r.Scan(&id, &name); e != nil {
+			return nil, e
+		}
+		out[id] = name
+	}
+	return out, r.Err()
+}
+func (q *sqliteStore) setClusterName(ctx context.Context, id, name string) error {
+	var e error
+	if name == "" {
+		_, e = q.db.ExecContext(ctx, "DELETE FROM kaflux_cluster_names WHERE cluster_id=?", id)
+	} else {
+		_, e = q.db.ExecContext(ctx, "INSERT INTO kaflux_cluster_names VALUES(?,?) ON CONFLICT(cluster_id) DO UPDATE SET name=excluded.name", id, name)
+	}
+	return e
 }
 func (q *sqliteStore) listSessions(ctx context.Context, current string, limit, offset int) ([]SessionSummary, bool, error) {
 	if limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
