@@ -104,3 +104,7 @@
 @keyframes record-in{from{opacity:0;transform:translateY(6px)}}
 .message-list{position:relative}
 .tail-pill{position:sticky;bottom:12px;display:flex;align-items:center;gap:6px;width:fit-content;margin:8px auto 12px;padding:6px 12px;border-radius:999px;border:1px solid var(--purple);background:var(--panel);color:var(--text);font:10px 'IBM Plex Mono';box-shadow:0 4px 14px #0003}
+.broker-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:11px 20px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+.broker-pager>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.broker-page-count{font:10px 'IBM Plex Mono';color:var(--muted);white-space:nowrap}
+@media(max-width:600px){.broker-pager{padding:11px 17px}}
