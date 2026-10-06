@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {bytes,latestSample,metricValue,prepareMetric,seriesNames} from './api';
+import {bytes,latestSample,metricValue,prepareMetric,seriesNames,sparkTrend} from './api';
 
 describe('metric formatting',()=>{
   it('formats byte rates for chart axes',()=>{
@@ -18,6 +18,10 @@ describe('metric formatting',()=>{
     expect(latestSample({status:'available',observedAt:'',series:[{values:[[1,2],[2,3]]}]})).toBe(3);
     expect(latestSample({status:'pending',observedAt:'',series:[]})).toBeUndefined();
     expect(latestSample({status:'available',observedAt:'',series:[]})).toBeUndefined();
+  });
+  it('sums every series per timestamp for sparkline trends',()=>{
+    expect(sparkTrend({status:'available',observedAt:'',series:[{values:[[2,3],[1,1]]},{points:[{time:1,value:4},{time:2,value:5}]}]})).toEqual([5,8]);
+    expect(sparkTrend({status:'pending',observedAt:'',series:[]})).toEqual([]);
   });
 });
 
