@@ -1,5 +1,5 @@
 export const topicSortKeys=['name','partitions','replicationFactor','cleanupPolicy','sizeBytes','urp'] as const;
-export type TopicSearch = {q:string;sort:typeof topicSortKeys[number];order:'asc'|'desc';page:number;showSize:boolean};
+export type TopicSearch = {q:string;sort:typeof topicSortKeys[number];order:'asc'|'desc';page:number;showSize:boolean;planTopic?:string};
 
 /** Shared table state is bounded before it reaches Kafka inventory requests. */
 export function validateTopicSearch(search:Record<string,unknown>):TopicSearch {
@@ -10,5 +10,7 @@ export function validateTopicSearch(search:Record<string,unknown>):TopicSearch {
     order:search.order==='desc'?'desc':'asc',
     page:Number.isSafeInteger(page)&&page>=0?Math.min(page,10000):0,
     showSize:search.showSize!==false&&search.showSize!=='false',
+    // Preselects a topic when a topic page hands off to the reassignment planner.
+    ...(typeof search.planTopic==='string'&&search.planTopic?{planTopic:search.planTopic.slice(0,249)}:{}),
   };
 }

@@ -266,3 +266,39 @@ func TestTopicConfigEditsAnyDescribedKey(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteRebalancePlanRejectsActiveJobs(t *testing.T) {
+	s, _ := store.New(context.Background(), "")
+	_ = s.SaveJob(context.Background(), model.Plan{ID: "done", ClusterID: "demo", Topics: []string{"orders.created"}, State: "completed"})
+	_ = s.SaveJob(context.Background(), model.Plan{ID: "active", ClusterID: "demo", Topics: []string{"orders.created"}, State: "running"})
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}})
+	request := func(id string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/api/v1/clusters/demo/rebalances/"+id, nil)
+		r.Header.Set("X-CSRF-Token", a.demo.CSRF)
+		a.ServeHTTP(w, r)
+		return w
+	}
+	if w := request("active"); w.Code != 409 {
+		t.Fatalf("active plan deleted %d %s", w.Code, w.Body.String())
+	}
+	if _, e := s.Job(context.Background(), "active"); e != nil {
+		t.Fatal("active plan removed")
+	}
+	if w := request("done"); w.Code != 200 {
+		t.Fatalf("delete %d %s", w.Code, w.Body.String())
+	}
+	if _, e := s.Job(context.Background(), "done"); e == nil {
+		t.Fatal("plan not deleted")
+	}
+	events, _ := s.Audits(context.Background())
+	if len(events) != 4 || events[2].Action != "delete-plan" || events[3].Result != "success" {
+		t.Fatalf("delete audits %+v", events)
+	}
+	_ = s.SaveJob(context.Background(), model.Plan{ID: "planned", ClusterID: "demo", Topics: []string{"orders.created"}, State: "planned"})
+	a.o.Grants = []auth.Grant{{Role: "viewer", Cluster: "demo", Action: "read", Pattern: "*"}}
+	a.demo.User.Roles = []string{"viewer"}
+	if w := request("planned"); w.Code != 403 {
+		t.Fatalf("viewer deletion accepted %d", w.Code)
+	}
+}

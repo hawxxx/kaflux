@@ -77,6 +77,8 @@ func adminError(w http.ResponseWriter, e error) {
 	switch {
 	case errors.Is(e, store.ErrThrottleConflict):
 		fail(w, 409, "throttle_conflict", e.Error())
+	case errors.Is(e, store.ErrJobActive):
+		fail(w, 409, "job_active", e.Error())
 	case errors.Is(e, kafka.ErrACLUnsupported):
 		fail(w, 422, "acl_unsupported", "Kafka authorizer is not enabled for this configured cluster")
 	case errors.Is(e, kafka.ErrActiveGroup):

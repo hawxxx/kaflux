@@ -30,4 +30,14 @@ describe('topic picker',()=>{
     const {input,onChange}=mount('users');fireEvent.focus(input);fireEvent.change(input,{target:{value:'pay'}});fireEvent.keyDown(input,{key:'Escape'});
     expect(input).toHaveValue('users');expect(onChange).not.toHaveBeenCalled();
   });
+  it('toggles many topics and stays open in multi-select mode',async()=>{
+    const onChange=vi.fn();
+    vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({data:all.map(name=>({name})),meta:{total:all.length,page:1,pageSize:50}})}) as Response));
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><TopicPicker clusterId="demo" label="Topics" selected={['orders']} onChange={onChange}/></QueryClientProvider>);
+    const input=screen.getByRole('combobox',{name:'Topics'});fireEvent.focus(input);
+    expect(await screen.findByRole('option',{name:'orders'})).toHaveAttribute('aria-checked','true');
+    expect(screen.getByRole('option',{name:'payments'})).toHaveAttribute('aria-checked','false');
+    fireEvent.change(input,{target:{value:'pay'}});fireEvent.click(screen.getByRole('option',{name:'payments'}));
+    expect(onChange).toHaveBeenCalledWith('payments');expect(input).toHaveValue('');expect(screen.getByRole('listbox')).toBeVisible();
+  });
 });

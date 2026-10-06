@@ -337,6 +337,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			resource = "*"
 		}
 	}
+	if endpoint == "rebalances" && r.Method == "DELETE" {
+		action = "plan"
+	}
 	if endpoint == "rebalances" && r.Method == "POST" {
 		action = "plan"
 		if len(parts) > 6 {
@@ -842,6 +845,9 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		return
 	}
 	planAction := "read"
+	if r.Method == "DELETE" {
+		planAction = "plan"
+	}
 	if len(parts) == 7 {
 		planAction = parts[6]
 		if planAction == "cancel" || planAction == "throttle" {
@@ -858,6 +864,12 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 	}
 	if len(parts) == 6 && r.Method == "GET" {
 		respond(w, p)
+		return
+	}
+	if len(parts) == 6 && r.Method == "DELETE" {
+		if a.adminMutation(w, r, u, id, "delete-plan", p.ID, map[string]string{"state": p.State}, nil, func() error { return a.o.Store.DeleteJob(r.Context(), p.ID) }) {
+			respond(w, map[string]string{"deleted": p.ID})
+		}
 		return
 	}
 	if len(parts) != 7 || r.Method != "POST" {

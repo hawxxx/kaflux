@@ -220,6 +220,8 @@ test('demo inventory, record inspection, live tail, theme and deep links',async(
 test('mutation authorization and exact plan approval',async({page})=>{
   await page.goto('/clusters/demo/reassignments');
   await page.getByLabel('Topics',{exact:true}).fill('orders.created');
+  await page.getByRole('option',{name:'orders.created',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Remove orders.created'})).toBeVisible();
   await page.getByRole('button',{name:'Generate plan',exact:true}).click();
   await expect(page.getByText(/Review plan ·/)).toBeVisible();
   await page.getByRole('button',{name:'Validate dry run',exact:true}).click();
@@ -237,4 +239,24 @@ test('MSK active intelligent balancing blocks manual plans with actionable reaso
   await expect(page.getByText('AWS owns partition balancing')).toBeVisible();
   await expect(page.getByRole('button',{name:'Generate plan',exact:true})).toBeDisabled();
   await expect(page.getByRole('heading',{name:'Distribution analysis'})).toBeVisible();
+});
+test('topic balance tab hands its topic to the reassignment planner',async({page})=>{
+  await page.goto('/clusters/demo/topics');
+  await page.getByText('orders.created',{exact:true}).first().click();
+  await page.getByRole('button',{name:'Balance',exact:true}).click();
+  await page.getByRole('button',{name:'Open reassignments'}).click();
+  await expect(page).toHaveURL(/reassignments/);
+  await expect(page.getByRole('button',{name:'Remove orders.created'})).toBeVisible();
+});
+test('operation history deletes a planned reassignment',async({page})=>{
+  await page.goto('/clusters/demo/reassignments');
+  await page.getByLabel('Topics',{exact:true}).fill('orders.created');
+  await page.getByRole('option',{name:'orders.created',exact:true}).click();
+  await page.getByRole('button',{name:'Generate plan',exact:true}).click();
+  await expect(page.getByText(/Review plan ·/)).toBeVisible();
+  const n=await page.getByRole('button',{name:/^Delete plan /}).count();
+  await page.getByRole('button',{name:/^Delete plan /}).first().click();
+  await page.getByRole('button',{name:'Confirm deletion'}).click();
+  await expect(page.getByText('Plan deleted.')).toBeVisible();
+  await expect(page.getByRole('button',{name:/^Delete plan /})).toHaveCount(n-1);
 });
