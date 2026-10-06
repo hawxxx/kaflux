@@ -151,3 +151,36 @@ func TestDeadlineAndBoundedCache(t *testing.T) {
 		t.Fatalf("cache unbounded: %d", len(g.entries))
 	}
 }
+
+func TestNextWindowServesPreviousSamplesWhileRefreshing(t *testing.T) {
+	release := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		fmt.Fprint(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"instance":"b-1"},"values":[[100,"3"]]}]}}`)
+	}))
+	defer server.Close()
+	g, err := NewGateway([]SourceConfig{{ID: "prometheus", URL: server.URL, Kind: "prometheus"}}, Options{TTL: time.Minute, Timeout: time.Second, Concurrency: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	first := Query{Source: "prometheus", Expression: "up", Start: 100, End: 200, Step: 10}
+	release <- struct{}{}
+	if _, err := g.Wait(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	next := first
+	next.Start, next.End = 115, 215
+	r := g.Snapshot(next)
+	if r.Status != "available" || !r.Stale || len(r.Series) != 1 {
+		t.Fatalf("next window should serve the previous samples as stale, got %+v", r)
+	}
+	if other := g.Snapshot(Query{Source: "prometheus", Expression: "down", Start: 115, End: 215, Step: 10}); other.Status != "pending" {
+		t.Fatalf("a different expression must not reuse samples, got %s", other.Status)
+	}
+	release <- struct{}{}
+	release <- struct{}{}
+	if r, err := g.Wait(context.Background(), next); err != nil || r.Stale {
+		t.Fatalf("refreshed window should be fresh, got %+v %v", r, err)
+	}
+}

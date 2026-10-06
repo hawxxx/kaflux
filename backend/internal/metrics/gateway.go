@@ -228,7 +228,7 @@ func (g *Gateway) Snapshot(q Query) Result {
 			}
 			delete(g.entries, oldest)
 		}
-		e = &entry{query: q, result: Result{Status: "pending", Series: []Series{}}, touched: now}
+		e = &entry{query: q, result: g.previousWindow(q), touched: now}
 		g.entries[q] = e
 	}
 	e.pending = true
@@ -244,6 +244,23 @@ func (g *Gateway) Snapshot(q Query) Result {
 	r := e.result
 	r.Stale = len(r.Series) > 0
 	return r
+}
+
+// previousWindow seeds a new query window with the newest earlier window of the same
+// query, so callers polling a sliding range get stale samples instead of an empty
+// pending result while the new window loads. Callers hold g.mu.
+func (g *Gateway) previousWindow(q Query) Result {
+	var best *entry
+	for k, v := range g.entries {
+		if k.Source == q.Source && k.Expression == q.Expression && k.Step == q.Step && k.End-k.Start == q.End-q.Start && k.End < q.End &&
+			len(v.result.Series) > 0 && (best == nil || k.End > best.query.End) {
+			best = v
+		}
+	}
+	if best == nil {
+		return Result{Status: "pending", Series: []Series{}}
+	}
+	return best.result
 }
 
 // Wait is for integration work and tests; HTTP navigation uses nonblocking Snapshot.
