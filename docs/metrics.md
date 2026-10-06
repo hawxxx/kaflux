@@ -21,6 +21,13 @@ work shared by others.
 
 Adapters must disclose compatibility limits.
 
+Multi-series definitions (a legend containing `{{label}}`, such as per-topic rates) are bounded
+in PromQL to the top 50 series by average over the selected range, so clusters with thousands of
+topics stay within series and point limits. The ranking uses the `@ end()` modifier, which
+requires Prometheus 2.33 or newer (or a compatible API). Query-shape errors, including rejected
+PromQL and exceeded limits, are reported on the affected chart and do not open the datasource
+circuit.
+
 ## Presentation
 
 Fetch overview aggregates first. Historical charts query when visible using IntersectionObserver;
