@@ -20,6 +20,15 @@ command = "npx"
 args = ["-y", "@magicuidesign/mcp"]
 startup_timeout_sec = 120
 
+[mcp_servers.magicui.tools.searchRegistryItems]
+approval_mode = "approve"
+
+[mcp_servers.magicui.tools.listRegistryItems]
+approval_mode = "approve"
+
+[mcp_servers.magicui.tools.getRegistryItem]
+approval_mode = "approve"
+
 [mcp_servers.playwright]
 command = "npx"
 args = ["-y", "@playwright/mcp@latest"]
