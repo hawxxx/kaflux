@@ -100,3 +100,7 @@
 .config-legend>span{display:flex;align-items:center}
 .config-legend small{flex-basis:100%;font-size:10px}
 .dialog .config-legend{padding:0 0 4px;border:0}
+.record{animation:record-in .24s ease-out both}
+@keyframes record-in{from{opacity:0;transform:translateY(6px)}}
+.message-list{position:relative}
+.tail-pill{position:sticky;bottom:12px;display:flex;align-items:center;gap:6px;width:fit-content;margin:8px auto 12px;padding:6px 12px;border-radius:999px;border:1px solid var(--purple);background:var(--panel);color:var(--text);font:10px 'IBM Plex Mono';box-shadow:0 4px 14px #0003}
