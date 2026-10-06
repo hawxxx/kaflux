@@ -255,7 +255,6 @@ func (n *Native) TopicConsumers(ctx context.Context, topic string) ([]model.Grou
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
 }
-
 func groupOffset(topic string, partition int32, committed int64, start, end kadm.ListedOffsets) (model.GroupOffset, error) {
 	lo, lok := start.Lookup(topic, partition)
 	hi, hok := end.Lookup(topic, partition)
@@ -277,7 +276,6 @@ func groupOffset(topic string, partition int32, committed int64, start, end kadm
 	}
 	return model.GroupOffset{Topic: topic, Partition: partition, CommittedOffset: committed, StartOffset: lo.Offset, EndOffset: hi.Offset, Lag: lag}, nil
 }
-
 func sortOffsets(offsets []model.GroupOffset) {
 	sort.Slice(offsets, func(i, j int) bool {
 		a, b := offsets[i], offsets[j]
