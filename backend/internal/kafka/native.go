@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -205,7 +206,22 @@ func (n *Native) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	if e != nil {
 		return model.Snapshot{}, e
 	}
-	s := model.Snapshot{Brokers: []model.Broker{}, Topics: []model.Topic{}, ObservedAt: time.Now().UTC()}
+	s := snapshotFromMetadata(m, time.Now().UTC())
+	n.mu.Lock()
+	n.cached = s
+	n.expires = time.Now().Add(5 * time.Second)
+	n.mu.Unlock()
+	return s, nil
+}
+
+// snapshotFromMetadata keeps partitions that report errors such as
+// LEADER_NOT_AVAILABLE or REPLICA_NOT_AVAILABLE: brokers return them while a
+// broker restarts, which is exactly when the cluster view must stay usable.
+// Their leader (-1 when offline) and ISR still describe the degraded state.
+// Topics whose metadata failed as a whole (deleted or still being created
+// mid-request) carry no partitions and are skipped.
+func snapshotFromMetadata(m kadm.Metadata, observedAt time.Time) model.Snapshot {
+	s := model.Snapshot{Brokers: []model.Broker{}, Topics: []model.Topic{}, ObservedAt: observedAt}
 	if m.Controller >= 0 {
 		controller := m.Controller
 		s.Controller = &controller
@@ -219,13 +235,10 @@ func (n *Native) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	}
 	for _, t := range m.Topics {
 		if t.Err != nil {
-			return s, t.Err
+			continue
 		}
-		x := model.Topic{Name: t.Topic, Partitions: []model.Partition{}, ObservedAt: s.ObservedAt}
+		x := model.Topic{Name: t.Topic, Partitions: []model.Partition{}, ObservedAt: observedAt}
 		for _, p := range t.Partitions {
-			if p.Err != nil {
-				return s, p.Err
-			}
 			x.Partitions = append(x.Partitions, model.Partition{ID: p.Partition, Leader: p.Leader, Replicas: p.Replicas, ISR: p.ISR})
 			if len(p.ISR) < len(p.Replicas) {
 				x.URP++
@@ -254,11 +267,7 @@ func (n *Native) Snapshot(ctx context.Context) (model.Snapshot, error) {
 			}
 		}
 	}
-	n.mu.Lock()
-	n.cached = s
-	n.expires = time.Now().Add(5 * time.Second)
-	n.mu.Unlock()
-	return s, nil
+	return s
 }
 func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
 	c, done, e := n.bounded(ctx)
@@ -266,8 +275,11 @@ func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
 		return nil, e
 	}
 	defer done()
+	// A ShardErrors result means some coordinators (e.g. a restarting broker)
+	// did not answer; the groups they own are omitted but the rest are valid.
 	g, e := n.admin.DescribeGroups(c)
-	if e != nil {
+	var shardErrs *kadm.ShardErrors
+	if e != nil && !(errors.As(e, &shardErrs) && len(g) > 0) {
 		return nil, e
 	}
 	out := []model.Group{}
@@ -278,7 +290,8 @@ func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
 	lags, lagErr := n.admin.Lag(c, ids...)
 	for _, x := range g {
 		if x.Err != nil {
-			return nil, x.Err
+			out = append(out, model.Group{ID: x.Group, State: "Unavailable", Topics: []string{}})
+			continue
 		}
 		topics := []string{}
 		for t := range x.AssignedPartitions() {
