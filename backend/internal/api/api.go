@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"crypto/subtle"
 	"encoding/base64"
@@ -543,6 +544,32 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 func topicRow(t model.Topic) map[string]any {
 	return map[string]any{"name": t.Name, "partitions": len(t.Partitions), "replicationFactor": t.ReplicationFactor, "sizeBytes": t.SizeBytes, "urp": t.URP, "cleanupPolicy": t.CleanupPolicy, "retentionMs": t.RetentionMs, "observedAt": t.ObservedAt}
 }
+
+// compareTopics orders by a topic list column; unknown sizes sort below known ones.
+func compareTopics(a, b model.Topic, key string) int {
+	switch key {
+	case "partitions":
+		return cmp.Compare(len(a.Partitions), len(b.Partitions))
+	case "replicationFactor":
+		return cmp.Compare(a.ReplicationFactor, b.ReplicationFactor)
+	case "cleanupPolicy":
+		return strings.Compare(a.CleanupPolicy, b.CleanupPolicy)
+	case "sizeBytes":
+		if a.SizeBytes == nil || b.SizeBytes == nil {
+			return cmp.Compare(boolInt(a.SizeBytes != nil), boolInt(b.SizeBytes != nil))
+		}
+		return cmp.Compare(*a.SizeBytes, *b.SizeBytes)
+	case "urp":
+		return cmp.Compare(a.URP, b.URP)
+	}
+	return 0
+}
+func boolInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
 func (a *API) topics(w http.ResponseWriter, r *http.Request, s model.Snapshot, parts []string) {
 	if len(parts) > 5 {
 		for _, t := range s.Topics {
@@ -567,15 +594,9 @@ func (a *API) topics(w http.ResponseWriter, r *http.Request, s model.Snapshot, p
 	desc := r.URL.Query().Get("order") == "desc"
 	sort.SliceStable(list, func(i, j int) bool {
 		comparison := strings.Compare(list[i].Name, list[j].Name)
-		switch sortKey {
-		case "partitions":
-			if len(list[i].Partitions) != len(list[j].Partitions) {
-				comparison = len(list[i].Partitions) - len(list[j].Partitions)
-			}
-		case "urp":
-			if list[i].URP != list[j].URP {
-				comparison = list[i].URP - list[j].URP
-			}
+		// Name breaks ties so pagination stays stable across requests.
+		if c := compareTopics(list[i], list[j], sortKey); c != 0 {
+			comparison = c
 		}
 		if desc {
 			return comparison > 0

@@ -2,6 +2,7 @@ import {useQuery} from '@tanstack/react-query';
 import {AlertTriangle,ArrowRight,CircleAlert,Info,Layers3,RefreshCw,Shield} from 'lucide-react';
 import type {CSSProperties} from 'react';
 import {api,bytes} from './api';
+import {SortButton,useSortedRows} from './table-sort';
 
 type Deviation={broker:number;value:number;differenceFromMean:number;percentageDifference:number};
 type Dimension={id:string;status:'GOOD'|'MODERATE'|'HIGH_SKEW'|'UNAVAILABLE';mean:number;maxMinusMin:number;coefficientOfVariation:number;maxToMeanRatio:number;brokers:Deviation[];reason?:string};
@@ -27,7 +28,9 @@ export function TopicDistribution({clusterId,topic,onPlan}:{clusterId:string;top
   const replicas=dimension('replicas'),leaders=dimension('leaders'),storage=dimension('bytes');
   const deviation=(d:Dimension|undefined,broker:number)=>d?.brokers.find(x=>x.broker===broker)?.percentageDifference;
   const maxReplicas=Math.max(...(a?.brokers??[]).map(b=>b.replicas),1);
-  const columns=[...(a?.brokers??[]).map((b,i)=>({...b,color:brokerColor(i)}))].sort((x,y)=>x.rack.localeCompare(y.rack)||x.broker-y.broker);
+  const colored=(a?.brokers??[]).map((b,i)=>({...b,color:brokerColor(i)}));
+  const brokers=useSortedRows(colored,{broker:b=>b.broker,replicas:b=>b.replicas,leaders:b=>b.leaders,bytes:b=>b.bytes});
+  const columns=[...colored].sort((x,y)=>x.rack.localeCompare(y.rack)||x.broker-y.broker);
   const analyze=<button className="button primary" onClick={()=>query.refetch()} disabled={query.isFetching}><RefreshCw size={13} className={query.isFetching?'spin':undefined}/>{query.isFetching?'Analyzing…':'Analyze'}</button>;
   return <section className="panel topic-distribution">
     <div className="panel-title"><div><h2>Topic distribution</h2><p>{a?`How ${topic} spreads across ${a.brokers.length} brokers · observed ${new Date(a.observedAt).toLocaleTimeString()} · source: Kafka Admin API`:'Partition, replica and leader placement per broker'}</p></div><div className="heading-actions">{onPlan&&<button className="button" onClick={onPlan}>Plan reassignment <ArrowRight size={13}/></button>}{analyze}</div></div>
@@ -40,10 +43,10 @@ export function TopicDistribution({clusterId,topic,onPlan}:{clusterId:string;top
       </div>
       <div className="distribution-grid">
         <div className="distribution-brokers" aria-label="Per-broker placement">
-          <h3>Per broker</h3>
-          {a.brokers.map((b,i)=><div className="distribution-broker" key={b.broker}>
-            <div><span><i style={{background:brokerColor(i)}} aria-hidden="true"/>broker-{b.broker}</span>{b.rack&&<small className="tag">{b.rack}</small>}</div>
-            <div className="bar-track" title={`${b.replicas} replicas, ${b.leaders} leaders`}><div style={{width:`${b.replicas/maxReplicas*100}%`,background:`color-mix(in srgb,${brokerColor(i)} 38%,transparent)`}}/><div style={{width:`${b.leaders/maxReplicas*100}%`,background:brokerColor(i)}}/></div>
+          <div className="distribution-sort"><h3>Per broker</h3><div role="group" aria-label="Sort brokers">{([['broker','Broker'],['replicas','Replicas'],['leaders','Leaders'],['bytes','Size']] as const).map(([key,label])=><SortButton key={key} direction={brokers.direction(key)} pressed={!!brokers.direction(key)} onClick={()=>brokers.toggle(key)}>{label}</SortButton>)}</div></div>
+          {brokers.sorted.map(b=><div className="distribution-broker" key={b.broker}>
+            <div><span><i style={{background:b.color}} aria-hidden="true"/>broker-{b.broker}</span>{b.rack&&<small className="tag">{b.rack}</small>}</div>
+            <div className="bar-track" title={`${b.replicas} replicas, ${b.leaders} leaders`}><div style={{width:`${b.replicas/maxReplicas*100}%`,background:`color-mix(in srgb,${b.color} 38%,transparent)`}}/><div style={{width:`${b.leaders/maxReplicas*100}%`,background:b.color}}/></div>
             <dl><div><dt>Replicas</dt><dd>{b.replicas}<Delta value={deviation(replicas,b.broker)}/></dd></div><div><dt>Leaders</dt><dd>{b.leaders}<Delta value={deviation(leaders,b.broker)}/></dd></div><div><dt>Size</dt><dd>{b.bytes==null?'—':bytes(b.bytes)}<Delta value={deviation(storage,b.broker)}/></dd></div>{b.outOfSync>0&&<div><dt>Out of sync</dt><dd className="warn-text">{b.outOfSync}</dd></div>}</dl>
           </div>)}
           <p className="distribution-legend"><span><i className="solid"/>Leaders</span><span><i className="tint"/>Replicas</span>{storage?.status==='UNAVAILABLE'&&<span>{storage.reason}</span>}</p>

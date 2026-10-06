@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/hawxxx/kaflux/backend/internal/kafka"
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/hawxxx/kaflux/backend/internal/msk"
@@ -68,5 +69,32 @@ func TestTopicBalanceReportsBrokerPlacement(t *testing.T) {
 	a.ServeHTTP(r, httptest.NewRequest("GET", "/api/v1/clusters/demo/topics/missing/balance", nil))
 	if r.Code != 404 {
 		t.Fatalf("missing topic: %d", r.Code)
+	}
+}
+func TestTopicListSortsByColumn(t *testing.T) {
+	s, _ := store.New(context.Background(), "")
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: []model.Cluster{{ID: "demo", Mode: "demo"}}})
+	for _, key := range []string{"partitions", "replicationFactor", "sizeBytes", "urp"} {
+		r := httptest.NewRecorder()
+		a.ServeHTTP(r, httptest.NewRequest("GET", "/api/v1/clusters/demo/topics?sort="+key+"&order=desc&pageSize=200", nil))
+		var body struct {
+			Data []map[string]any `json:"data"`
+		}
+		if err := json.Unmarshal(r.Body.Bytes(), &body); err != nil || len(body.Data) < 2 {
+			t.Fatalf("%s: %v %s", key, err, r.Body.String())
+		}
+		value := func(i int) float64 { v, _ := body.Data[i][key].(float64); return v }
+		for i := 1; i < len(body.Data); i++ {
+			if value(i) > value(i-1) {
+				t.Fatalf("%s not descending at %d: %v > %v", key, i, value(i), value(i-1))
+			}
+		}
+	}
+}
+func TestCompareTopicsSortsUnknownSizeLowest(t *testing.T) {
+	size := int64(10)
+	known, unknown := model.Topic{SizeBytes: &size}, model.Topic{}
+	if compareTopics(unknown, known, "sizeBytes") >= 0 || compareTopics(known, unknown, "sizeBytes") <= 0 || compareTopics(unknown, unknown, "sizeBytes") != 0 {
+		t.Fatal("unknown sizes must sort below known sizes")
 	}
 }
