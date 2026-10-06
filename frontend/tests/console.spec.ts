@@ -260,3 +260,24 @@ test('operation history deletes a planned reassignment',async({page})=>{
   await expect(page.getByText('Plan deleted.')).toBeVisible();
   await expect(page.getByRole('button',{name:/^Delete plan /})).toHaveCount(n-1);
 });
+test('overview throughput charts bytes in and bytes out as two series',async({page})=>{
+ await page.goto('/');
+ const panel=page.locator('.traffic-panel');
+ await panel.scrollIntoViewIfNeeded();
+ await expect(panel.getByText('Bytes in · Bytes out')).toBeVisible();
+ await expect(panel.locator('.u-legend').getByText('Bytes in',{exact:false})).toBeVisible({timeout:20000});
+ await expect(panel.locator('.u-legend').getByText('Bytes out',{exact:false})).toBeVisible();
+ await panel.getByRole('button',{name:'Table'}).click();
+ const table=panel.getByRole('table',{name:'Bytes in · Bytes out by series'});
+ await expect(table.getByRole('cell',{name:'Bytes in',exact:true})).toBeVisible();
+ await expect(table.getByRole('cell',{name:'Bytes out',exact:true})).toBeVisible();
+});
+test('overview throughput keeps bytes in when bytes out is unavailable',async({page})=>{
+ await page.route('**/api/v1/clusters/demo/metrics/query?metric=egress*',route=>route.fulfill({status:503,json:{error:{message:'datasource down'}}}));
+ await page.goto('/');
+ const panel=page.locator('.traffic-panel');
+ await panel.scrollIntoViewIfNeeded();
+ await expect(panel.locator('.u-legend').getByText('Bytes in',{exact:false})).toBeVisible({timeout:20000});
+ await expect(panel.getByText('Bytes out unavailable',{exact:false})).toBeVisible();
+ await expect(panel.locator('.u-legend').getByText('Bytes out',{exact:false})).toHaveCount(0);
+});
