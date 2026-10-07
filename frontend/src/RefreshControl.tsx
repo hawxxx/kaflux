@@ -64,7 +64,7 @@ export function RefreshControl({onRefresh}:{onRefresh:()=>Promise<unknown>}){
   const choose=(value:number)=>{setIntervalValue(value);try{localStorage.setItem(storageKey,String(value))}catch{/* private mode */}};
   const label=refreshIntervals.find(x=>x.value===interval)?.label??'Off';
   return <div className="refresh-control" role="group" aria-label="Refresh">
-    <button className="button" disabled={refreshing} aria-busy={refreshing} onClick={run}><RefreshCw size={14} className={refreshing?'spin':undefined}/>{refreshing?'Refreshing…':'Refresh'}</button>
+    <button className="button" disabled={refreshing} aria-busy={refreshing} onClick={run}><RefreshCw size={14} aria-hidden="true" className={refreshing?'spin':undefined}/><span className="refresh-label">{refreshing?'Refreshing…':'Refresh'}</span></button>
     <label className="button refresh-interval" data-active={interval>0} title={interval?`Refreshing every ${label}`:'Auto refresh is off'}>
       <span aria-hidden="true">{label}</span>
       <select aria-label="Auto refresh interval" value={interval} onChange={e=>choose(Number(e.target.value))}>

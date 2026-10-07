@@ -105,4 +105,10 @@ describe('RefreshControl',()=>{
     expect(onRefresh).toHaveBeenCalledTimes(1);
     await act(async()=>{release()});
   });
+  it('keeps the visible label inside the button so narrow layouts can hide it without losing the name',()=>{
+    render(<RefreshControl onRefresh={vi.fn(async()=>{})}/>);
+    const button=screen.getByRole('button',{name:'Refresh'});
+    expect(button.querySelector('.refresh-label')).toHaveTextContent('Refresh');
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden','true');
+  });
 });
