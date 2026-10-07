@@ -16,6 +16,7 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/msk"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 	saslaws "github.com/twmb/franz-go/pkg/sasl/aws"
 	"github.com/twmb/franz-go/pkg/sasl/oauth"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
@@ -71,6 +72,16 @@ type Native struct {
 	groupsMu    sync.Mutex
 	groupsCache []model.Group
 	groupsUntil time.Time
+
+	// Cleanup policy and retention per topic (see topicconfigs.go).
+	cfgLoadMu     sync.Mutex // serializes loads when nothing usable is cached
+	cfgMu         sync.Mutex
+	cfgCache      *topicSettings
+	cfgRetryAt    time.Time
+	cfgRefreshing bool
+	cfgGeneration uint64                                                           // bumped by every invalidation
+	fetchSettings func(context.Context, []string) (map[string]topicSetting, error) // set by tests
+	describe      func(context.Context, *kmsg.DescribeConfigsRequest) []kgo.ResponseShard // set by tests
 }
 
 func NewNative(c Config) (*Native, error) {
@@ -226,6 +237,7 @@ func (n *Native) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	}
 	s := snapshotFromMetadata(m, time.Now().UTC())
 	n.sizes(ctx).apply(&s)
+	n.applyTopicSettings(ctx, &s)
 	n.mu.Lock()
 	n.cached = s
 	n.expires = time.Now().Add(5 * time.Second)

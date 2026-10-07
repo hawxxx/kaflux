@@ -45,6 +45,7 @@ func (n *Native) CreateTopic(ctx context.Context, in model.TopicCreate) error {
 		return e
 	}
 	n.invalidateAdminMetadata()
+	n.invalidateTopicSettings()
 	return out.Error()
 }
 func (n *Native) DeleteTopic(ctx context.Context, name string) error {
@@ -58,6 +59,7 @@ func (n *Native) DeleteTopic(ctx context.Context, name string) error {
 		return e
 	}
 	n.invalidateAdminMetadata()
+	n.invalidateTopicSettings()
 	return out.Error()
 }
 func (n *Native) TopicConfig(ctx context.Context, name string) ([]model.ConfigEntry, error) {
@@ -104,6 +106,9 @@ func (n *Native) AlterTopicConfig(ctx context.Context, name string, set map[stri
 	if e != nil {
 		return e
 	}
+	// Even a partly failed alter may have changed a value, so the next listing must read them again.
+	n.invalidateTopicSettings()
+	n.invalidateAdminMetadata()
 	for _, v := range out {
 		if v.Err != nil {
 			return v.Err
