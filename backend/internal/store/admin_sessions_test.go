@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/hawxxx/kaflux/backend/internal/auth"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -44,6 +45,75 @@ func TestSessionInventoryOrderingAndCanceledRevoke(t *testing.T) {
 		t.Fatal("canceled mutation emitted success")
 	}
 }
+
+// TestRepeatedLoginsAccumulateIndependentSessionsAcrossBackends documents, at the
+// store layer and across both the SQLite and in-memory backends, why the same
+// user can appear many times on the Active sessions admin page: each login
+// calls SaveSession once and nothing links or revokes a user's prior sessions,
+// so repeated logins (tab reopened, browser restarted, retried request) each
+// add one more independently valid row. ListSessions must keep returning one
+// entry per login (not merge them) while still excluding sessions that have
+// actually expired, so the admin UI has the raw per-session data it needs to
+// group by user.
+func TestRepeatedLoginsAccumulateIndependentSessionsAcrossBackends(t *testing.T) {
+	for _, backend := range []struct {
+		name string
+		open func(t *testing.T) *Store
+	}{
+		{"memory", func(t *testing.T) *Store { s, _ := New(context.Background(), ""); return s }},
+		{"sqlite", func(t *testing.T) *Store {
+			s, e := NewSQLite(context.Background(), filepath.Join(t.TempDir(), "kaflux.db"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			t.Cleanup(s.Close)
+			return s
+		}},
+	} {
+		t.Run(backend.name, func(t *testing.T) {
+			s := backend.open(t)
+			var logins []auth.Session
+			for i := 0; i < 3; i++ {
+				v := auth.NewSession(auth.User{ID: "alice", Roles: []string{"viewer"}, Provider: "local"})
+				if e := s.SaveSession(context.Background(), v); e != nil {
+					t.Fatal(e)
+				}
+				logins = append(logins, v)
+			}
+			expired := auth.NewSession(auth.User{ID: "alice", Roles: []string{"viewer"}, Provider: "local"})
+			expired.Expires = time.Now().Add(-time.Minute)
+			if e := s.SaveSession(context.Background(), expired); e != nil {
+				t.Fatal(e)
+			}
+			items, _, e := s.ListSessions(context.Background(), "", 100, 0)
+			if e != nil {
+				t.Fatal(e)
+			}
+			seen := map[string]bool{}
+			for _, item := range items {
+				if item.UserID != "alice" {
+					continue
+				}
+				if item.Handle == SessionHandle(expired.ID) {
+					t.Fatal("expired login listed alongside this user's live sessions")
+				}
+				seen[item.Handle] = true
+			}
+			if len(seen) != len(logins) {
+				t.Fatalf("expected one row per login (%d), saw %d: a login was dropped or merged with another", len(logins), len(seen))
+			}
+			for _, v := range logins {
+				if !seen[SessionHandle(v.ID)] {
+					t.Fatalf("login %s missing: a later login for the same user revoked an earlier one", v.ID)
+				}
+				if _, e := s.Session(context.Background(), v.ID); e != nil {
+					t.Fatalf("login %s no longer valid: a later login for the same user revoked an earlier one", v.ID)
+				}
+			}
+		})
+	}
+}
+
 func TestPostgresSessionRevokeAuditAtomicity(t *testing.T) {
 	url := os.Getenv("KAFLUX_TEST_DATABASE_URL")
 	if url == "" {

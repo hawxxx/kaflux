@@ -160,3 +160,81 @@ func TestAdminSessionTargetAuthorization(t *testing.T) {
 		t.Fatal("forbidden revoke removed target")
 	}
 }
+
+// TestRepeatedLoginsListEachSessionSeparatelyWithoutRevokingPriorOnes documents the
+// root cause behind "the same user appears repeated many times" on the Active
+// sessions page: every successful login creates a new, independently valid
+// session row, and nothing revokes a user's earlier sessions when a later one
+// is established. That is existing, intended multi-device behavior, not a bug,
+// so the inventory is expected to return one entry per login, all carrying the
+// same userId, until each is individually revoked or naturally expires. The fix
+// for the reported symptom lives in the admin UI (grouping by user), not here;
+// this test fixes the server-side contract that UI depends on: distinct
+// handles per session, a stable userId to group by, and expired sessions never
+// mixed into an otherwise-live user's result set.
+func TestRepeatedLoginsListEachSessionSeparatelyWithoutRevokingPriorOnes(t *testing.T) {
+	st, _ := store.New(context.Background(), "")
+	admin := auth.NewSession(auth.User{ID: "admin", Roles: []string{"administrator"}, Provider: "local"})
+	if e := st.SaveSession(context.Background(), admin); e != nil {
+		t.Fatal(e)
+	}
+	a := New(Options{Store: st})
+	call := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/api/v1/admin/sessions?limit=100", nil)
+		r.AddCookie(&http.Cookie{Name: "kaflux_session", Value: admin.ID})
+		w := httptest.NewRecorder()
+		a.ServeHTTP(w, r)
+		return w
+	}
+	type repeatedLoginUser struct {
+		userID   string
+		sessions []auth.Session
+	}
+	alice := repeatedLoginUser{userID: "alice"}
+	for i := 0; i < 3; i++ {
+		s := auth.NewSession(auth.User{ID: alice.userID, Roles: []string{"viewer"}, Provider: "local"})
+		if e := st.SaveSession(context.Background(), s); e != nil {
+			t.Fatal(e)
+		}
+		alice.sessions = append(alice.sessions, s)
+	}
+	expired := auth.NewSession(auth.User{ID: alice.userID, Roles: []string{"viewer"}, Provider: "local"})
+	expired.Expires = time.Now().Add(-time.Minute)
+	if e := st.SaveSession(context.Background(), expired); e != nil {
+		t.Fatal(e)
+	}
+	w := call()
+	if w.Code != 200 {
+		t.Fatalf("inventory %d %s", w.Code, w.Body.String())
+	}
+	var env struct {
+		Data []struct {
+			Handle, UserID string
+			Current        bool
+		}
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &env); e != nil {
+		t.Fatal(e)
+	}
+	aliceRows := map[string]bool{}
+	for _, row := range env.Data {
+		if row.UserID == alice.userID {
+			aliceRows[row.Handle] = true
+		}
+		if row.Handle == fmt.Sprintf("%x", sha256.Sum256([]byte(expired.ID))) {
+			t.Fatal("expired session listed alongside the user's live sessions")
+		}
+	}
+	if len(aliceRows) != len(alice.sessions) {
+		t.Fatalf("expected one inventory row per login (%d), got %d: repeated logins were deduplicated or merged unexpectedly", len(alice.sessions), len(aliceRows))
+	}
+	for _, s := range alice.sessions {
+		handle := fmt.Sprintf("%x", sha256.Sum256([]byte(s.ID)))
+		if !aliceRows[handle] {
+			t.Fatalf("session %s missing from inventory: an earlier login was unexpectedly revoked by a later one", handle)
+		}
+		if _, e := st.Session(context.Background(), s.ID); e != nil {
+			t.Fatalf("session %s no longer valid: a later login revoked an earlier one for the same user", handle)
+		}
+	}
+}
