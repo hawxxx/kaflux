@@ -362,7 +362,10 @@ func Capabilities(ctx context.Context, p kafka.Provider, force bool) (msk.Capabi
 	if c, ok := p.(interface {
 		Capabilities(context.Context, bool) (msk.Capabilities, error)
 	}); ok {
-		return c.Capabilities(ctx, force)
+		caps, err := c.Capabilities(ctx, force)
+		// Whoever may run a plan may also plan it, whatever the provider reported.
+		caps.PlanningAllowed = caps.PlanningAllowed || caps.ManualReassignmentAllowed
+		return caps, err
 	}
-	return msk.Capabilities{Kind: "Kafka", ManualReassignmentAllowed: true, RebalancingStatus: "NOT_APPLICABLE", ObservedAt: time.Now().UTC()}, nil
+	return msk.Capabilities{Kind: "Kafka", ManualReassignmentAllowed: true, PlanningAllowed: true, RebalancingStatus: "NOT_APPLICABLE", ObservedAt: time.Now().UTC()}, nil
 }

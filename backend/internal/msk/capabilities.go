@@ -17,12 +17,15 @@ import (
 )
 
 type Capabilities struct {
-	ManualReassignmentAllowed bool      `json:"manualReassignmentAllowed"`
-	RebalancingStatus         string    `json:"rebalancingStatus"`
-	Reason                    string    `json:"reason,omitempty"`
-	Kind                      string    `json:"kind"`
-	BrokerType                string    `json:"brokerType,omitempty"`
-	ObservedAt                time.Time `json:"observedAt"`
+	ManualReassignmentAllowed bool `json:"manualReassignmentAllowed"`
+	// PlanningAllowed means plans may be generated and validated (read-only work) even though
+	// running one is not allowed. It is also true whenever manual reassignment is allowed.
+	PlanningAllowed   bool      `json:"planningAllowed"`
+	RebalancingStatus string    `json:"rebalancingStatus"`
+	Reason            string    `json:"reason,omitempty"`
+	Kind              string    `json:"kind"`
+	BrokerType        string    `json:"brokerType,omitempty"`
+	ObservedAt        time.Time `json:"observedAt"`
 }
 
 type Checker struct {
@@ -188,7 +191,9 @@ func ParseDescription(body []byte) (Capabilities, error) {
 		result.Kind = "MSK Express"
 	}
 	if result.RebalancingStatus == "ACTIVE" {
-		result.Reason = "Amazon MSK intelligent rebalancing is ACTIVE. Manual partition reassignment is blocked by AWS; an authorized operator must pause intelligent rebalancing in MSK before using Kaflux."
+		// Planning only reads metadata, so it stays available. Running a plan does not.
+		result.PlanningAllowed = true
+		result.Reason = "Amazon MSK intelligent rebalancing is ACTIVE. Manual partition reassignment is blocked by AWS: plans can be generated and validated here, but an authorized operator must pause intelligent rebalancing in MSK before one can run."
 		return result, nil
 	}
 	if strings.HasPrefix(strings.ToLower(result.BrokerType), "express.") {
@@ -202,6 +207,7 @@ func ParseDescription(body []byte) (Capabilities, error) {
 		return result, errors.New("MSK broker type is unknown")
 	}
 	result.ManualReassignmentAllowed = true
+	result.PlanningAllowed = true
 	result.Reason = ""
 	if result.RebalancingStatus == "" || result.RebalancingStatus == "UNKNOWN" {
 		result.RebalancingStatus = "NOT_APPLICABLE"

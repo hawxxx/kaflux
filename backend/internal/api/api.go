@@ -812,7 +812,8 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		if !decode(w, r, &req) {
 			return
 		}
-		if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || !cap.ManualReassignmentAllowed {
+		// Generating a plan only reads metadata, so it needs planning, not permission to run.
+		if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || !cap.PlanningAllowed {
 			fail(w, 409, "manual_reassignment_blocked", cap.Reason)
 			return
 		}
@@ -912,7 +913,10 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		}
 		return
 	}
-	if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || !cap.ManualReassignmentAllowed {
+	// Dry run and rollback only read metadata and write a plan, so planning is enough for them.
+	// Executing a plan changes the cluster and still requires manual reassignment to be allowed
+	// (the worker and the provider check again before anything is altered).
+	if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || (parts[6] == "execute" && !cap.ManualReassignmentAllowed) || !cap.PlanningAllowed {
 		fail(w, 409, "manual_reassignment_blocked", cap.Reason)
 		return
 	}

@@ -193,3 +193,4 @@
 @media(prefers-reduced-motion:reduce){.refresh-menu,.refresh-live,.refresh-interval .refresh-chevron{animation:none;transition:none}}
 .refresh-menu-note{margin:6px 0 0;padding:8px 8px 4px;border-top:1px solid var(--border);font-size:10px;line-height:1.5;color:var(--muted)}
 .refresh-menu li[data-active=true] kbd{color:var(--text)}
+.execute-blocked{align-self:center;font-size:10px;max-width:34ch;line-height:1.4}
