@@ -88,7 +88,7 @@ test('phone loading and failure states remain usable and refresh recovers',async
     return route.fulfill({json:{data:[],meta:{total:0}}});
   });
   await page.goto('/clusters/demo/topics');
-  await expect(page.getByText('Retrieving cluster state…')).toBeVisible();
+  await expect(page.getByText('Loading topics…')).toBeVisible();
   release();
   await expect(page.getByRole('alert')).toContainText('Metadata unavailable');
   await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();

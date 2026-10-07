@@ -26,4 +26,29 @@ describe('consumer offset administration',()=>{
     vi.stubGlobal('fetch',vi.fn(async(path:string)=>({ok:true,json:async()=>({data:path.endsWith('/workers')?{id:'workers',state:'Stable',members:2,offsets:[]}:[{id:'workers',state:'Stable',members:2,lag:0}]})} as Response)));
     mount();fireEvent.click(await screen.findByRole('button',{name:'workers'}));expect(await screen.findByRole('button',{name:'Reset offsets'})).toBeDisabled();expect(screen.getByText(/Stop all consumers/)).toBeVisible();
   });
+  it('shows a named progress indicator while the group list loads, then the table',async()=>{
+    let release:(v:unknown)=>void=()=>{};
+    const pending=new Promise(r=>{release=r});
+    vi.stubGlobal('fetch',vi.fn(async()=>{await pending;return {ok:true,json:async()=>({data:[{id:'billing',state:'Stable',members:3,lag:12,topics:[]}]})}}));
+    mount();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading consumer groups…');
+    expect(screen.getByRole('progressbar',{name:'Loading consumer groups'})).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByLabelText('Filter consumer groups')).toBeInTheDocument();
+    release(null);
+    expect(await screen.findByRole('button',{name:'billing'})).toBeInTheDocument();
+    await waitFor(()=>expect(screen.queryByRole('progressbar')).toBeNull());
+  });
+  it('shows a progress indicator while a selected group loads its offsets',async()=>{
+    let release:(v:unknown)=>void=()=>{};
+    const pending=new Promise(r=>{release=r});
+    vi.stubGlobal('fetch',vi.fn(async(path:string)=>{
+      if(path.endsWith('/consumer-groups'))return {ok:true,json:async()=>({data:[{id:'billing',state:'Stable',members:3,lag:12,topics:[]}]})};
+      await pending;return {ok:true,json:async()=>({data:{id:'billing',state:'Stable',members:3,lag:12,topics:[],offsets:[]}})};
+    }));
+    mount();fireEvent.click(await screen.findByRole('button',{name:'billing'}));
+    expect(await screen.findByRole('progressbar',{name:'Loading committed offsets'})).toBeInTheDocument();
+    release(null);
+    await waitFor(()=>expect(screen.queryByRole('progressbar')).toBeNull());
+  });
 });
