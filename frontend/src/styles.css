@@ -156,3 +156,12 @@
 .chart-series-chip[aria-pressed=false] span{text-decoration:line-through}
 .chart-series-reset{flex:none;padding:3px 7px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--text);font-size:10px;cursor:pointer;white-space:nowrap}
 @media(max-width:600px){.chart-series-legend{flex-direction:column}.chart-series-chip{max-width:100%}}
+
+.capability-notice-head{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.capability-notice[data-tone=warn]{background:color-mix(in srgb,var(--warn) 7%,transparent);border-color:color-mix(in srgb,var(--warn) 40%,transparent);color:var(--warn)}
+.rebalancing-status{display:inline-block;padding:1px 7px;border:1px solid currentColor;border-radius:999px;font:600 10px/1.6 'IBM Plex Mono',monospace;letter-spacing:.04em;text-transform:uppercase;vertical-align:baseline;white-space:nowrap}
+.rebalancing-status[data-tone=warn]{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.rebalancing-status[data-tone=good]{color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)}
+.rebalancing-status[data-tone=neutral]{color:var(--muted);background:var(--raised)}
+.capability-notice p .rebalancing-status{margin:0 2px}
+.rebalancing-status,.detail-grid .rebalancing-status{width:fit-content;max-width:100%;justify-self:start;align-self:flex-start;text-transform:uppercase;letter-spacing:.04em;font:600 10px/1.6 'IBM Plex Mono',monospace}
