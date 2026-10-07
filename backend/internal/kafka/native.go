@@ -252,11 +252,13 @@ func snapshotFromMetadata(m kadm.Metadata, observedAt time.Time) model.Snapshot 
 			if len(p.ISR) < len(p.Replicas) {
 				x.URP++
 			}
-			if x.ReplicationFactor == 0 {
-				x.ReplicationFactor = len(p.Replicas)
-			}
 		}
 		sort.Slice(x.Partitions, func(i, j int) bool { return x.Partitions[i].ID < x.Partitions[j].ID })
+		// Partitions come from a map, so take the factor from the lowest-numbered one after
+		// sorting. Taking the first one visited made it depend on map iteration order.
+		if len(x.Partitions) > 0 {
+			x.ReplicationFactor = len(x.Partitions[0].Replicas)
+		}
 		s.Topics = append(s.Topics, x)
 	}
 	sort.Slice(s.Topics, func(i, j int) bool { return s.Topics[i].Name < s.Topics[j].Name })
