@@ -121,3 +121,11 @@
 .visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @keyframes loading-slide{from{transform:translateX(-100%)}to{transform:translateX(260%)}}
 @media(prefers-reduced-motion:reduce){.loading-bar::after,.updating-bar[data-active=true]::after{animation:none;width:100%;opacity:.5}}
+.capacity-tile{min-width:0}
+.capacity-tile>strong{font-size:16px;line-height:1.35;overflow-wrap:anywhere}
+.capacity-detail{display:grid;gap:4px;padding:0 20px 15px;font-size:11px;color:var(--muted)}
+.capacity-detail p{margin:0}
+.capacity-detail strong{color:var(--text);font-weight:600}
+.capacity-detail a{color:var(--purple)}
+.capacity-source{font-size:10px}
+@media(max-width:600px){.capacity-detail{padding:0 17px 15px}}

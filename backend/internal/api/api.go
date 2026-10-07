@@ -503,11 +503,12 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		snap.Topics = filtered
 		a.topics(w, r, snap, parts)
 	case "balance":
+		report := a.capacityReport(r.Context(), provider, snap)
 		ds := []model.Distribution{}
 		for _, b := range snap.Brokers {
 			ds = append(ds, model.Distribution{Broker: b.ID, Replicas: b.Partitions, Leaders: b.Leaders})
 		}
-		respond(w, map[string]any{"dimensions": []string{"replicas", "leaders"}, "distribution": ds, "analysis": balance.Analyze(snap), "formula": "CV = population standard deviation / mean; moderate >= 0.10, high skew >= 0.25", "capacityKnown": false})
+		respond(w, map[string]any{"dimensions": []string{"replicas", "leaders"}, "distribution": ds, "analysis": balance.Analyze(snap), "formula": "CV = population standard deviation / mean; moderate >= 0.10, high skew >= 0.25", "capacityKnown": report.Known, "capacity": report})
 	default:
 		fail(w, 404, "not_found", "Endpoint not found")
 	}

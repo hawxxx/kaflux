@@ -11,32 +11,34 @@ import (
 	"time"
 
 	"github.com/hawxxx/kaflux/backend/internal/auth"
+	"github.com/hawxxx/kaflux/backend/internal/capacity"
 	"github.com/hawxxx/kaflux/backend/internal/integrations"
 	"gopkg.in/yaml.v3"
 )
 
 type Cluster struct {
-	ID                   string   `yaml:"id"`
-	Name                 string   `yaml:"name"`
-	Environment          string   `yaml:"environment"`
-	Seeds                []string `yaml:"seeds"`
-	TLS                  bool     `yaml:"tls"`
-	CAFile               string   `yaml:"caFile"`
-	CertFile             string   `yaml:"certFile"`
-	KeyFile              string   `yaml:"keyFile"`
-	SASL                 string   `yaml:"sasl"`
-	User                 string   `yaml:"user"`
-	PasswordEnv          string   `yaml:"passwordEnv"`
-	AllowPlaintext       bool     `yaml:"allowPlaintext"`
-	Region               string   `yaml:"region"`
-	RoleARN              string   `yaml:"roleArn"`
-	MSKClusterARN        string   `yaml:"mskClusterArn"`
-	OAuthTokenEnv        string   `yaml:"oauthTokenEnv"`
-	OAuthTokenEndpoint   string   `yaml:"oauthTokenEndpoint"`
-	OAuthClientID        string   `yaml:"oauthClientId"`
-	OAuthClientSecretEnv string   `yaml:"oauthClientSecretEnv"`
-	OAuthScopes          []string `yaml:"oauthScopes"`
-	OAuthCAFile          string   `yaml:"oauthCAFile"`
+	ID                   string           `yaml:"id"`
+	Name                 string           `yaml:"name"`
+	Environment          string           `yaml:"environment"`
+	Seeds                []string         `yaml:"seeds"`
+	TLS                  bool             `yaml:"tls"`
+	CAFile               string           `yaml:"caFile"`
+	CertFile             string           `yaml:"certFile"`
+	KeyFile              string           `yaml:"keyFile"`
+	SASL                 string           `yaml:"sasl"`
+	User                 string           `yaml:"user"`
+	PasswordEnv          string           `yaml:"passwordEnv"`
+	AllowPlaintext       bool             `yaml:"allowPlaintext"`
+	Region               string           `yaml:"region"`
+	RoleARN              string           `yaml:"roleArn"`
+	MSKClusterARN        string           `yaml:"mskClusterArn"`
+	OAuthTokenEnv        string           `yaml:"oauthTokenEnv"`
+	OAuthTokenEndpoint   string           `yaml:"oauthTokenEndpoint"`
+	OAuthClientID        string           `yaml:"oauthClientId"`
+	OAuthClientSecretEnv string           `yaml:"oauthClientSecretEnv"`
+	OAuthScopes          []string         `yaml:"oauthScopes"`
+	OAuthCAFile          string           `yaml:"oauthCAFile"`
+	Capacity             *capacity.Config `yaml:"capacity"`
 }
 
 type Runtime struct {
@@ -110,6 +112,11 @@ func Load(path string) (Config, error) {
 		var extra any
 		if err := d.Decode(&extra); err != io.EOF {
 			return c, fmt.Errorf("configuration requires a single YAML document")
+		}
+	}
+	for _, cluster := range c.Clusters {
+		if err := cluster.Capacity.Validate(); err != nil {
+			return c, fmt.Errorf("cluster %q: %w", cluster.ID, err)
 		}
 	}
 	c.SessionLifetime = auth.DefaultSessionLifetime

@@ -85,6 +85,9 @@ func run() error {
 			if c.ID == "" || providers[c.ID] != nil {
 				return errors.New("cluster IDs must be nonempty and unique")
 			}
+			if e = c.Capacity.Validate(); e != nil {
+				return errors.New("cluster " + c.ID + ": " + e.Error())
+			}
 			p, e := kafka.NewNative(c)
 			if e != nil {
 				return e

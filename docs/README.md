@@ -18,6 +18,7 @@ external compatibility that still needs qualification.
 | Guide                                     | Purpose                                                     |
 | ----------------------------------------- | ----------------------------------------------------------- |
 | [Metrics](metrics.md)                     | Native Kafka metrics and monitoring failure isolation       |
+| [Broker capacity](broker-capacity.md)     | Partition limits per broker, MSK discovery, and where they come from |
 | [Message decoding](message-decoding.md)   | Supported formats, schema references, and resource limits   |
 | [Rebalancing](rebalancing.md)             | Planning, validation, execution, cancellation, and rollback |
 | [Live throttle changes](live-throttle.md) | Asynchronous rate changes and restoration safeguards        |

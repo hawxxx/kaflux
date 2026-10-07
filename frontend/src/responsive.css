@@ -5,6 +5,9 @@
   .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
+/* The three Balance tiles (skew, mean, capacity) crowd a tablet-width panel; stack them instead. */
+@media(min-width:701px) and (max-width:950px){.balance-summary{grid-template-columns:1fr;gap:10px}}
+
 /* Breadcrumb stays on one line and truncates instead of wrapping into the actions. */
 .topbar{gap:16px}
 .breadcrumb{min-width:0;overflow:hidden}

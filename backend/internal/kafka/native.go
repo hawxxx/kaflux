@@ -11,6 +11,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/hawxxx/kaflux/backend/internal/capacity"
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/hawxxx/kaflux/backend/internal/msk"
 	"github.com/twmb/franz-go/pkg/kadm"
@@ -48,6 +49,9 @@ type Config struct {
 	OAuthClientSecretEnv string   `json:"oauthClientSecretEnv"`
 	OAuthScopes          []string `json:"oauthScopes"`
 	OAuthCAFile          string   `json:"oauthCAFile"`
+	// Capacity is what the operator declares each broker can hold. It describes
+	// clusters where no broker type can be read, such as self-managed Kafka.
+	Capacity *capacity.Config `json:"capacity"`
 }
 type Native struct {
 	client      *kgo.Client
@@ -57,9 +61,10 @@ type Native struct {
 	mu          sync.Mutex
 	cached      model.Snapshot
 	expires     time.Time
-	msk         *msk.Checker
+	msk         msk.CapabilityChecker
 	knownMSK    bool
 	oauthTokens *oauthTokens
+	capacity    *capacity.Config
 	sizeMu      sync.Mutex
 	sizeCache   *logSizes
 	sizeRetryAt time.Time
@@ -167,7 +172,7 @@ func NewNative(c Config) (*Native, error) {
 		}
 		return nil, e
 	}
-	n := &Native{client: cl, admin: kadm.NewClient(cl), opts: opts, budget: make(chan struct{}, 8), oauthTokens: tokens}
+	n := &Native{client: cl, admin: kadm.NewClient(cl), opts: opts, budget: make(chan struct{}, 8), oauthTokens: tokens, capacity: c.Capacity}
 	n.knownMSK = c.SASL == "msk-iam" || c.MSKClusterARN != ""
 	for _, seed := range c.Seeds {
 		if strings.Contains(seed, ".kafka.") || strings.Contains(seed, ".kafka-serverless.") {
@@ -183,6 +188,11 @@ func NewNative(c Config) (*Native, error) {
 			return nil, e
 		}
 		n.msk = checker
+	} else if discoverer, ok := msk.NewDiscoverer(c.Seeds, c.Region, c.RoleARN); ok {
+		// Discovery itself is lazy (performed on first Capabilities call, not
+		// here), so a slow or misconfigured AWS account cannot block startup.
+		n.msk = discoverer
+		n.knownMSK = true
 	}
 	return n, nil
 }
@@ -447,3 +457,6 @@ func (n *Native) FreshSnapshot(ctx context.Context) (model.Snapshot, error) {
 	n.mu.Unlock()
 	return n.Snapshot(ctx)
 }
+
+// CapacityConfig is the capacity the operator declared for this cluster, or nil.
+func (n *Native) CapacityConfig() *capacity.Config { return n.capacity }
