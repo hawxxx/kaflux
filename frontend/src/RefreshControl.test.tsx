@@ -6,10 +6,13 @@ let visibility:DocumentVisibilityState='visible';
 function memoryStorage():Storage{const m=new Map<string,string>();return {get length(){return m.size},clear:()=>m.clear(),getItem:k=>m.get(k)??null,key:i=>[...m.keys()][i]??null,removeItem:k=>{m.delete(k)},setItem:(k,v)=>{m.set(k,String(v))}}}
 beforeEach(()=>{
   vi.stubGlobal('localStorage',memoryStorage());
-  vi.useFakeTimers();visibility='visible';
+  // Only the timer APIs the component uses; React's own scheduler work (setImmediate) stays real.
+  vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval','Date']});visibility='visible';
   vi.spyOn(document,'visibilityState','get').mockImplementation(()=>visibility);
 });
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals()});
+const trigger=()=>screen.getByRole('button',{name:/^Auto refresh:/});
+const pick=(name:string)=>{fireEvent.click(trigger());fireEvent.click(screen.getByRole('option',{name:new RegExp(`^${name}`)}))};
 const flush=async()=>{await act(async()=>{await Promise.resolve()})};
 const advance=async(ms:number)=>{await act(async()=>{await vi.advanceTimersByTimeAsync(ms)})};
 
@@ -27,7 +30,7 @@ describe('RefreshControl',()=>{
   it('is off by default and refreshes only when clicked',async()=>{
     const onRefresh=vi.fn(async()=>{});
     render(<RefreshControl onRefresh={onRefresh}/>);
-    expect(screen.getByLabelText('Auto refresh interval')).toHaveValue('0');
+    expect(trigger()).toHaveAccessibleName('Auto refresh: Off');
     await advance(120_000);
     expect(onRefresh).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button',{name:'Refresh'}));await flush();
@@ -36,15 +39,15 @@ describe('RefreshControl',()=>{
   it('refreshes on the chosen interval and remembers it',async()=>{
     const onRefresh=vi.fn(async()=>{});
     const {unmount}=render(<RefreshControl onRefresh={onRefresh}/>);
-    fireEvent.change(screen.getByLabelText('Auto refresh interval'),{target:{value:'5000'}});
+    pick('Every 5 seconds');
     expect(localStorage.getItem('kaflux-refresh-interval')).toBe('5000');
     await advance(4_900);expect(onRefresh).toHaveBeenCalledTimes(0);
     await advance(200);expect(onRefresh).toHaveBeenCalledTimes(1);
     await advance(5_000);expect(onRefresh).toHaveBeenCalledTimes(2);
     unmount();
     render(<RefreshControl onRefresh={onRefresh}/>);
-    expect(screen.getByLabelText('Auto refresh interval')).toHaveValue('5000');
-    expect(screen.getByText('5s')).toBeInTheDocument();
+    expect(trigger()).toHaveAccessibleName('Auto refresh: Every 5 seconds');
+    expect(trigger()).toHaveTextContent('5s');
   });
   it('never starts a refresh while the previous one is still running',async()=>{
     let release:()=>void=()=>{};
@@ -68,15 +71,18 @@ describe('RefreshControl',()=>{
     await act(async()=>{document.dispatchEvent(new Event('visibilitychange'))});
     await advance(0);expect(onRefresh).toHaveBeenCalledTimes(1);
   });
-  it('stops when switched off and leaves no timers after unmount',async()=>{
+  it('stops when switched off and stops refreshing after unmount',async()=>{
     const onRefresh=vi.fn(async()=>{});
     const {unmount}=render(<RefreshControl onRefresh={onRefresh}/>);
-    const select=screen.getByLabelText('Auto refresh interval');
-    fireEvent.change(select,{target:{value:'5000'}});await advance(5_000);
-    fireEvent.change(select,{target:{value:'0'}});await advance(60_000);
+    pick('Every 5 seconds');await advance(5_000);
+    pick('Off');await advance(60_000);
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    fireEvent.change(select,{target:{value:'10000'}});unmount();
-    expect(vi.getTimerCount()).toBe(0);
+    pick('Every 10 seconds');
+    const calls=onRefresh.mock.calls.length;
+    unmount();
+    // jsdom schedules its own timers when focus moves, so count what the component does, not timers.
+    await advance(120_000);
+    expect(onRefresh).toHaveBeenCalledTimes(calls);
   });
   it('keeps refreshing after a failed refresh',async()=>{
     const onRefresh=vi.fn().mockRejectedValueOnce(new Error('broker unavailable')).mockResolvedValue(undefined);
@@ -89,7 +95,7 @@ describe('RefreshControl',()=>{
     vi.stubGlobal('localStorage',{getItem:()=>{throw new DOMException('blocked','SecurityError')},setItem:()=>{throw new DOMException('blocked','SecurityError')}});
     const onRefresh=vi.fn(async()=>{});
     render(<RefreshControl onRefresh={onRefresh}/>);
-    fireEvent.change(screen.getByLabelText('Auto refresh interval'),{target:{value:'5000'}});
+    pick('Every 5 seconds');
     await advance(5_000);
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
@@ -110,5 +116,37 @@ describe('RefreshControl',()=>{
     const button=screen.getByRole('button',{name:'Refresh'});
     expect(button.querySelector('.refresh-label')).toHaveTextContent('Refresh');
     expect(button.querySelector('svg')).toHaveAttribute('aria-hidden','true');
+  });
+  it('opens a listbox that marks the current choice, closes on Escape and returns focus',async()=>{
+    render(<RefreshControl onRefresh={vi.fn(async()=>{})}/>);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    fireEvent.click(trigger());
+    expect(trigger()).toHaveAttribute('aria-expanded','true');
+    const list=screen.getByRole('listbox',{name:'Auto refresh'});
+    expect(screen.getAllByRole('option')).toHaveLength(6);
+    expect(screen.getByRole('option',{name:/^Off/})).toHaveAttribute('aria-selected','true');
+    await flush();expect(list).toHaveFocus();
+    fireEvent.keyDown(list,{key:'Escape'});
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(trigger()).toHaveFocus();
+  });
+  it('is fully usable from the keyboard',async()=>{
+    render(<RefreshControl onRefresh={vi.fn(async()=>{})}/>);
+    fireEvent.keyDown(trigger(),{key:'ArrowDown'});
+    const list=screen.getByRole('listbox');
+    fireEvent.keyDown(list,{key:'ArrowDown'});fireEvent.keyDown(list,{key:'ArrowDown'});
+    expect(list.getAttribute('aria-activedescendant')).toBe(screen.getByRole('option',{name:/^Every 10 seconds/}).id);
+    fireEvent.keyDown(list,{key:'End'});fireEvent.keyDown(list,{key:'Home'});fireEvent.keyDown(list,{key:'ArrowDown'});
+    fireEvent.keyDown(list,{key:'Enter'});
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(trigger()).toHaveAccessibleName('Auto refresh: Every 5 seconds');
+    expect(localStorage.getItem('kaflux-refresh-interval')).toBe('5000');
+  });
+  it('closes when clicking elsewhere without changing the choice',()=>{
+    render(<div><RefreshControl onRefresh={vi.fn(async()=>{})}/><p>outside</p></div>);
+    fireEvent.click(trigger());
+    fireEvent.pointerDown(screen.getByText('outside'));
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(trigger()).toHaveAccessibleName('Auto refresh: Off');
   });
 });
