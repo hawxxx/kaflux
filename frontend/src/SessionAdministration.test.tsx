@@ -32,7 +32,8 @@ it('groups repeated sessions for the same user into one row with a count and the
  await screen.findByText('alice');
  expect(screen.getAllByText('alice')).toHaveLength(1);
  expect(screen.getByText('2')).toBeVisible();
- expect(screen.getByText('10/5/2026, 3:00:00 AM')).toBeVisible();
+ // The component renders the newest expiry with the browser locale and time zone, so the expectation must too.
+ expect(screen.getByText(new Date(other.expires).toLocaleString())).toBeVisible();
  expect(screen.getByText('1 users',{exact:false})).toBeVisible();
 });
 it('keeps a single active session for a user collapsed into its own session row without an expand control',async()=>{
