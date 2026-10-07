@@ -24,9 +24,22 @@ clusters:
     sasl: ""
     user: ""
     passwordEnv: KAFLUX_KAFKA_PASSWORD
+    # Optional. What one broker is meant to hold, from your own sizing. Needed for
+    # self-managed Kafka, where no broker type can be read. Amazon MSK clusters are
+    # resolved automatically (see below); this block overrides their published limits.
+    # capacity:
+    #   label: r6i.4xlarge
+    #   partitionsPerBroker: {recommended: 4000, maximum: 6000}
+    #   diskBytesPerBroker: 4398046511104
 # For a real MSK entry set region, SASL msk-iam (or configured SCRAM/TLS),
 # optional roleArn, and mskClusterArn. Manual reassignment must check ACTIVE
-# cluster state and is blocked when the state cannot be verified.
+# cluster state and is blocked when the state cannot be verified. mskClusterArn
+# can be left unset when every seed is an MSK bootstrap broker hostname
+# (b-<n>.<cluster-name>.<id>.c<generation>.kafka.<region>.amazonaws.com):
+# Kaflux then discovers the ARN itself via kafka:ListClustersV2, as long as
+# exactly one cluster's name and generation match. Discovery is lazy and
+# cached, and never blocks startup; set mskClusterArn explicitly if discovery
+# cannot find a unique match, or to skip the extra AWS call.
 grants:
   - role: administrator
     cluster: "*"

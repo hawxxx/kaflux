@@ -17,12 +17,15 @@ import (
 )
 
 type Capabilities struct {
-	ManualReassignmentAllowed bool      `json:"manualReassignmentAllowed"`
-	RebalancingStatus         string    `json:"rebalancingStatus"`
-	Reason                    string    `json:"reason,omitempty"`
-	Kind                      string    `json:"kind"`
-	BrokerType                string    `json:"brokerType,omitempty"`
-	ObservedAt                time.Time `json:"observedAt"`
+	ManualReassignmentAllowed bool `json:"manualReassignmentAllowed"`
+	// PlanningAllowed means plans may be generated and validated (read-only work) even though
+	// running one is not allowed. It is also true whenever manual reassignment is allowed.
+	PlanningAllowed   bool      `json:"planningAllowed"`
+	RebalancingStatus string    `json:"rebalancingStatus"`
+	Reason            string    `json:"reason,omitempty"`
+	Kind              string    `json:"kind"`
+	BrokerType        string    `json:"brokerType,omitempty"`
+	ObservedAt        time.Time `json:"observedAt"`
 }
 
 type Checker struct {
@@ -122,6 +125,9 @@ func (c *Checker) fetch(parent context.Context) (Capabilities, error) {
 		return unknown(), errors.New("MSK capability lookup unavailable; manual reassignment blocked")
 	}
 	defer response.Body.Close()
+	if response.StatusCode == 403 {
+		return deniedCapability("kafka:DescribeClusterV2", "describe the MSK cluster"), fmt.Errorf("MSK capability lookup denied (HTTP 403); missing kafka:DescribeClusterV2")
+	}
 	if response.StatusCode != 200 {
 		return unknown(), fmt.Errorf("MSK capability lookup returned HTTP %d; require kafka:DescribeClusterV2 permission", response.StatusCode)
 	}
@@ -134,6 +140,14 @@ func (c *Checker) fetch(parent context.Context) (Capabilities, error) {
 
 func unknown() Capabilities {
 	return Capabilities{Kind: "MSK", RebalancingStatus: "UNKNOWN", Reason: "MSK intelligent rebalancing status is unverified; manual reassignment is blocked", ObservedAt: time.Now().UTC()}
+}
+
+// deniedCapability reports the specific IAM action AWS denied so the operator
+// can grant it, instead of a generic unknown result. action is the exact IAM
+// action string (e.g. "kafka:DescribeClusterV2"); purpose is a short
+// human-readable description of what that action was needed for.
+func deniedCapability(action, purpose string) Capabilities {
+	return Capabilities{Kind: "MSK", RebalancingStatus: "UNKNOWN", Reason: fmt.Sprintf("AWS denied the request to %s (HTTP 403 AccessDenied). Grant the %s permission to the role Kaflux runs as.", purpose, action), ObservedAt: time.Now().UTC()}
 }
 
 func ParseDescription(body []byte) (Capabilities, error) {
@@ -177,7 +191,9 @@ func ParseDescription(body []byte) (Capabilities, error) {
 		result.Kind = "MSK Express"
 	}
 	if result.RebalancingStatus == "ACTIVE" {
-		result.Reason = "Amazon MSK intelligent rebalancing is ACTIVE. Manual partition reassignment is blocked by AWS; an authorized operator must pause intelligent rebalancing in MSK before using Kaflux."
+		// Planning only reads metadata, so it stays available. Running a plan does not.
+		result.PlanningAllowed = true
+		result.Reason = "Amazon MSK intelligent rebalancing is ACTIVE. Manual partition reassignment is blocked by AWS: plans can be generated and validated here, but an authorized operator must pause intelligent rebalancing in MSK before one can run."
 		return result, nil
 	}
 	if strings.HasPrefix(strings.ToLower(result.BrokerType), "express.") {
@@ -191,6 +207,7 @@ func ParseDescription(body []byte) (Capabilities, error) {
 		return result, errors.New("MSK broker type is unknown")
 	}
 	result.ManualReassignmentAllowed = true
+	result.PlanningAllowed = true
 	result.Reason = ""
 	if result.RebalancingStatus == "" || result.RebalancingStatus == "UNKNOWN" {
 		result.RebalancingStatus = "NOT_APPLICABLE"

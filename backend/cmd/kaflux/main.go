@@ -8,6 +8,7 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/auth"
 	"github.com/hawxxx/kaflux/backend/internal/awsutil"
 	"github.com/hawxxx/kaflux/backend/internal/config"
+	"github.com/hawxxx/kaflux/backend/internal/httpgzip"
 	"github.com/hawxxx/kaflux/backend/internal/integrations"
 	"github.com/hawxxx/kaflux/backend/internal/jobs"
 	"github.com/hawxxx/kaflux/backend/internal/kafka"
@@ -83,6 +84,9 @@ func run() error {
 		for _, c := range configs {
 			if c.ID == "" || providers[c.ID] != nil {
 				return errors.New("cluster IDs must be nonempty and unique")
+			}
+			if e = c.Capacity.Validate(); e != nil {
+				return errors.New("cluster " + c.ID + ": " + e.Error())
 			}
 			p, e := kafka.NewNative(c)
 			if e != nil {
@@ -183,7 +187,7 @@ func run() error {
 			slog.Error("background worker shutdown timed out")
 		}
 	}()
-	server := &http.Server{Addr: cfg.Listen, Handler: telemetry.NewHTTP(handler, gateway.Stats), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.Listen, Handler: telemetry.NewHTTP(httpgzip.Handler(handler), gateway.Stats), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	go func() {
 		<-ctx.Done()
 		shutdown, c := context.WithTimeout(context.Background(), 10*time.Second)

@@ -204,8 +204,11 @@ paths:
       summary: Get observed cluster capability and manual reassignment restrictions
       description: >-
         MSK intelligent rebalancing must be verified before manual reassignment. ACTIVE and UNKNOWN
-        block planning, execution, rollback and native reassignment calls. Kaflux never
-        automatically pauses MSK rebalancing.
+        block execution, throttle changes and native reassignment calls
+        (`manualReassignmentAllowed` is false). While rebalancing is ACTIVE on an ACTIVE cluster,
+        generating a plan, a dry run and a rollback plan stay available (`planningAllowed` is true);
+        they are blocked when the status is UNKNOWN. Kaflux never automatically pauses MSK
+        rebalancing.
       operationId: getClusterCapabilities
       responses:
         "200": { $ref: "#/components/responses/Envelope" }
@@ -1206,8 +1209,8 @@ components:
         replicationFactor: { type: integer }
         sizeBytes: { type: integer, format: int64, nullable: true }
         urp: { type: integer }
-        cleanupPolicy: { type: string }
-        retentionMs: { type: integer, format: int64, nullable: true }
+        cleanupPolicy: { type: string, description: "Empty when the topic configuration could not be read" }
+        retentionMs: { type: integer, format: int64, nullable: true, description: "Null when unknown; -1 means unlimited" }
         observedAt: { type: string, format: date-time }
     Message:
       type: object

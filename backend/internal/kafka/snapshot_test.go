@@ -40,3 +40,25 @@ func TestSnapshotKeepsDegradedPartitionsAndSkipsFailedTopics(t *testing.T) {
 		t.Fatalf("leaders = %v replicas = %v", leaders, replicas)
 	}
 }
+
+// Partitions arrive in a map, so the replication factor must not depend on which one is
+// visited first. A partition that temporarily has fewer replicas (for example while a
+// reassignment is in flight) must not change the topic's reported factor either.
+func TestSnapshotReplicationFactorDoesNotDependOnMapOrder(t *testing.T) {
+	m := kadm.Metadata{
+		Brokers: kadm.BrokerDetails{{NodeID: 1}, {NodeID: 2}, {NodeID: 3}},
+		Topics: kadm.TopicDetails{"orders": {Topic: "orders", Partitions: kadm.PartitionDetails{
+			0: {Partition: 0, Leader: 1, Replicas: []int32{1, 2, 3}, ISR: []int32{1, 2, 3}},
+			1: {Partition: 1, Leader: 2, Replicas: []int32{2, 3}, ISR: []int32{2, 3}},
+			2: {Partition: 2, Leader: 3, Replicas: []int32{3}, ISR: []int32{3}},
+			3: {Partition: 3, Leader: 1, Replicas: []int32{1}, ISR: []int32{1}},
+			4: {Partition: 4, Leader: 2, Replicas: []int32{2}, ISR: []int32{2}},
+		}}},
+	}
+	for i := 0; i < 200; i++ {
+		s := snapshotFromMetadata(m, time.Unix(0, 0))
+		if got := s.Topics[0].ReplicationFactor; got != 3 {
+			t.Fatalf("run %d: replication factor = %d, want 3 (the lowest-numbered partition)", i, got)
+		}
+	}
+}

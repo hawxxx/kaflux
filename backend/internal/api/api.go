@@ -467,15 +467,24 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if replicas := balance.Analyze(snap)[0]; replicas.Status != "UNAVAILABLE" {
 			tot["balanceSkew"] = replicas.CV * 100
 		}
-		if a.o.Demo {
-			groups, _ := provider.Groups(r.Context())
-			lag := int64(0)
+		// Sum of the groups whose lag is known. consumerLag stays null when the
+		// groups cannot be read or none has a known lag; consumerLagUnknownGroups
+		// says how many were left out of the sum.
+		if groups, ge := provider.Groups(r.Context()); ge == nil {
+			lag, unknown := int64(0), 0
 			for _, g := range groups {
 				if g.Lag != nil {
 					lag += *g.Lag
+				} else {
+					unknown++
 				}
 			}
-			tot["consumerLag"] = lag
+			if len(groups) == 0 || unknown < len(groups) {
+				tot["consumerLag"] = lag
+			}
+			if unknown > 0 {
+				tot["consumerLagUnknownGroups"] = unknown
+			}
 		}
 		var c model.Cluster
 		for _, x := range a.o.Clusters {
@@ -494,11 +503,12 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		snap.Topics = filtered
 		a.topics(w, r, snap, parts)
 	case "balance":
+		report := a.capacityReport(r.Context(), provider, snap)
 		ds := []model.Distribution{}
 		for _, b := range snap.Brokers {
 			ds = append(ds, model.Distribution{Broker: b.ID, Replicas: b.Partitions, Leaders: b.Leaders})
 		}
-		respond(w, map[string]any{"dimensions": []string{"replicas", "leaders"}, "distribution": ds, "analysis": balance.Analyze(snap), "formula": "CV = population standard deviation / mean; moderate >= 0.10, high skew >= 0.25", "capacityKnown": false})
+		respond(w, map[string]any{"dimensions": []string{"replicas", "leaders"}, "distribution": ds, "analysis": balance.Analyze(snap), "formula": "CV = population standard deviation / mean; moderate >= 0.10, high skew >= 0.25", "capacityKnown": report.Known, "capacity": report})
 	default:
 		fail(w, 404, "not_found", "Endpoint not found")
 	}
@@ -802,7 +812,8 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		if !decode(w, r, &req) {
 			return
 		}
-		if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || !cap.ManualReassignmentAllowed {
+		// Generating a plan only reads metadata, so it needs planning, not permission to run.
+		if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || !cap.PlanningAllowed {
 			fail(w, 409, "manual_reassignment_blocked", cap.Reason)
 			return
 		}
@@ -902,7 +913,10 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		}
 		return
 	}
-	if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || !cap.ManualReassignmentAllowed {
+	// Dry run and rollback only read metadata and write a plan, so planning is enough for them.
+	// Executing a plan changes the cluster and still requires manual reassignment to be allowed
+	// (the worker and the provider check again before anything is altered).
+	if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || (parts[6] == "execute" && !cap.ManualReassignmentAllowed) || !cap.PlanningAllowed {
 		fail(w, 409, "manual_reassignment_blocked", cap.Reason)
 		return
 	}
@@ -1040,10 +1054,26 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 	p, _ = a.o.Store.Job(r.Context(), p.ID)
 	respond(w, p)
 }
+
+// clientRoutePrefix is the part of the URL space owned by the browser router.
+// The segments below it are names chosen by users (topics, consumer groups,
+// cluster ids) and routinely contain dots.
+const clientRoutePrefix = "/clusters"
+
+// isClientRoute reports whether a path that matches no file is a page the
+// browser router renders. A dot in the last segment means a file request
+// everywhere except under clientRoutePrefix, so missing assets and files such
+// as /favicon.ico still return 404 rather than the application shell.
+func isClientRoute(clean string) bool {
+	if clean == clientRoutePrefix || strings.HasPrefix(clean, clientRoutePrefix+"/") {
+		return true
+	}
+	return !strings.Contains(filepath.Base(clean), ".")
+}
 func (a *API) static(w http.ResponseWriter, r *http.Request) {
 	clean := filepath.Clean("/" + r.URL.Path)
 	target := filepath.Join(a.o.StaticDir, clean)
-	if _, e := os.Stat(target); os.IsNotExist(e) && !strings.Contains(filepath.Base(clean), ".") {
+	if _, e := os.Stat(target); os.IsNotExist(e) && isClientRoute(clean) {
 		http.ServeFile(w, r, filepath.Join(a.o.StaticDir, "index.html"))
 		return
 	}

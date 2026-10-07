@@ -11,10 +11,12 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/hawxxx/kaflux/backend/internal/capacity"
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/hawxxx/kaflux/backend/internal/msk"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 	saslaws "github.com/twmb/franz-go/pkg/sasl/aws"
 	"github.com/twmb/franz-go/pkg/sasl/oauth"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
@@ -48,6 +50,9 @@ type Config struct {
 	OAuthClientSecretEnv string   `json:"oauthClientSecretEnv"`
 	OAuthScopes          []string `json:"oauthScopes"`
 	OAuthCAFile          string   `json:"oauthCAFile"`
+	// Capacity is what the operator declares each broker can hold. It describes
+	// clusters where no broker type can be read, such as self-managed Kafka.
+	Capacity *capacity.Config `json:"capacity"`
 }
 type Native struct {
 	client      *kgo.Client
@@ -57,9 +62,26 @@ type Native struct {
 	mu          sync.Mutex
 	cached      model.Snapshot
 	expires     time.Time
-	msk         *msk.Checker
+	msk         msk.CapabilityChecker
 	knownMSK    bool
 	oauthTokens *oauthTokens
+	capacity    *capacity.Config
+	sizeMu      sync.Mutex
+	sizeCache   *logSizes
+	sizeRetryAt time.Time
+	groupsMu    sync.Mutex
+	groupsCache []model.Group
+	groupsUntil time.Time
+
+	// Cleanup policy and retention per topic (see topicconfigs.go).
+	cfgLoadMu     sync.Mutex // serializes loads when nothing usable is cached
+	cfgMu         sync.Mutex
+	cfgCache      *topicSettings
+	cfgRetryAt    time.Time
+	cfgRefreshing bool
+	cfgGeneration uint64                                                           // bumped by every invalidation
+	fetchSettings func(context.Context, []string) (map[string]topicSetting, error) // set by tests
+	describe      func(context.Context, *kmsg.DescribeConfigsRequest) []kgo.ResponseShard // set by tests
 }
 
 func NewNative(c Config) (*Native, error) {
@@ -161,7 +183,7 @@ func NewNative(c Config) (*Native, error) {
 		}
 		return nil, e
 	}
-	n := &Native{client: cl, admin: kadm.NewClient(cl), opts: opts, budget: make(chan struct{}, 8), oauthTokens: tokens}
+	n := &Native{client: cl, admin: kadm.NewClient(cl), opts: opts, budget: make(chan struct{}, 8), oauthTokens: tokens, capacity: c.Capacity}
 	n.knownMSK = c.SASL == "msk-iam" || c.MSKClusterARN != ""
 	for _, seed := range c.Seeds {
 		if strings.Contains(seed, ".kafka.") || strings.Contains(seed, ".kafka-serverless.") {
@@ -177,6 +199,11 @@ func NewNative(c Config) (*Native, error) {
 			return nil, e
 		}
 		n.msk = checker
+	} else if discoverer, ok := msk.NewDiscoverer(c.Seeds, c.Region, c.RoleARN); ok {
+		// Discovery itself is lazy (performed on first Capabilities call, not
+		// here), so a slow or misconfigured AWS account cannot block startup.
+		n.msk = discoverer
+		n.knownMSK = true
 	}
 	return n, nil
 }
@@ -201,12 +228,16 @@ func (n *Native) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	if e != nil {
 		return model.Snapshot{}, e
 	}
-	defer done()
 	m, e := n.admin.Metadata(c)
+	// Release the slot before sizes() takes its own: holding one while waiting
+	// for another could exhaust the budget under concurrent refreshes.
+	done()
 	if e != nil {
 		return model.Snapshot{}, e
 	}
 	s := snapshotFromMetadata(m, time.Now().UTC())
+	n.sizes(ctx).apply(&s)
+	n.applyTopicSettings(ctx, &s)
 	n.mu.Lock()
 	n.cached = s
 	n.expires = time.Now().Add(5 * time.Second)
@@ -243,11 +274,13 @@ func snapshotFromMetadata(m kadm.Metadata, observedAt time.Time) model.Snapshot 
 			if len(p.ISR) < len(p.Replicas) {
 				x.URP++
 			}
-			if x.ReplicationFactor == 0 {
-				x.ReplicationFactor = len(p.Replicas)
-			}
 		}
 		sort.Slice(x.Partitions, func(i, j int) bool { return x.Partitions[i].ID < x.Partitions[j].ID })
+		// Partitions come from a map, so take the factor from the lowest-numbered one after
+		// sorting. Taking the first one visited made it depend on map iteration order.
+		if len(x.Partitions) > 0 {
+			x.ReplicationFactor = len(x.Partitions[0].Replicas)
+		}
 		s.Topics = append(s.Topics, x)
 	}
 	sort.Slice(s.Topics, func(i, j int) bool { return s.Topics[i].Name < s.Topics[j].Name })
@@ -269,7 +302,35 @@ func snapshotFromMetadata(m kadm.Metadata, observedAt time.Time) model.Snapshot 
 	}
 	return s
 }
+
+// groupsTTL bounds how often the full group list and its lag are computed. The
+// list page and the overview both read it on every poll.
+const groupsTTL = 10 * time.Second
+
+// Groups lists all consumer groups with lag. Concurrent callers share one
+// computation, and the result is reused for groupsTTL or until offsets change.
 func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
+	n.groupsMu.Lock()
+	defer n.groupsMu.Unlock()
+	if time.Now().Before(n.groupsUntil) {
+		return append([]model.Group(nil), n.groupsCache...), nil
+	}
+	out, e := n.loadGroups(ctx)
+	if e != nil {
+		return nil, e
+	}
+	n.groupsCache, n.groupsUntil = out, time.Now().Add(groupsTTL)
+	return append([]model.Group(nil), out...), nil
+}
+
+// invalidateGroups drops the cached list so the next read reflects a change
+// made through Kaflux, such as an offset reset.
+func (n *Native) invalidateGroups() {
+	n.groupsMu.Lock()
+	n.groupsUntil = time.Time{}
+	n.groupsMu.Unlock()
+}
+func (n *Native) loadGroups(ctx context.Context) ([]model.Group, error) {
 	c, done, e := n.bounded(ctx)
 	if e != nil {
 		return nil, e
@@ -283,11 +344,7 @@ func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
 		return nil, e
 	}
 	out := []model.Group{}
-	ids := []string{}
-	for _, x := range g {
-		ids = append(ids, x.Group)
-	}
-	lags, lagErr := n.admin.Lag(c, ids...)
+	lags := n.groupLags(c, g)
 	for _, x := range g {
 		if x.Err != nil {
 			out = append(out, model.Group{ID: x.Group, State: "Unavailable", Topics: []string{}})
@@ -298,24 +355,7 @@ func (n *Native) Groups(ctx context.Context) ([]model.Group, error) {
 			topics = append(topics, t)
 		}
 		sort.Strings(topics)
-		var lag *int64
-		if lagErr == nil {
-			if observed, ok := lags[x.Group]; ok && observed.Error() == nil {
-				known := true
-				for _, parts := range observed.Lag {
-					for _, p := range parts {
-						if p.Err != nil || p.Lag < 0 {
-							known = false
-						}
-					}
-				}
-				if known {
-					v := observed.Lag.Total()
-					lag = &v
-				}
-			}
-		}
-		out = append(out, model.Group{ID: x.Group, State: x.State, Members: len(x.Members), Topics: topics, Lag: lag})
+		out = append(out, model.Group{ID: x.Group, State: x.State, Members: len(x.Members), Topics: topics, Lag: lags[x.Group]})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
@@ -429,3 +469,6 @@ func (n *Native) FreshSnapshot(ctx context.Context) (model.Snapshot, error) {
 	n.mu.Unlock()
 	return n.Snapshot(ctx)
 }
+
+// CapacityConfig is the capacity the operator declared for this cluster, or nil.
+func (n *Native) CapacityConfig() *capacity.Config { return n.capacity }

@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,7 +58,21 @@ type Result struct {
 	Cached     bool      `json:"cached"`
 	Stale      bool      `json:"stale"`
 	Error      string    `json:"error,omitempty"`
+	// SeriesLimit is set when the query was bounded to the top N series by average.
+	SeriesLimit int `json:"seriesLimit,omitempty"`
 }
+
+// queryError reports a problem with the query or its result shape (bad PromQL, too many
+// series, oversized response). It is surfaced to the caller and does not count against
+// datasource health, so one high-cardinality panel cannot open the circuit for all panels.
+type queryError struct{ msg string }
+
+func (e queryError) Error() string { return e.msg }
+
+// defaultSeriesLimit bounds multi-series panels such as per-topic rates. Clusters with
+// thousands of topics otherwise exceed the series, point, and byte limits on every query.
+const defaultSeriesLimit = 50
+
 type entry struct {
 	query            Query
 	result           Result
@@ -315,7 +330,18 @@ func (g *Gateway) worker(s *source) {
 			r, err := g.query(ctx, s.config, e.query)
 			cancel()
 			g.mu.Lock()
-			if err != nil {
+			var qerr queryError
+			if errors.As(err, &qerr) {
+				g.failures.Add(1)
+				msg := "Metrics unavailable: " + qerr.msg
+				if len(e.result.Series) > 0 {
+					e.result.Stale = true
+					e.result.Error = msg
+				} else {
+					e.result = Result{Status: "unavailable", Series: []Series{}, Error: msg}
+				}
+				e.expires = time.Now().Add(g.opts.TTL)
+			} else if err != nil {
 				g.failures.Add(1)
 				s.failures++
 				if s.failures >= 3 {
@@ -377,6 +403,18 @@ func (g *Gateway) query(ctx context.Context, c SourceConfig, q Query) (Result, e
 		return Result{}, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity {
+		// Prometheus rejects invalid or unsupported PromQL with 400/422 and a JSON error.
+		var failure struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&failure)
+		msg := fmt.Sprintf("datasource rejected the query (HTTP %d)", resp.StatusCode)
+		if failure.Error != "" {
+			msg += ": " + truncate(failure.Error, 240)
+		}
+		return Result{}, queryError{msg}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return Result{}, fmt.Errorf("datasource returned HTTP %d", resp.StatusCode)
 	}
@@ -385,7 +423,7 @@ func (g *Gateway) query(ctx context.Context, c SourceConfig, q Query) (Result, e
 		return Result{}, err
 	}
 	if int64(len(body)) > g.opts.MaxResponseBytes {
-		return Result{}, errors.New("metric response exceeds byte limit")
+		return Result{}, queryError{"metric response exceeds byte limit"}
 	}
 	var decoded struct {
 		Status string `json:"status"`
@@ -404,7 +442,7 @@ func (g *Gateway) query(ctx context.Context, c SourceConfig, q Query) (Result, e
 		return Result{}, errors.New("metric query failed")
 	}
 	if len(decoded.Data.Result) > g.opts.MaxSeries {
-		return Result{}, errors.New("metric series exceeds limit")
+		return Result{}, queryError{fmt.Sprintf("metric returned %d series, limit is %d", len(decoded.Data.Result), g.opts.MaxSeries)}
 	}
 	r := Result{Status: "available", ObservedAt: time.Now().UTC(), Series: make([]Series, 0, len(decoded.Data.Result))}
 	points := 0
@@ -417,7 +455,7 @@ func (g *Gateway) query(ctx context.Context, c SourceConfig, q Query) (Result, e
 		for _, p := range pairs {
 			points++
 			if points > g.opts.MaxPoints {
-				return Result{}, errors.New("metric points exceed limit")
+				return Result{}, queryError{"metric points exceed limit"}
 			}
 			var timestamp float64
 			var value string
@@ -491,11 +529,60 @@ func (g *Gateway) Handler() http.Handler {
 			span, _ := time.ParseDuration(duration)
 			end := time.Now().Unix() / 15 * 15
 			step := max(int64(15), int64(span.Seconds())/300)
+			limit := 0
+			if def.Kind != "cloudwatch" && splitsByEntity(def.Legend) {
+				limit = g.seriesLimit(int64(span.Seconds())/step + 1)
+				expr = boundSeries(expr, limit, duration, step)
+			}
 			result := g.Snapshot(Query{Source: sourceID, Expression: expr, Start: end - int64(span.Seconds()), End: end, Step: step})
+			result.SeriesLimit = limit
 			json.NewEncoder(w).Encode(map[string]any{"data": result})
 		default:
 			w.WriteHeader(404)
 			json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "NOT_FOUND", "message": "Unknown metrics endpoint"}})
 		}
 	})
+}
+
+// unboundedLabels name series that do not multiply with the number of topics, consumer
+// groups or clients. instance is one series per broker, so a cluster never has thousands of
+// them, and jmx_version only labels single-value tiles such as broker or topic counts.
+// Rewriting those adds cost and risk without bounding anything.
+var unboundedLabels = map[string]bool{"instance": true, "jmx_version": true}
+
+var legendLabel = regexp.MustCompile(`\{\{\s*(\w+)\s*\}\}`)
+
+// splitsByEntity reports whether a legend splits the result by a label whose cardinality grows
+// with the workload, such as topic or groupId. Only those definitions are bounded to the top N.
+func splitsByEntity(legend string) bool {
+	for _, m := range legendLabel.FindAllStringSubmatch(legend, -1) {
+		if !unboundedLabels[m[1]] {
+			return true
+		}
+	}
+	return false
+}
+
+// seriesLimit picks how many series a bounded query may return so the response stays within
+// the configured series and point limits.
+func (g *Gateway) seriesLimit(pointsPerSeries int64) int {
+	limit := min(defaultSeriesLimit, g.opts.MaxSeries)
+	if pointsPerSeries > 0 {
+		limit = min(limit, int(int64(g.opts.MaxPoints)/pointsPerSeries))
+	}
+	return max(limit, 1)
+}
+
+// boundSeries keeps the top N series of a multi-series expression, ranked by their average
+// over the whole window. The ranking is pinned to the window end with "@ end()", so the same
+// series are kept at every step instead of topk choosing a different set per step.
+func boundSeries(expression string, limit int, duration string, step int64) string {
+	return fmt.Sprintf("(%s) and topk(%d, avg_over_time((%s)[%s:%ds] @ end()))", expression, limit, expression, duration, step)
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }

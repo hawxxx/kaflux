@@ -5,7 +5,7 @@ test.beforeEach(async({page})=>{
     const url=new URL(route.request().url());
     if(url.pathname.endsWith('/auth/session'))return route.fulfill({json:{data:{user:{username:'reader',roles:['viewer']},demo:true}}});
     if(url.pathname.endsWith('/clusters'))return route.fulfill({json:{data:[{id:'demo',name:'Demo',topicCount:350}]}});
-    if(url.pathname.endsWith('/topics'))return route.fulfill({json:{data:[{name:`orders.${url.searchParams.get('page')??0}`,partitions:3,replicationFactor:3,cleanupPolicy:'delete',sizeBytes:100,urp:0}],meta:{total:350}}});
+    if(url.pathname.endsWith('/topics'))return route.fulfill({json:{data:[{name:`orders.${Number(url.searchParams.get('page')??1)-1}`,partitions:3,replicationFactor:3,cleanupPolicy:'delete',sizeBytes:100,urp:0}],meta:{total:350}}});
     return route.fulfill({json:{data:[]}});
   });
 });
@@ -29,7 +29,7 @@ test('topic table restores shared URL and survives reload and browser history',a
   await page.getByLabel('Search topics').fill('payments');
   await expect(page.getByText('Page 1',{exact:true})).toBeVisible();
   await expect(page.getByText('1 selected',{exact:true})).toHaveCount(0);
-  await page.getByRole('button',{name:'Topic name ↕'}).click();
+  await page.getByRole('button',{name:'Topic name'}).click();
   await expect(page).toHaveURL(/order=asc/);
   await page.getByRole('button',{name:'Columns',exact:true}).click();
   await page.getByLabel('Storage size').check();
@@ -48,7 +48,7 @@ test('malformed topic state produces bounded API requests',async({page})=>{
   await expect(page.locator('thead th').filter({hasText:/^Size$/})).toBeVisible();
   const params=new URL(requests.find(x=>x.includes('pageSize=100'))!).searchParams;
   expect(params.get('q')).toHaveLength(256);
-  expect(params.get('page')).toBe('0');
+  expect(params.get('page')).toBe('1');
   expect(params.get('sort')).toBe('name');
   expect(params.get('order')).toBe('asc');
 });

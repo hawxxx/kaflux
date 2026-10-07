@@ -21,6 +21,16 @@ work shared by others.
 
 Adapters must disclose compatibility limits.
 
+Definitions whose legend splits the result by a label that grows with the workload, such as
+`{{topic}}`, `{{groupId}}` or `{{listener}}`, are bounded in PromQL to the top 50 series by average
+over the selected range, so clusters with thousands of topics stay within series and point limits.
+Legends that use only `{{instance}}` (one series per broker) or `{{jmx_version}}` (single-value
+tiles such as broker and topic counts) are sent unchanged. The ranking uses the `@ end()` modifier,
+which requires Prometheus 2.33 or newer (or a compatible API). A bounded chart says so in its
+footer, for example `Limited to top 50 series by datasource`. Query-shape errors, including rejected
+PromQL and exceeded limits, are reported on the affected chart and do not open the datasource
+circuit, so one heavy chart cannot make every other chart unavailable.
+
 ## Presentation
 
 Fetch overview aggregates first. Historical charts query when visible using IntersectionObserver;
@@ -30,7 +40,12 @@ and source status. Display “Metrics temporarily unavailable” while preservin
 ## Correctness
 
 Escape `$instance` values and interpret `$__range` using bounded server-side durations. Preserve
-metric units. Replica bytes are physical storage; leader bytes approximate logical topic size.
+metric units. Broker and topic sizes come from the brokers' log directories, the same source
+Kafka admin tools use. A broker's size is every replica it stores. A topic's size is the sum
+over all of its replicas, and is unknown when any replica did not report. A partition's size is one
+replica, which the balance analysis and reassignment planner scale by the replicas they place.
+Consumer lag is `max(logEndOffset - committedOffset, 0)` summed over a group's committed
+partitions; commits on topics the cluster no longer lists are ignored.
 Missing telemetry is unknown. Fetch waiting time alone is not failure; correlate queues, local time,
 errors, ISR, and follower lag.
 

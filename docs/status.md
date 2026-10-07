@@ -164,9 +164,12 @@ This checks rendering behavior rather than production load capacity.
 | Kubernetes runtime, HA failover and restore drills        | Helm lint/render does not establish admission, availability or disaster recovery                                                                                                                                                                                                                                                                                                                                                    |
 | Production load and complete accessibility audit          | Not established by unit, build or local browser checks                                                                                                                                                                                                                                                                                                                                                                              |
 
-MSK capability checks block manual planning, execution, rollback and native reassignment when
-intelligent rebalancing is ACTIVE or UNKNOWN. The application does not automatically pause MSK
-intelligent rebalancing. `/ready` checks the database; broker and telemetry availability are
+MSK capability checks block executing a plan, throttle changes and native reassignment when
+intelligent rebalancing is ACTIVE or UNKNOWN. Generating a plan, validating it with a dry run and
+requesting a rollback plan only read cluster metadata, so they stay available while rebalancing is
+ACTIVE (`planningAllowed`); they are blocked when the status cannot be verified, the cluster is not
+ACTIVE, or it is Serverless. The worker and the provider check again before anything is altered. The
+application does not automatically pause MSK intelligent rebalancing. `/ready` checks the database; broker and telemetry availability are
 reported separately.
 
 ## Exploratory scale measurements

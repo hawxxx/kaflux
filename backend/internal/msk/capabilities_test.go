@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,13 +15,15 @@ func TestExpressIntelligentRebalanceCapability(t *testing.T) {
 	for _, test := range []struct {
 		name, kind, broker, status string
 		allowed                    bool
+		planning                   bool
 	}{
-		{"active express", "PROVISIONED", "express.m7g.large", "ACTIVE", false},
-		{"paused express", "PROVISIONED", "express.m7g.large", "PAUSED", true},
-		{"unknown express", "PROVISIONED", "express.m7g.large", "", false},
-		{"future status", "PROVISIONED", "express.m7g.large", "ENABLING", false},
-		{"standard broker", "PROVISIONED", "kafka.m7g.large", "", true},
-		{"serverless", "SERVERLESS", "", "", false},
+		// While AWS owns placement nothing may run, but planning reads metadata only.
+		{"active express", "PROVISIONED", "express.m7g.large", "ACTIVE", false, true},
+		{"paused express", "PROVISIONED", "express.m7g.large", "PAUSED", true, true},
+		{"unknown express", "PROVISIONED", "express.m7g.large", "", false, false},
+		{"future status", "PROVISIONED", "express.m7g.large", "ENABLING", false, false},
+		{"standard broker", "PROVISIONED", "kafka.m7g.large", "", true, true},
+		{"serverless", "SERVERLESS", "", "", false, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			payload := fmt.Sprintf(`{"clusterInfo":{"clusterType":%q,"state":"ACTIVE","provisioned":{"brokerNodeGroupInfo":{"instanceType":%q},"rebalancing":{"status":%q}}}}`, test.kind, test.broker, test.status)
@@ -28,7 +31,7 @@ func TestExpressIntelligentRebalanceCapability(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if capability.ManualReassignmentAllowed != test.allowed {
+			if capability.ManualReassignmentAllowed != test.allowed || capability.PlanningAllowed != test.planning {
 				t.Fatalf("wrong capability %+v", capability)
 			}
 			if !test.allowed && capability.Reason == "" {
@@ -84,6 +87,28 @@ func TestUnknownDescriptionNeverAllowsManualReassignment(t *testing.T) {
 		capability, _ := ParseDescription([]byte(payload))
 		if capability.ManualReassignmentAllowed {
 			t.Fatalf("unsafe description accepted %s", payload)
+		}
+	}
+}
+
+func TestPlanningIsOfferedOnlyWhenTheClusterIsActive(t *testing.T) {
+	// A cluster that is updating or failed is not a stable basis for a plan, even with rebalancing ACTIVE.
+	payload := `{"clusterInfo":{"clusterType":"PROVISIONED","state":"MAINTENANCE","provisioned":{"brokerNodeGroupInfo":{"instanceType":"express.m7g.large"},"rebalancing":{"status":"ACTIVE"}}}}`
+	capability, err := ParseDescription([]byte(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capability.PlanningAllowed || capability.ManualReassignmentAllowed {
+		t.Fatalf("planning offered on a cluster that is not ACTIVE: %+v", capability)
+	}
+}
+
+func TestActiveRebalancingReasonSaysPlanningWorksAndRunningDoesNot(t *testing.T) {
+	payload := `{"clusterInfo":{"clusterType":"PROVISIONED","state":"ACTIVE","provisioned":{"brokerNodeGroupInfo":{"instanceType":"express.m7g.large"},"rebalancing":{"status":"ACTIVE"}}}}`
+	capability, _ := ParseDescription([]byte(payload))
+	for _, want := range []string{"ACTIVE", "generated and validated", "pause intelligent rebalancing"} {
+		if !strings.Contains(capability.Reason, want) {
+			t.Fatalf("reason %q lacks %q", capability.Reason, want)
 		}
 	}
 }
