@@ -1049,10 +1049,26 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 	p, _ = a.o.Store.Job(r.Context(), p.ID)
 	respond(w, p)
 }
+
+// clientRoutePrefix is the part of the URL space owned by the browser router.
+// The segments below it are names chosen by users (topics, consumer groups,
+// cluster ids) and routinely contain dots.
+const clientRoutePrefix = "/clusters"
+
+// isClientRoute reports whether a path that matches no file is a page the
+// browser router renders. A dot in the last segment means a file request
+// everywhere except under clientRoutePrefix, so missing assets and files such
+// as /favicon.ico still return 404 rather than the application shell.
+func isClientRoute(clean string) bool {
+	if clean == clientRoutePrefix || strings.HasPrefix(clean, clientRoutePrefix+"/") {
+		return true
+	}
+	return !strings.Contains(filepath.Base(clean), ".")
+}
 func (a *API) static(w http.ResponseWriter, r *http.Request) {
 	clean := filepath.Clean("/" + r.URL.Path)
 	target := filepath.Join(a.o.StaticDir, clean)
-	if _, e := os.Stat(target); os.IsNotExist(e) && !strings.Contains(filepath.Base(clean), ".") {
+	if _, e := os.Stat(target); os.IsNotExist(e) && isClientRoute(clean) {
 		http.ServeFile(w, r, filepath.Join(a.o.StaticDir, "index.html"))
 		return
 	}
