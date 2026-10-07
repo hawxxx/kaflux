@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {LoadingPanel,UpdatingBar} from './LoadingPanel';
+import {useSteadyInterval} from './RefreshControl';
 import * as Dialog from '@radix-ui/react-dialog';
 import {ArrowLeft,ArrowRight,Shield,X} from 'lucide-react';
 import {api,type Session} from './api';
@@ -15,7 +16,8 @@ export function ConsumerGroups({clusterId,session}:{clusterId:string;session?:Se
   const qc=useQueryClient();const [groupId,setGroupId]=useState('');const [filter,setFilter]=useState('');const [open,setOpen]=useState(false);const [mode,setMode]=useState<Mode>('earliest');const [value,setValue]=useState('0');const [timestamp,setTimestamp]=useState('');const [preview,setPreview]=useState<Reset|null>(null);const [confirmation,setConfirmation]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
   const base=`/clusters/${clusterId}/consumer-groups`;
   const list=useQuery({queryKey:[base],queryFn:()=>api<Group[]>(base)});
-  const detail=useQuery({queryKey:[base,groupId],queryFn:()=>api<Group>(`${base}/${encodeURIComponent(groupId)}`),enabled:!!groupId,refetchInterval:10000});
+  const detailEvery=useSteadyInterval(10_000,!!groupId);
+  const detail=useQuery({queryKey:[base,groupId],queryFn:()=>api<Group>(`${base}/${encodeURIComponent(groupId)}`),enabled:!!groupId,refetchInterval:detailEvery});
   const group=detail.data?.data;const inactive=!!group&&group.members===0&&['empty','dead'].includes(group.state.toLowerCase());
   const groups=useSortedRows((list.data?.data??[]).filter(g=>g.id.toLowerCase().includes(filter.toLowerCase())),{id:g=>g.id,state:g=>g.state,members:g=>g.members,lag:g=>g.lag});
   const offsets=useSortedRows(group?.offsets??[],{topic:o=>o.topic,partition:o=>o.partition,committed:o=>o.committedOffset,start:o=>o.startOffset,end:o=>o.endOffset,lag:o=>o.lag});
