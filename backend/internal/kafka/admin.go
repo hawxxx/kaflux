@@ -23,6 +23,9 @@ type AdminProvider interface {
 	TopicConfig(context.Context, string) ([]model.ConfigEntry, error)
 	AlterTopicConfig(context.Context, string, map[string]string, []string) error
 	IncreasePartitions(context.Context, string, int32) error
+	// TruncateTopic deletes every record currently in the topic, moving each
+	// partition's start offset to its end offset. The topic stays in place.
+	TruncateTopic(context.Context, string) error
 	GroupDetail(context.Context, string) (model.GroupDetail, error)
 	TopicConsumers(context.Context, string) ([]model.GroupDetail, error)
 	PreviewOffsets(context.Context, string, model.OffsetReset) (model.OffsetPreview, error)
@@ -142,6 +145,63 @@ func (n *Native) IncreasePartitions(ctx context.Context, name string, count int3
 	}
 	n.invalidateAdminMetadata()
 	return out.Error()
+}
+func (n *Native) TruncateTopic(ctx context.Context, name string) error {
+	c, done, e := n.bounded(ctx)
+	if e != nil {
+		return e
+	}
+	defer done()
+	end, e := n.admin.ListEndOffsets(c, name)
+	if e != nil {
+		return e
+	}
+	if e = end.Error(); e != nil {
+		return e
+	}
+	if len(end[name]) == 0 {
+		return fmt.Errorf("topic not found")
+	}
+	out, e := n.admin.DeleteRecords(c, end.Offsets())
+	if e != nil {
+		return e
+	}
+	return out.Error()
+}
+
+// MessageCounts lists start and end offsets for the given topics, which the
+// topic list bounds to one page. Topics with any partition missing an offset
+// are left out so their count reads as unknown rather than too low.
+func (n *Native) MessageCounts(ctx context.Context, topics []string) map[string]int64 {
+	out := map[string]int64{}
+	if len(topics) == 0 {
+		return out
+	}
+	c, done, e := n.bounded(ctx)
+	if e != nil {
+		return out
+	}
+	defer done()
+	start, e1 := n.admin.ListStartOffsets(c, topics...)
+	end, e2 := n.admin.ListEndOffsets(c, topics...)
+	if e1 != nil || e2 != nil {
+		return out
+	}
+	for _, t := range topics {
+		total, complete := int64(0), len(end[t]) > 0
+		for p, hi := range end[t] {
+			lo, ok := start.Lookup(t, p)
+			if hi.Err != nil || !ok || lo.Err != nil {
+				complete = false
+				break
+			}
+			total += max(hi.Offset-lo.Offset, 0)
+		}
+		if complete {
+			out[t] = total
+		}
+	}
+	return out
 }
 func (n *Native) invalidateAdminMetadata() { n.mu.Lock(); n.expires = time.Time{}; n.mu.Unlock() }
 func (n *Native) GroupDetail(ctx context.Context, id string) (model.GroupDetail, error) {

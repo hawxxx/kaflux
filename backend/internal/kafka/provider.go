@@ -14,3 +14,9 @@ type Provider interface {
 	Pending(context.Context) (map[string][]int32, error)
 	Close()
 }
+
+// MessageCounter is implemented by providers whose snapshots carry no
+// partition offsets, so record counts are listed on demand per topic.
+type MessageCounter interface {
+	MessageCounts(context.Context, []string) map[string]int64
+}

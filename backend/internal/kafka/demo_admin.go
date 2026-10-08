@@ -70,6 +70,27 @@ func (d *Demo) DeleteTopic(ctx context.Context, name string) error {
 	}
 	return fmt.Errorf("topic not found")
 }
+func (d *Demo) TruncateTopic(ctx context.Context, name string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i := range d.state.Topics {
+		t := &d.state.Topics[i]
+		if t.Name != name {
+			continue
+		}
+		for j := range t.Partitions {
+			p := &t.Partitions[j]
+			end := int64(0)
+			if p.EndOffset != nil {
+				end = *p.EndOffset
+			}
+			p.StartOffset = &end
+			d.messages[fmt.Sprintf("%s/%d", name, p.ID)] = []model.Message{}
+		}
+		return nil
+	}
+	return fmt.Errorf("topic not found")
+}
 
 // demoTopicDefaults mirrors the topic-level configuration keys and defaults
 // of Apache Kafka 3.7 so the simulator describes the same surface a broker does.
