@@ -8,8 +8,14 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
       "extra-files": [
-        "deploy/helm/kaflux/Chart.yaml",
-        "docs/openapi.yaml"
+        {
+          "type": "generic",
+          "path": "deploy/helm/kaflux/Chart.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "docs/openapi.yaml"
+        }
       ]
     }
   }
