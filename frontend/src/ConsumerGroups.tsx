@@ -15,8 +15,8 @@ type Group={id:string;state:string;members:number;lag:number|null;offsets?:Offse
 type Reset={groupId:string;changes:{topic:string;partition:number;before:number|null;after:number}[];previewHash:string;applied:boolean};
 type Mode='earliest'|'latest'|'timestamp'|'absolute'|'shift';
 function allowed(session?:Session){return session?.user.role==='administrator'||session?.user.roles?.includes('administrator')||session?.user.permissions?.includes('offsets:reset')}
-export function ConsumerGroups({clusterId,session}:{clusterId:string;session?:Session}){
-  const qc=useQueryClient();const [groupId,setGroupId]=useState('');const [filter,setFilter]=useState('');const [open,setOpen]=useState(false);const [mode,setMode]=useState<Mode>('earliest');const [value,setValue]=useState('0');const [timestamp,setTimestamp]=useState('');const [preview,setPreview]=useState<Reset|null>(null);const [confirmation,setConfirmation]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
+export function ConsumerGroups({clusterId,session,initialGroup}:{clusterId:string;session?:Session;initialGroup?:string}){
+  const qc=useQueryClient();const [groupId,setGroupId]=useState(initialGroup??'');const [filter,setFilter]=useState('');const [open,setOpen]=useState(false);const [mode,setMode]=useState<Mode>('earliest');const [value,setValue]=useState('0');const [timestamp,setTimestamp]=useState('');const [preview,setPreview]=useState<Reset|null>(null);const [confirmation,setConfirmation]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
   const base=`/clusters/${clusterId}/consumer-groups`;
   const list=useQuery({queryKey:[base],queryFn:()=>api<Group[]>(base)});
   const detailEvery=useSteadyInterval(10_000,!!groupId);
