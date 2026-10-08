@@ -164,3 +164,13 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Releases & Container Images
+
+Image: `ghcr.io/hawxxx/kaflux`. Workflows: `.github/workflows/release.yaml` (build, scan, sign, publish) and `release-please.yaml` (versioning).
+
+- Merge to `main` publishes `:main` and `:sha-<commit>`. Never `latest`.
+- Releases are cut by merging the **Release PR** that release-please keeps open. It bumps `Chart.yaml`, `docs/openapi.yaml` and `CHANGELOG.md`, tags `vX.Y.Z`, and publishes `X.Y.Z`, `X.Y` and `latest` (only if it is the highest stable version).
+- Use Conventional Commits: `fix:` = patch, `feat:` = minor, `feat!:`/`BREAKING CHANGE` = breaking. `chore:`/`docs:` do not release.
+- Never hand-edit versions, push `v*` tags, move or retag a version, or merge the Release PR unless the user asks (it publishes publicly). Bad release: ship the next patch.
+- Deploy with a pinned version or digest (`0.1.0`, `@sha256:…`), not `latest` or `main`. Compose uses `KAFLUX_VERSION`; Helm defaults to chart `appVersion`.
