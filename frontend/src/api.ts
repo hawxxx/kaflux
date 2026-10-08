@@ -1,5 +1,5 @@
 export type Cluster = {id:string;name:string;configuredName:string;environment:string;kind:string;mode:string;state:string;brokerCount:number;topicCount:number;partitionCount:number};
-export type Topic = {name:string;partitions:number;replicationFactor:number;sizeBytes:number|null;urp:number;cleanupPolicy:string;retentionMs:number;observedAt:string};
+export type Topic = {name:string;partitions:number;replicationFactor:number;sizeBytes:number|null;urp:number;cleanupPolicy:string;retentionMs:number;observedAt:string;internal?:boolean;messages?:number|null};
 export type Broker = {id:number;host:string;port:number;rack:string;partitions:number;leaders:number;sizeBytes:number|null};
 export type Message = {partition:number;offset:number;timestamp:string;key:unknown;value:unknown;headers:{key:string;value:string}[];valueBase64?:string;keyBase64?:string;truncated?:boolean;decodedValue?:unknown;schemaId?:number;decodeError?:string;decodedFormat?:string;decodedKey?:unknown;keyDecodedFormat?:string;keySchemaId?:number;keyDecodeError?:string};
 export type Session = {user:{username:string;name?:string;role?:string;roles?:string[];permissions?:string[]};csrfToken:string;demo:boolean;canManageSessions?:boolean};

@@ -19,6 +19,57 @@ import (
 
 var topicName = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,249}$`)
 
+// errRecreateIncomplete means the topic was deleted but not created again.
+var errRecreateIncomplete = errors.New("topic deleted but not recreated")
+
+// validNewTopic checks the name and sizing of a topic about to be created.
+// Names starting with "__" are reserved for Kafka itself.
+func validNewTopic(in model.TopicCreate) bool {
+	return topicName.MatchString(in.Name) && in.Name != "." && in.Name != ".." && !strings.HasPrefix(in.Name, "__") && in.Partitions >= 1 && in.Partitions <= 10000 && in.ReplicationFactor >= 1 && in.ReplicationFactor <= 100
+}
+
+// validCopiedConfig accepts readable keys the broker describes for the source
+// topic, so a copy can carry any override the source has.
+func validCopiedConfig(described []model.ConfigEntry, cfg map[string]string) bool {
+	if len(cfg) > 128 {
+		return false
+	}
+	known := map[string]bool{}
+	for _, e := range described {
+		known[e.Name] = !e.Sensitive
+	}
+	for k, v := range cfg {
+		if !known[k] || len(v) > 4096 {
+			return false
+		}
+	}
+	return true
+}
+
+// recreateTopic deletes the topic and creates it again from spec. Brokers
+// delete asynchronously and answer TOPIC_ALREADY_EXISTS until the old topic
+// is gone, so creation is retried for a bounded time.
+func recreateTopic(ctx context.Context, admin kafka.AdminProvider, spec model.TopicCreate) error {
+	if e := admin.DeleteTopic(ctx, spec.Name); e != nil {
+		return e
+	}
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		e := admin.CreateTopic(ctx, spec)
+		if e == nil {
+			return nil
+		}
+		if !errors.Is(e, kerr.TopicAlreadyExists) || time.Now().After(deadline) {
+			return errors.Join(errRecreateIncomplete, e)
+		}
+		select {
+		case <-ctx.Done():
+			return errors.Join(errRecreateIncomplete, ctx.Err())
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
 func validTopicConfig(cfg map[string]string) bool {
 	if len(cfg) > 32 {
 		return false
@@ -75,6 +126,10 @@ func validConfigChange(described []model.ConfigEntry, set map[string]string, res
 }
 func adminError(w http.ResponseWriter, e error) {
 	switch {
+	case errors.Is(e, errRecreateIncomplete):
+		fail(w, 502, "recreate_incomplete", "Topic was deleted but could not be created again; create it with the configuration recorded in the audit log")
+	case errors.Is(e, kerr.PolicyViolation):
+		fail(w, 422, "policy_violation", "Kafka rejected the operation because of the topic's cleanup policy")
 	case errors.Is(e, store.ErrThrottleConflict):
 		fail(w, 409, "throttle_conflict", e.Error())
 	case errors.Is(e, store.ErrJobActive):
@@ -234,9 +289,15 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 		if r.Method == "DELETE" {
 			action = "delete"
 		} else if r.Method != "GET" {
-			if len(parts) == 5 {
+			switch {
+			case len(parts) == 5:
 				action = "create"
-			} else {
+			case len(parts) == 7 && (parts[6] == "truncate" || parts[6] == "recreate"):
+				action = "delete"
+			case len(parts) == 7 && parts[6] == "copy":
+				// Reading the source is checked here; creating the copy is checked by name below.
+				action = "read"
+			default:
 				action = "alter-config"
 			}
 		}
@@ -285,7 +346,7 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 		if !decode(w, r, &in) {
 			return true
 		}
-		if !topicName.MatchString(in.Name) || in.Name == "." || in.Name == ".." || strings.HasPrefix(in.Name, "__") || in.Partitions < 1 || in.Partitions > 10000 || in.ReplicationFactor < 1 || in.ReplicationFactor > 100 || !validTopicConfig(in.Config) {
+		if !validNewTopic(in) || !validTopicConfig(in.Config) {
 			fail(w, 400, "invalid_request", "Invalid topic name, partition count, replication factor or configuration")
 			return true
 		}
@@ -316,6 +377,10 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 		if a.adminMutation(w, r, u, id, "delete", resource, model.ConfigValues(before), nil, func() error { return admin.DeleteTopic(r.Context(), resource) }) {
 			respond(w, map[string]bool{"ok": true})
 		}
+		return true
+	}
+	if len(parts) == 7 && r.Method == "POST" && (parts[6] == "truncate" || parts[6] == "recreate" || parts[6] == "copy") {
+		a.topicLifecycle(w, r, u, id, resource, parts[6], p, admin)
 		return true
 	}
 	if len(parts) == 7 && parts[6] == "config" {
@@ -392,6 +457,100 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 	}
 	fail(w, 405, "method_not_allowed", "Unsupported administration method")
 	return true
+}
+
+// topicLifecycle clears, recreates or copies an existing topic. The caller has
+// already authorized "delete" (truncate, recreate) or "read" (copy) on it.
+func (a *API) topicLifecycle(w http.ResponseWriter, r *http.Request, u auth.User, id, topic, op string, p kafka.Provider, admin kafka.AdminProvider) {
+	if op == "copy" {
+		var in model.TopicCreate
+		if !decode(w, r, &in) {
+			return
+		}
+		if !validNewTopic(in) {
+			fail(w, 400, "invalid_request", "Invalid topic name, partition count or replication factor")
+			return
+		}
+		described, e := admin.TopicConfig(r.Context(), topic)
+		if e != nil {
+			adminError(w, e)
+			return
+		}
+		if !validCopiedConfig(described, in.Config) {
+			fail(w, 400, "invalid_request", "Configuration keys must be readable settings of the source topic")
+			return
+		}
+		if !a.allowed(u, id, "create", in.Name, w) {
+			return
+		}
+		if a.adminMutation(w, r, u, id, "create", in.Name, map[string]string{"copiedFrom": topic}, in, func() error { return admin.CreateTopic(r.Context(), in) }) {
+			respond(w, map[string]bool{"ok": true})
+		}
+		return
+	}
+	var in struct {
+		Confirmation string `json:"confirmation"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Confirmation != topic {
+		fail(w, 400, "confirmation_required", "Type the topic name to confirm")
+		return
+	}
+	described, e := admin.TopicConfig(r.Context(), topic)
+	if e != nil {
+		adminError(w, e)
+		return
+	}
+	if op == "truncate" {
+		if !strings.Contains(model.ConfigValues(described)["cleanup.policy"], "delete") {
+			fail(w, 422, "policy_violation", "Only topics whose cleanup policy includes delete can be cleared")
+			return
+		}
+		if a.adminMutation(w, r, u, id, "truncate", topic, nil, nil, func() error { return admin.TruncateTopic(r.Context(), topic) }) {
+			respond(w, map[string]bool{"ok": true})
+		}
+		return
+	}
+	if !a.allowed(u, id, "create", topic, w) {
+		return
+	}
+	snap, e := p.Snapshot(r.Context())
+	if e != nil {
+		adminError(w, e)
+		return
+	}
+	var source *model.Topic
+	for i := range snap.Topics {
+		if snap.Topics[i].Name == topic {
+			source = &snap.Topics[i]
+		}
+	}
+	if source == nil {
+		fail(w, 404, "not_found", "Kafka resource not found")
+		return
+	}
+	if source.IsInternal() {
+		fail(w, 422, "internal_topic", "Internal topics cannot be recreated")
+		return
+	}
+	spec := model.TopicCreate{Name: topic, Partitions: int32(len(source.Partitions)), ReplicationFactor: int16(source.ReplicationFactor), Config: map[string]string{}}
+	for _, c := range described {
+		if !c.Override {
+			continue
+		}
+		if c.Sensitive || c.Value == nil {
+			fail(w, 422, "sensitive_config", "Topic has sensitive configuration overrides that cannot be carried over")
+			return
+		}
+		spec.Config[c.Name] = *c.Value
+	}
+	// Once deletion starts, finish even if the browser disconnects.
+	ctx := context.WithoutCancel(r.Context())
+	if a.adminMutation(w, r, u, id, "recreate", topic, spec, spec, func() error { return recreateTopic(ctx, admin, spec) }) {
+		respond(w, map[string]bool{"ok": true})
+	}
 }
 func (a *API) groupAdministration(w http.ResponseWriter, r *http.Request, u auth.User, id, group string, p kafka.AdminProvider, parts []string) {
 	if len(parts) == 6 && r.Method == "GET" {

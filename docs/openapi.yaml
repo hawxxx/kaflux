@@ -244,6 +244,7 @@ paths:
       operationId: listTopics
       parameters:
         - { name: q, in: query, schema: { type: string } }
+        - { name: internal, in: query, description: "false hides internal topics", schema: { type: boolean, default: true } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
         - {
             name: pageSize,
@@ -388,6 +389,88 @@ paths:
                 confirmation: { type: boolean, enum: [true] }
       responses:
         "200": { $ref: "#/components/responses/Envelope" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/topics/{topic}/truncate:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { name: topic, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Delete every record in a topic whose cleanup policy includes delete
+      description: Requires the delete permission on the topic. Compacted-only topics are rejected with policy_violation.
+      operationId: truncateTopic
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmation]
+              properties:
+                confirmation: { type: string, description: Exact topic name }
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/topics/{topic}/recreate:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { name: topic, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Delete a topic and create it again with the same layout and configuration overrides
+      description: >-
+        Requires delete and create permissions on the topic. Internal topics and topics with
+        sensitive overrides are rejected. If the topic is deleted but cannot be created again,
+        the response is 502 recreate_incomplete and the audit entry holds the configuration.
+      operationId: recreateTopic
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmation]
+              properties:
+                confirmation: { type: string, description: Exact topic name }
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/topics/{topic}/copy:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { name: topic, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Create a new topic from a source topic's settings; records are not copied
+      description: Requires read on the source and create on the new name. Config keys must be readable settings the broker describes for the source.
+      operationId: copyTopic
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, partitions, replicationFactor]
+              properties:
+                name: { type: string }
+                partitions: { type: integer, minimum: 1 }
+                replicationFactor: { type: integer, minimum: 1 }
+                config: { type: object, additionalProperties: { type: string } }
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/brokers:
@@ -1212,6 +1295,12 @@ components:
         cleanupPolicy: { type: string, description: "Empty when the topic configuration could not be read" }
         retentionMs: { type: integer, format: int64, nullable: true, description: "Null when unknown; -1 means unlimited" }
         observedAt: { type: string, format: date-time }
+        internal: { type: boolean, description: "Reported internal by the broker, or name starts with an underscore" }
+        messages:
+          type: integer
+          format: int64
+          nullable: true
+          description: "End minus start offset summed over partitions; an upper bound for compacted or transactional topics. Null when offsets could not be read"
     Message:
       type: object
       properties:

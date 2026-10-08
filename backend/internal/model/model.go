@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -44,7 +45,33 @@ type Topic struct {
 	CleanupPolicy     string      `json:"cleanupPolicy"`
 	RetentionMs       *int64      `json:"retentionMs"`
 	ObservedAt        time.Time   `json:"observedAt"`
+	// Internal is set when the broker reports the topic as internal, such as
+	// __consumer_offsets. IsInternal also covers underscore-prefixed names.
+	Internal bool `json:"internal"`
 }
+
+// IsInternal reports topics owned by Kafka or its ecosystem rather than
+// applications: broker-internal topics and, by convention, names starting with
+// an underscore (_schemas, __transaction_state, _confluent-*).
+func (t Topic) IsInternal() bool { return t.Internal || strings.HasPrefix(t.Name, "_") }
+
+// MessageCount sums end minus start offsets over the partitions. It is nil
+// unless every partition reports both offsets. Compaction and transaction
+// markers make it an upper bound of the records actually retained.
+func (t Topic) MessageCount() *int64 {
+	if len(t.Partitions) == 0 {
+		return nil
+	}
+	var total int64
+	for _, p := range t.Partitions {
+		if p.StartOffset == nil || p.EndOffset == nil {
+			return nil
+		}
+		total += max(*p.EndOffset-*p.StartOffset, 0)
+	}
+	return &total
+}
+
 type Snapshot struct {
 	Brokers    []Broker  `json:"brokers"`
 	Topics     []Topic   `json:"topics"`
