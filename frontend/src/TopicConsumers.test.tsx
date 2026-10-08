@@ -11,10 +11,18 @@ describe('topic consumers',()=>{
     const rows=await screen.findAllByRole('row');
     expect(String((fetch.mock.calls[0] as unknown[])[0])).toContain('/clusters/demo/topics/orders/consumers');
     expect(within(rows[1]).getByText('5')).toBeVisible();expect(within(rows[2]).getByText('Not committed')).toBeVisible();
-    expect(screen.getByText('billing · Stable')).toBeVisible();
+    expect(screen.getByText('billing',{selector:'span a'})).toBeVisible();
   });
   it('explains when no group consumes the topic',async()=>{
     vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({data:[]})} as Response)));mount();
     expect(await screen.findByText(/No consumer group has committed offsets/)).toBeVisible();
+  });
+});
+
+describe('consumer group links',()=>{
+  it('links each group to its consumer group page',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({data:[{id:'bill ing',state:'Stable',members:1,lag:0,offsets:[{topic:'orders',partition:0,committedOffset:1,startOffset:0,endOffset:1,lag:0}]}]})} as Response)));mount();
+    const links=await screen.findAllByRole('link',{name:'bill ing'});
+    expect(links[0]).toHaveAttribute('href','/clusters/demo/consumer-groups?group=bill%20ing');
   });
 });
