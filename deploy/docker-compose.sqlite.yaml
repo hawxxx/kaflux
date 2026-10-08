@@ -3,7 +3,7 @@
 services:
   kaflux:
     build: ..
-    image: kaflux:local
+    image: ghcr.io/hawxxx/kaflux:${KAFLUX_VERSION:-0.1.0}
     ports:
       - "127.0.0.1:8080:8080"
     environment:
