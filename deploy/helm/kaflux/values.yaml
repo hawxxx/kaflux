@@ -7,8 +7,8 @@ storage:
     size: 1Gi
     storageClass: ""
 image:
-  repository: kaflux
-  tag: "0.1.0"
+  repository: ghcr.io/hawxxx/kaflux
+  tag: ""
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 extraVolumes: []

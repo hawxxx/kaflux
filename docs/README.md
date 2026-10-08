@@ -43,3 +43,7 @@ implemented.
 - [Initial implementation plan](implementation-plan.md)
 - [Embedded storage design](sqlite-design.md)
 - [OpenAPI contract](openapi.yaml)
+
+## Releases
+
+Images publish to `ghcr.io/hawxxx/kaflux` from `.github/workflows/release.yaml` when a `vX.Y.Z` tag is pushed. To release: bump `version` and `appVersion` in `deploy/helm/kaflux/Chart.yaml`, merge to `main` once CI is green, then `git tag vX.Y.Z && git push origin vX.Y.Z`. The workflow refuses a tag that differs from `appVersion`, pushes `X.Y.Z`, `X.Y` and `latest` (pre-release tags such as `v0.2.0-rc.1` get only their exact tag), builds `linux/amd64` and `linux/arm64`, and creates a GitHub release with generated notes.

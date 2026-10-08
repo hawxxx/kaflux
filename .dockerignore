@@ -11,3 +11,12 @@ clusters.json
 *.pem
 *.key
 docs
+.github
+.beads
+.agents
+.claude
+graphify-out
+output
+deploy
+Makefile
+**/*.md
