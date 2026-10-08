@@ -12,7 +12,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.8'
           cache-dependency-path: backend/go.sum
@@ -82,7 +82,7 @@ jobs:
       KAFLUX_TEST_KAFKA_SEED: 127.0.0.1:19092
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.8'
           cache-dependency-path: backend/go.sum
