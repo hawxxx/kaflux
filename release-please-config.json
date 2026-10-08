@@ -16,7 +16,8 @@
           "type": "generic",
           "path": "docs/openapi.yaml"
         }
-      ]
+      ],
+      "include-component-in-tag": false
     }
   }
 }
