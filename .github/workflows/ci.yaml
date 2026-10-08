@@ -11,8 +11,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.8'
           cache-dependency-path: backend/go.sum
@@ -25,8 +25,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -40,8 +40,8 @@ jobs:
   packaging:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4.3.0
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.17.2
       - run: helm lint deploy/helm/kaflux
@@ -81,8 +81,8 @@ jobs:
       KAFLUX_TEST_DATABASE_URL: postgres://kaflux:integration-only@127.0.0.1:15432/kaflux?sslmode=disable
       KAFLUX_TEST_KAFKA_SEED: 127.0.0.1:19092
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.8'
           cache-dependency-path: backend/go.sum
