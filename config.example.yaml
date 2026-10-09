@@ -24,6 +24,9 @@ clusters:
     sasl: ""
     user: ""
     passwordEnv: KAFLUX_KAFKA_PASSWORD
+    # Optional. Reject rebalance execution without a replication throttle on this
+    # cluster. Without it the plan form's throttle switch may be turned off.
+    # requireThrottle: true
     # Optional. What one broker is meant to hold, from your own sizing. Needed for
     # self-managed Kafka, where no broker type can be read. Amazon MSK clusters are
     # resolved automatically (see below); this block overrides their published limits.

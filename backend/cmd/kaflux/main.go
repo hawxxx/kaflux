@@ -93,7 +93,7 @@ func run() error {
 				return e
 			}
 			providers[c.ID] = p
-			clusters = append(clusters, model.Cluster{ID: c.ID, Name: c.Name, Environment: c.Environment, Kind: "Kafka", Mode: "live"})
+			clusters = append(clusters, model.Cluster{ID: c.ID, Name: c.Name, Environment: c.Environment, Kind: "Kafka", Mode: "live", RequireThrottle: c.RequireThrottle})
 		}
 	}
 	defer func() {

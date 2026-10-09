@@ -50,6 +50,8 @@ type Config struct {
 	OAuthClientSecretEnv string   `json:"oauthClientSecretEnv"`
 	OAuthScopes          []string `json:"oauthScopes"`
 	OAuthCAFile          string   `json:"oauthCAFile"`
+	// RequireThrottle is enforced by the API; the provider ignores it.
+	RequireThrottle bool `json:"requireThrottle"`
 	// Capacity is what the operator declares each broker can hold. It describes
 	// clusters where no broker type can be read, such as self-managed Kafka.
 	Capacity *capacity.Config `json:"capacity"`
@@ -79,8 +81,8 @@ type Native struct {
 	cfgCache      *topicSettings
 	cfgRetryAt    time.Time
 	cfgRefreshing bool
-	cfgGeneration uint64                                                           // bumped by every invalidation
-	fetchSettings func(context.Context, []string) (map[string]topicSetting, error) // set by tests
+	cfgGeneration uint64                                                                  // bumped by every invalidation
+	fetchSettings func(context.Context, []string) (map[string]topicSetting, error)        // set by tests
 	describe      func(context.Context, *kmsg.DescribeConfigsRequest) []kgo.ResponseShard // set by tests
 }
 

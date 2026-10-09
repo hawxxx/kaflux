@@ -1038,6 +1038,10 @@ paths:
       - { $ref: "#/components/parameters/Job" }
     post:
       summary: Explicitly approve matching plan hash and enqueue execution
+      description:
+        Topics run one at a time in the plan's step order, with a preferred leader election after
+        each topic. A zero throttle runs unthrottled unless the cluster sets requireThrottle, which
+        returns 422 throttle_required.
       operationId: executeRebalance
       parameters:
         - { $ref: "#/components/parameters/CSRF" }
@@ -1136,6 +1140,111 @@ paths:
       responses:
         "200": { $ref: "#/components/responses/Envelope" }
         "503": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/rebalances/{job}/pause:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
+    post:
+      summary: Pause a running job after the topic it is moving
+      description:
+        Requires execute permission on every affected topic, CSRF and the confirmed plan hash. The
+        job stays running until the current topic finishes, then becomes paused. A paused job keeps
+        the cluster lock and makes no Kafka calls.
+      operationId: pauseRebalance
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/Approval" }
+      responses:
+        "200": { $ref: "#/components/responses/Plan" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/rebalances/{job}/resume:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
+    post:
+      summary: Resume a paused job, retrying or skipping the current topic
+      description:
+        Re-checks manual reassignment capability. With skip true the current topic is marked
+        skipped and left as it is; otherwise a failed topic is retried.
+      operationId: resumeRebalance
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation, planHash]
+              properties:
+                confirmation: { type: boolean, enum: [true] }
+                planHash: { type: string }
+                skip: { type: boolean, default: false }
+      responses:
+        "200": { $ref: "#/components/responses/Plan" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/rebalances/{job}/cancel-rollback:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
+    post:
+      summary: Cancel a running or paused job and queue a rollback of the moved partitions
+      description:
+        After Kafka confirms the cancellation, the worker stores the canceled job and a queued
+        rollback job (rollbackOf set, approved by the caller) in one transaction. The rollback
+        restores the original replicas of partitions that moved, newest topic first.
+      operationId: cancelRollbackRebalance
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody: { $ref: "#/components/requestBodies/Approval" }
+      responses:
+        "200": { $ref: "#/components/responses/Plan" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/rebalances/{job}/events:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
+    get:
+      summary: Activity log lines after a sequence number, oldest first (at most 500)
+      operationId: listRebalanceEvents
+      parameters:
+        - { name: after, in: query, schema: { type: integer, format: int64, default: 0 } }
+      responses:
+        "200":
+          description: "{data: {events: [{seq, at, level (info|warn|error), message}], last}}"
+        "403": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/rebalances/{job}/events.txt:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
+    get:
+      summary: Download the full activity log as text
+      operationId: downloadRebalanceLog
+      responses:
+        "200": { description: "Plain-text log, one line per event" }
+  /clusters/{cluster}/rebalances/{job}/backup.json:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
+    get:
+      summary: Download the original assignments in kafka-reassign-partitions format
+      description: "{version: 1, partitions: [{topic, partition, replicas}]}, usable with kafka-reassign-partitions.sh --execute."
+      operationId: downloadRebalanceBackup
+      responses:
+        "200": { description: Reassignment JSON of the original replicas }
+  /clusters/{cluster}/rebalances/{job}/report.csv:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { $ref: "#/components/parameters/Job" }
+    get:
+      summary: Download the per-partition report
+      description: Columns topic, partition, before, after, topicState, finishedAt.
+      operationId: downloadRebalanceReport
+      responses:
+        "200": { description: CSV report }
   /clusters/{cluster}/rebalances/{job}/throttle:
     parameters:
       - $ref: "#/components/parameters/Cluster"
@@ -1386,7 +1495,41 @@ components:
         fingerprint: { type: string }
         actor: { type: string }
         approvedBy: { type: string }
-        progress: { type: integer, minimum: 0, maximum: 100 }
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Byte-based when partition sizes are known, otherwise partition-based
+        steps:
+          type: array
+          description: One step per topic, in run order
+          items:
+            type: object
+            properties:
+              topic: { type: string }
+              state: { type: string, enum: [pending, moving, electing, done, skipped, failed] }
+              partitions: { type: integer }
+              partitionsDone: { type: integer }
+              bytes: { type: integer, format: int64 }
+              bytesDone: { type: integer, format: int64 }
+              startedAt: { type: string, format: date-time }
+              finishedAt: { type: string, format: date-time }
+              error: { type: string }
+        currentStep: { type: integer }
+        pauseRequested: { type: boolean }
+        pauseReason: { type: string }
+        rollbackRequested: { type: boolean }
+        rollbackOf: { type: string }
+        rollbackJob: { type: string }
+        warnings: { type: array, items: { type: string } }
+        partitionsDone: { type: integer }
+        partitionsTotal: { type: integer }
+        bytesDone: { type: integer, format: int64 }
+        bytesTotal: { type: integer, format: int64 }
+        rateBytesPerSec: { type: integer, format: int64 }
+        etaSeconds: { type: integer, format: int64 }
+        etaBasis: { type: string, enum: [bytes, topics] }
+        finishedAt: { type: string, format: date-time }
         capacityKnown: { type: boolean }
         estimatedBytes: { type: integer, format: int64, nullable: true }
         throttleBytesPerSec: { type: integer, format: int64 }

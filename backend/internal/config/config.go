@@ -39,6 +39,8 @@ type Cluster struct {
 	OAuthScopes          []string         `yaml:"oauthScopes"`
 	OAuthCAFile          string           `yaml:"oauthCAFile"`
 	Capacity             *capacity.Config `yaml:"capacity"`
+	// RequireThrottle makes a replication throttle mandatory for rebalances on this cluster.
+	RequireThrottle bool `yaml:"requireThrottle"`
 }
 
 type Runtime struct {
