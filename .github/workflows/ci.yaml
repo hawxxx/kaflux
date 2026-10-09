@@ -47,6 +47,13 @@ jobs:
       - run: helm lint deploy/helm/kaflux
       - run: helm template kaflux deploy/helm/kaflux > /tmp/kaflux.yaml
       - run: npx --yes @redocly/cli@1.34.5 lint docs/openapi.yaml --extends minimal
+      # Docker Hub rate-limits unauthenticated pulls from shared runner IPs; pull through Google's public mirror.
+      - name: Use Docker Hub mirror
+        run: |
+          [ -s /etc/docker/daemon.json ] || echo '{}' | sudo tee /etc/docker/daemon.json >/dev/null
+          jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json > /tmp/daemon.json
+          sudo mv /tmp/daemon.json /etc/docker/daemon.json
+          sudo systemctl restart docker
       - run: KAFLUX_DB_PASSWORD=configuration-only docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration config --quiet
       - run: docker build -t kaflux:ci .
       - name: Start read-only non-root image
@@ -86,6 +93,13 @@ jobs:
         with:
           go-version: '1.26.9'
           cache-dependency-path: backend/go.sum
+      # Docker Hub rate-limits unauthenticated pulls from shared runner IPs; pull through Google's public mirror.
+      - name: Use Docker Hub mirror
+        run: |
+          [ -s /etc/docker/daemon.json ] || echo '{}' | sudo tee /etc/docker/daemon.json >/dev/null
+          jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json > /tmp/daemon.json
+          sudo mv /tmp/daemon.json /etc/docker/daemon.json
+          sudo systemctl restart docker
       - run: docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration up -d --wait postgres kafka kafka2 kafka3
       - run: go test -race -p 1 ./...
         working-directory: backend
