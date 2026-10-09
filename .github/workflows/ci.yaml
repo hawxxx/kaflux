@@ -93,18 +93,14 @@ jobs:
         with:
           go-version: '1.26.9'
           cache-dependency-path: backend/go.sum
-      # Docker Hub rate-limits unauthenticated pulls from shared runner IPs; pull through Google's public mirror.
-      - name: Use Docker Hub mirror
-        run: |
-          [ -s /etc/docker/daemon.json ] || echo '{}' | sudo tee /etc/docker/daemon.json >/dev/null
-          jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json > /tmp/daemon.json
-          sudo mv /tmp/daemon.json /etc/docker/daemon.json
-          sudo systemctl restart docker
-      # Pull each image once, sequentially: parallel pulls of the shared Kafka image fall back to Docker Hub.
+      # Docker Hub rate-limits unauthenticated pulls from shared runner IPs, and `docker pull`
+      # ignores registry-mirrors here, so pull from Google's public mirror and retag.
       - name: Pull integration images
         run: |
           for image in $(docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration config --images postgres kafka kafka2 kafka3 | sort -u); do
-            docker pull "$image" || { sleep 10; docker pull "$image"; }
+            case "${image%%:*}" in */*) mirrored="mirror.gcr.io/$image" ;; *) mirrored="mirror.gcr.io/library/$image" ;; esac
+            docker pull "$mirrored"
+            docker tag "$mirrored" "$image"
           done
       - run: docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration up -d --wait postgres kafka kafka2 kafka3
       - run: go test -race -p 1 ./...
