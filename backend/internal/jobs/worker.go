@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/hawxxx/kaflux/backend/internal/auth"
 	"github.com/hawxxx/kaflux/backend/internal/balance"
@@ -10,7 +9,6 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/hawxxx/kaflux/backend/internal/msk"
 	"github.com/hawxxx/kaflux/backend/internal/store"
-	"reflect"
 	"sync"
 	"time"
 )
@@ -123,145 +121,83 @@ func (w *Worker) process(ctx context.Context, p model.Plan, provider kafka.Provi
 	if e != nil {
 		return
 	}
-	throttle, throttled := provider.(kafka.ThrottleProvider)
 	if p.State == "queued" {
-		if e = ValidateCluster(snap); e != nil {
-			w.finish(ctx, p, provider, "failed", e.Error())
+		if !w.start(ctx, &p, provider, snap, pending) {
 			return
-		}
-		if cap, e := Capabilities(ctx, provider, true); e != nil || !cap.ManualReassignmentAllowed {
-			w.finish(ctx, p, provider, "failed", cap.Reason)
-			return
-		}
-		if e = Validate(snap, p.Changes); e != nil {
-			w.finish(ctx, p, provider, "failed", e.Error())
-			return
-		}
-		if balance.Fingerprint(snap, p.Topics) != p.Fingerprint {
-			w.finish(ctx, p, provider, "failed", "assignments changed since approval")
-			return
-		}
-		if len(pending) > 0 {
-			w.finish(ctx, p, provider, "failed", "conflicting broker reassignment")
-			return
-		}
-		if throttled {
-			records, e := w.Store.LoadThrottle(ctx, p.ID)
-			if e != nil {
-				return
-			}
-			if len(records) == 0 {
-				records, e = throttle.PrepareThrottle(ctx, p.Changes, p.ThrottleBytesPerSec)
-				if e != nil {
-					w.finish(ctx, p, provider, "failed", e.Error())
-					return
-				}
-				if e = w.Store.SaveThrottle(ctx, p.ID, records); e != nil {
-					return
-				}
-				records, e = w.Store.LoadThrottle(ctx, p.ID)
-				if e != nil {
-					return
-				}
-			}
-			if e = throttle.ApplyThrottle(ctx, records); e != nil {
-				w.finish(ctx, p, provider, "failed", "Throttle application failed: "+e.Error())
-				return
-			}
-		}
-		p.State = "running"
-		p.StartedAt = time.Now().UTC()
-		if e = w.save(ctx, p); e != nil {
-			return
-		}
-		latest, e := w.Store.Job(ctx, p.ID)
-		if e != nil {
-			return
-		}
-		if latest.CancellationRequested {
-			w.finish(ctx, latest, provider, "canceled", "canceled before submission")
-			return
-		}
-		if !w.Store.Claim(ctx, p.ID, w.Owner) {
-			return
-		}
-		if e = provider.Reassign(ctx, p.Changes); e != nil {
-			var blocked *msk.BlockedError
-			if errors.As(e, &blocked) {
-				w.finish(ctx, p, provider, "failed", blocked.Error())
-				return
-			}
-			p.Error = "submission outcome uncertain; reconciling broker assignments"
-			_ = w.save(ctx, p)
-		}
-		return
-	}
-	completed := 0
-	partitions := map[string]model.Partition{}
-	for _, t := range snap.Topics {
-		for _, x := range t.Partitions {
-			partitions[fmt.Sprintf("%s/%d", t.Name, x.ID)] = x
 		}
 	}
-	ownPending := []model.Change{}
-	for _, c := range p.Changes {
-		key := fmt.Sprintf("%s/%d", c.Topic, c.Partition)
-		x, ok := partitions[key]
-		if ok && reflect.DeepEqual(x.Replicas, c.After) && len(x.ISR) == len(x.Replicas) {
-			completed++
-		}
-		if _, ok := pending[key]; ok {
-			ownPending = append(ownPending, c)
-		}
-	}
-	if len(p.Changes) > 0 {
-		p.Progress = completed * 100 / len(p.Changes)
-	}
-	if completed == len(p.Changes) && len(ownPending) == 0 {
-		w.finish(ctx, p, provider, "completed", "")
-		return
-	}
-	if p.CancellationRequested {
-		if len(ownPending) == 0 {
-			w.finish(ctx, p, provider, "canceled", "cancellation reconciled; inspect current assignments before rollback")
-			return
-		}
-		if canceler, ok := provider.(kafka.CancellationProvider); ok {
-			if e = canceler.CancelReassignment(ctx, ownPending); e != nil {
-				p.Error = "Cancellation requires attention: " + e.Error()
-			} else {
-				p.Error = "Cancellation submitted; reconciling broker assignments"
-			}
-		} else {
-			p.Error = "Kafka provider does not support reassignment cancellation"
-		}
-		_ = w.save(ctx, p)
-		return
-	}
-	if len(pending) == 0 && time.Since(p.StartedAt) > 30*time.Second {
-		w.finish(ctx, p, provider, "failed", "no broker reassignment remains and target assignments were not reached")
-		return
-	}
-	if p.ThrottleRequest != nil {
-		if e = w.applyRequestedThrottle(ctx, p, provider); e != nil {
-			if p.ThrottleError != e.Error() {
-				_ = w.throttleAudit(ctx, p, "failed-or-uncertain")
-			}
-			p.ThrottleError = e.Error()
-			_ = w.save(ctx, p)
-			return
-		}
-		fresh, e := w.Store.Job(ctx, p.ID)
-		if e != nil {
-			return
-		}
-		p.ThrottleRequest = fresh.ThrottleRequest
-		p.ThrottleBytesPerSec = fresh.ThrottleBytesPerSec
-		p.ThrottleError = fresh.ThrottleError
-	}
-	_ = w.save(ctx, p)
+	w.run(ctx, p, provider, snap, pending)
 }
+
+// start runs the approval-time safety checks once and moves the job to running.
+// It returns false when the job ended or must be retried on a later pass.
+func (w *Worker) start(ctx context.Context, p *model.Plan, provider kafka.Provider, snap model.Snapshot, pending map[string][]int32) bool {
+	if e := ValidateCluster(snap); e != nil {
+		w.finish(ctx, *p, provider, "failed", e.Error())
+		return false
+	}
+	if cap, e := Capabilities(ctx, provider, true); e != nil || !cap.ManualReassignmentAllowed {
+		w.finish(ctx, *p, provider, "failed", cap.Reason)
+		return false
+	}
+	if e := Validate(snap, p.Changes); e != nil {
+		w.finish(ctx, *p, provider, "failed", e.Error())
+		return false
+	}
+	if balance.Fingerprint(snap, p.Topics) != p.Fingerprint {
+		w.finish(ctx, *p, provider, "failed", "assignments changed since approval")
+		return false
+	}
+	if len(pending) > 0 {
+		w.finish(ctx, *p, provider, "failed", "conflicting broker reassignment")
+		return false
+	}
+	if len(p.Steps) == 0 {
+		p.Steps = balance.Steps(p.Topics, p.Changes, snap)
+	}
+	p.State = "running"
+	p.StartedAt = time.Now().UTC()
+	p.PartitionsTotal = len(p.Changes)
+	if e := w.save(ctx, *p); e != nil {
+		return false
+	}
+	throttle := "unthrottled"
+	if p.ThrottleBytesPerSec > 0 {
+		throttle = "throttle " + humanRate(p.ThrottleBytesPerSec)
+	}
+	size := "size unknown"
+	if p.EstimatedBytes != nil {
+		size = humanBytes(*p.EstimatedBytes)
+	}
+	kind := "Job"
+	if p.RollbackOf != "" {
+		kind = "Rollback of " + p.RollbackOf
+	}
+	w.log(ctx, p.ID, levelInfo, "%s started · %d topics · %d partitions · %s · %s", kind, len(p.Steps), len(p.Changes), size, throttle)
+	controller := "unknown"
+	if snap.Controller != nil {
+		controller = fmt.Sprint(*snap.Controller)
+	}
+	w.log(ctx, p.ID, levelInfo, "Preflight ok · controller %s · 0 under-replicated · 0 offline", controller)
+	latest, e := w.Store.Job(ctx, p.ID)
+	if e != nil {
+		return false
+	}
+	if latest.CancellationRequested {
+		w.finish(ctx, latest, provider, "canceled", "canceled before submission")
+		return false
+	}
+	*p = latest
+	return w.Store.Claim(ctx, p.ID, w.Owner)
+}
+
 func (w *Worker) finish(ctx context.Context, p model.Plan, provider kafka.Provider, state, message string) {
+	w.finishWith(ctx, p, provider, state, message, nil)
+}
+
+// finishWith ends the job after restoring any throttle it still owns. A
+// rollback job, when given, is stored in the same transaction.
+func (w *Worker) finishWith(ctx context.Context, p model.Plan, provider kafka.Provider, state, message string, rollback *model.Plan) {
 	p.Error = message
 	p.TerminalState = state
 	p.TerminalError = message
@@ -290,7 +226,47 @@ func (w *Worker) finish(ctx context.Context, p model.Plan, provider kafka.Provid
 	p.CleanupPending = false
 	p.TerminalState = ""
 	p.TerminalError = ""
-	_ = w.save(ctx, p)
+	p.ETASeconds = nil
+	now := time.Now().UTC()
+	p.FinishedAt = &now
+	if rollback != nil {
+		p.RollbackJob = rollback.ID
+		if e := w.Store.FinishWithRollback(ctx, p, *rollback, w.Owner); e != nil {
+			return
+		}
+	} else if e := w.save(ctx, p); e != nil {
+		return
+	}
+	w.logFinish(ctx, p, state, message, rollback)
+}
+
+func (w *Worker) logFinish(ctx context.Context, p model.Plan, state, message string, rollback *model.Plan) {
+	elapsed := ""
+	if !p.StartedAt.IsZero() {
+		elapsed = " in " + humanDuration(time.Since(p.StartedAt))
+	}
+	switch state {
+	case "completed":
+		done := 0
+		for _, s := range p.Steps {
+			if s.State == model.StepDone {
+				done++
+			}
+		}
+		suffix := ""
+		if len(p.Warnings) > 0 {
+			suffix = fmt.Sprintf(" · %d warnings", len(p.Warnings))
+		}
+		w.log(ctx, p.ID, levelInfo, "✔ Job completed · %d/%d topics · %d partitions%s%s", done, len(p.Steps), len(p.Changes), elapsed, suffix)
+	case "canceled":
+		w.log(ctx, p.ID, levelWarn, "Job canceled%s · %s", elapsed, message)
+		if rollback != nil {
+			w.log(ctx, p.ID, levelInfo, "↩ Rollback job %s queued · %d partitions", rollback.ID, len(rollback.Changes))
+			w.log(ctx, rollback.ID, levelInfo, "Rollback of %s queued by %s", p.ID, rollback.ApprovedBy)
+		}
+	default:
+		w.log(ctx, p.ID, levelError, "✖ Job %s · %s", state, message)
+	}
 }
 func Validate(s model.Snapshot, changes []model.Change) error {
 	if len(changes) == 0 || len(changes) > 5000 {

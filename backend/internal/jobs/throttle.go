@@ -24,6 +24,27 @@ func (w *Worker) applyRequestedThrottle(ctx context.Context, p model.Plan, provi
 		if e != nil {
 			return e
 		}
+		if len(records) == 0 {
+			// Between topics, or on a job that started unthrottled, there is
+			// nothing to retarget: a moving topic gets throttled now, and the
+			// acknowledged rate applies from the next topic either way.
+			if p.CurrentStep < len(p.Steps) && p.Steps[p.CurrentStep].State == model.StepMoving {
+				changes := topicChanges(p.Changes, p.Steps[p.CurrentStep].Topic)
+				if records, e = throttle.PrepareThrottle(ctx, changes, request.BytesPerSec); e != nil {
+					return e
+				}
+				if e = w.Store.SaveThrottle(ctx, p.ID, records); e != nil {
+					return e
+				}
+				if e = throttle.ApplyThrottle(ctx, records); e != nil {
+					return e
+				}
+			}
+			if e = w.throttleAudit(ctx, p, "applied"); e != nil {
+				return e
+			}
+			return w.Store.AcknowledgeThrottle(ctx, p.ID, w.Owner, request.Revision, request.BytesPerSec)
+		}
 		next, e := kafka.RetargetThrottle(records, request.BytesPerSec)
 		if e != nil {
 			return e

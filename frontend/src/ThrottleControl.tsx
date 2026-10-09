@@ -16,7 +16,7 @@ export function ThrottleControl({clusterId,plan,canWrite,allowed,onChange}:{clus
     const response=await api<ThrottlePlan>(`/clusters/${encodeURIComponent(clusterId)}/rebalances/${encodeURIComponent(plan.id)}/throttle`,{method:'POST',body:JSON.stringify({confirmation:true,planHash:plan.planHash,bytesPerSec:value})});
     setSubmitted(response.data.throttleRequest);setOpen(false);onChange();
   }catch(e){setError((e as Error).message)}finally{setBusy(false)}}
-  return <div className="throttle-control"><p>Current job throttle: {plan.throttleBytesPerSec==null?'Unavailable':`${bytes(plan.throttleBytesPerSec)}/s`}</p>
+  return <div className="throttle-control"><p>Current job throttle: {plan.throttleBytesPerSec==null?'Unavailable':plan.throttleBytesPerSec===0?'Unthrottled (a new rate applies to the moving topic)':`${bytes(plan.throttleBytesPerSec)}/s`}</p>
     {pending&&<p role="status">Requested: {bytes(pending.bytesPerSec)}/s — awaiting worker verification</p>}
     {plan.throttleError&&<p role="alert">{plan.throttleError}</p>}
     <Dialog.Root open={open} onOpenChange={next=>{setOpen(next);if(next){setRate(String(plan.throttleBytesPerSec??10485760));setConfirmation('');setError('')}}}>

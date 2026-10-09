@@ -132,6 +132,8 @@ func adminError(w http.ResponseWriter, e error) {
 		fail(w, 422, "policy_violation", "Kafka rejected the operation because of the topic's cleanup policy")
 	case errors.Is(e, store.ErrThrottleConflict):
 		fail(w, 409, "throttle_conflict", e.Error())
+	case errors.Is(e, store.ErrJobState):
+		fail(w, 409, "invalid_state", strings.TrimPrefix(e.Error(), store.ErrJobState.Error()+": "))
 	case errors.Is(e, store.ErrJobActive):
 		fail(w, 409, "job_active", e.Error())
 	case errors.Is(e, kafka.ErrACLUnsupported):

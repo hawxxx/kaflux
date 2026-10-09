@@ -37,6 +37,7 @@ type Store struct {
 	audit    []Audit
 	leases   map[string]lease
 	names    map[string]string
+	events   map[string][]model.JobEvent
 }
 type lease struct {
 	Owner string
@@ -57,7 +58,7 @@ func New(ctx context.Context, url string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	_, e = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS kaflux_sessions (id text PRIMARY KEY, payload jsonb NOT NULL, expires timestamptz NOT NULL);CREATE INDEX IF NOT EXISTS kaflux_sessions_handle ON kaflux_sessions ((encode(sha256(id::bytea),'hex')));CREATE INDEX IF NOT EXISTS kaflux_sessions_inventory ON kaflux_sessions (expires,(encode(sha256(id::bytea),'hex')));CREATE TABLE IF NOT EXISTS kaflux_jobs (id text PRIMARY KEY, cluster_id text NOT NULL, state text NOT NULL, payload jsonb NOT NULL, lease_until timestamptz, lease_owner text);CREATE TABLE IF NOT EXISTS kaflux_audit (id text PRIMARY KEY, payload jsonb NOT NULL, created_at timestamptz NOT NULL);CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id text primary key,payload jsonb not null);CREATE TABLE IF NOT EXISTS kaflux_cluster_names(cluster_id text PRIMARY KEY, name text NOT NULL);CREATE UNIQUE INDEX IF NOT EXISTS kaflux_one_active_job ON kaflux_jobs(cluster_id) WHERE state IN ('queued','running','rollback-queued');`)
+	_, e = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS kaflux_sessions (id text PRIMARY KEY, payload jsonb NOT NULL, expires timestamptz NOT NULL);CREATE INDEX IF NOT EXISTS kaflux_sessions_handle ON kaflux_sessions ((encode(sha256(id::bytea),'hex')));CREATE INDEX IF NOT EXISTS kaflux_sessions_inventory ON kaflux_sessions (expires,(encode(sha256(id::bytea),'hex')));CREATE TABLE IF NOT EXISTS kaflux_jobs (id text PRIMARY KEY, cluster_id text NOT NULL, state text NOT NULL, payload jsonb NOT NULL, lease_until timestamptz, lease_owner text);CREATE TABLE IF NOT EXISTS kaflux_audit (id text PRIMARY KEY, payload jsonb NOT NULL, created_at timestamptz NOT NULL);CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id text primary key,payload jsonb not null);CREATE TABLE IF NOT EXISTS kaflux_cluster_names(cluster_id text PRIMARY KEY, name text NOT NULL);CREATE UNIQUE INDEX IF NOT EXISTS kaflux_one_active_job_v2 ON kaflux_jobs(cluster_id) WHERE state IN ('queued','running','paused','rollback-queued');DROP INDEX IF EXISTS kaflux_one_active_job;CREATE TABLE IF NOT EXISTS kaflux_job_events(job_id text NOT NULL, seq bigint NOT NULL, at timestamptz NOT NULL, level text NOT NULL, message text NOT NULL, PRIMARY KEY(job_id,seq));`)
 	if e != nil {
 		db.Close()
 		return nil, e
@@ -136,7 +137,7 @@ func (s *Store) SaveJob(ctx context.Context, p model.Plan) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, j := range s.jobs {
-		if id != p.ID && j.ClusterID == p.ClusterID && (j.State == "queued" || j.State == "running") {
+		if id != p.ID && j.ClusterID == p.ClusterID && model.IsActiveJobState(j.State) {
 			return fmt.Errorf("cluster already has an active job")
 		}
 	}
@@ -261,6 +262,7 @@ func (s *Store) SaveClaimedJob(ctx context.Context, p model.Plan, owner string) 
 				return fmt.Errorf("worker lease lost")
 			}
 			p.CancellationRequested = old.CancellationRequested
+			keepUserRequests(&p, *old)
 			if p.ThrottleRequest == nil || old.ThrottleRequest == nil || p.ThrottleRequest.Revision != old.ThrottleRequest.Revision {
 				p.ThrottleError = old.ThrottleError
 			}
@@ -277,6 +279,10 @@ func (s *Store) SaveClaimedJob(ctx context.Context, p model.Plan, owner string) 
 		b, _ := json.Marshal(p)
 		r, e := s.DB.Exec(ctx, `UPDATE kaflux_jobs SET state=$2,payload=$3::jsonb || jsonb_build_object(
  'cancellationRequested',COALESCE((payload->>'cancellationRequested')::boolean,false),
+ 'pauseRequested',COALESCE((payload->>'pauseRequested')::boolean,false),
+ 'pauseRequestedBy',COALESCE(payload->'pauseRequestedBy','""'::jsonb),
+ 'rollbackRequested',COALESCE((payload->>'rollbackRequested')::boolean,false),
+ 'rollbackRequestedBy',COALESCE(payload->'rollbackRequestedBy','""'::jsonb),
  'throttleRequest',CASE WHEN $2 IN ('queued','running') THEN payload->'throttleRequest' ELSE 'null'::jsonb END,
  'throttleBytesPerSec',payload->'throttleBytesPerSec',
  'throttleError',CASE WHEN ($3::jsonb->'throttleRequest'->>'revision')=(payload->'throttleRequest'->>'revision') THEN COALESCE($3::jsonb->'throttleError','""'::jsonb) ELSE COALESCE(payload->'throttleError','""'::jsonb) END
@@ -297,6 +303,7 @@ func (s *Store) SaveClaimedJob(ctx context.Context, p model.Plan, owner string) 
 	}
 	if existing, ok := s.jobs[p.ID]; ok {
 		p.CancellationRequested = existing.CancellationRequested
+		keepUserRequests(&p, existing)
 		if p.ThrottleRequest == nil || existing.ThrottleRequest == nil || p.ThrottleRequest.Revision != existing.ThrottleRequest.Revision {
 			p.ThrottleError = existing.ThrottleError
 		}
@@ -337,7 +344,7 @@ func (s *Store) QueueJob(ctx context.Context, p model.Plan) error {
 		return fmt.Errorf("plan was already approved")
 	}
 	for id, j := range s.jobs {
-		if id != p.ID && j.ClusterID == p.ClusterID && (j.State == "queued" || j.State == "running") {
+		if id != p.ID && j.ClusterID == p.ClusterID && model.IsActiveJobState(j.State) {
 			return fmt.Errorf("cluster has active job")
 		}
 	}
@@ -446,4 +453,13 @@ func (s *Store) Audits(ctx context.Context) ([]Audit, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]Audit{}, s.audit...), nil
+}
+
+// keepUserRequests carries requests the API records independently of the
+// worker, so a worker saving an older copy of the job cannot drop them.
+func keepUserRequests(p *model.Plan, stored model.Plan) {
+	p.PauseRequested = stored.PauseRequested
+	p.PauseRequestedBy = stored.PauseRequestedBy
+	p.RollbackRequested = stored.RollbackRequested
+	p.RollbackRequestedBy = stored.RollbackRequestedBy
 }
