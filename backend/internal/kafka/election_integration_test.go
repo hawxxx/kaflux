@@ -81,19 +81,30 @@ func TestNativePreferredElectionAndReplicaSizes(t *testing.T) {
 	if err = native.ElectPreferredLeaders(ctx, changes); err != nil {
 		t.Fatalf("second election must treat ELECTION_NOT_NEEDED as success: %v", err)
 	}
-	snap, err := native.FreshSnapshot(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range snap.Topics {
-		if entry.Name != topic {
-			continue
+	// Brokers learn the new leaders asynchronously, so metadata may lag the election briefly.
+	for leaderDeadline := time.Now().Add(15 * time.Second); ; {
+		snap, err := native.FreshSnapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
 		}
-		for _, p := range entry.Partitions {
-			if p.Leader != p.Replicas[0] {
-				t.Fatalf("partition %d leader %d, preferred %d", p.ID, p.Leader, p.Replicas[0])
+		lagging := ""
+		for _, entry := range snap.Topics {
+			if entry.Name != topic {
+				continue
+			}
+			for _, p := range entry.Partitions {
+				if p.Leader != p.Replicas[0] {
+					lagging = fmt.Sprintf("partition %d leader %d, preferred %d", p.ID, p.Leader, p.Replicas[0])
+				}
 			}
 		}
+		if lagging == "" {
+			break
+		}
+		if time.Now().After(leaderDeadline) {
+			t.Fatal(lagging)
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
 	// Sizes come from a log-dir observation cached for sizeTTL.
 	deadline := time.Now().Add(sizeTTL + 5*time.Second)
