@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0](https://github.com/hawxxx/kaflux/compare/v0.3.0...v0.4.0) (2026-10-09)
+
+
+### Features
+
+* **auth:** make OIDC, LDAP and role grants work as configured ([#36](https://github.com/hawxxx/kaflux/issues/36)) ([043977d](https://github.com/hawxxx/kaflux/commit/043977d5011b9cb485d8955ff1c715a1f6fb9c52))
+* **messages:** read all partitions at once ([#38](https://github.com/hawxxx/kaflux/issues/38)) ([26cf5e3](https://github.com/hawxxx/kaflux/commit/26cf5e363c82b9cb4d6261c521e95c0e98dc6571))
+* **rebalance:** cluster health and run rebalances topic by topic with progress, pause and rollback ([#34](https://github.com/hawxxx/kaflux/issues/34)) ([4885122](https://github.com/hawxxx/kaflux/commit/48851223530e3065c6ded9e0b6663656e33d01dd))
+
 ## [0.3.0](https://github.com/hawxxx/kaflux/compare/v0.2.1...v0.3.0) (2026-10-09)
 
 
