@@ -887,6 +887,34 @@ paths:
         "200": { $ref: "#/components/responses/Envelope" }
         "403": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/name:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+    put:
+      summary: Set the cluster display name shown to every user
+      description: >-
+        Display names must be unique across clusters (case-insensitive). An empty
+        name or the configured name removes the override. Unchanged names are
+        accepted without writing an audit event.
+      operationId: renameCluster
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 64 }
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/audit:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
