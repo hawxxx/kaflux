@@ -86,3 +86,4 @@ Image: `ghcr.io/hawxxx/kaflux`. Workflows: `.github/workflows/release.yaml` (bui
 - Use Conventional Commits: `fix:` = patch, `feat:` = minor, `feat!:`/`BREAKING CHANGE` = breaking. `chore:`/`docs:` do not release.
 - Never hand-edit versions, push `v*` tags, move or retag a version, or merge the Release PR unless the user asks (it publishes publicly). Bad release: ship the next patch.
 - Deploy with a pinned version or digest (`0.1.0`, `@sha256:…`), not `latest` or `main`. Compose uses `KAFLUX_VERSION`; Helm defaults to chart `appVersion`.
+- `main` is protected by a ruleset: no direct pushes; changes go branch → PR (Conventional Commit title) → green checks (`backend`, `frontend`, `integration`, `packaging`) → merge. Release-please reads only `main`, never branches or open PRs.

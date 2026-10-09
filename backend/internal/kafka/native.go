@@ -268,7 +268,7 @@ func snapshotFromMetadata(m kadm.Metadata, observedAt time.Time) model.Snapshot 
 		if t.Err != nil {
 			continue
 		}
-		x := model.Topic{Name: t.Topic, Partitions: []model.Partition{}, ObservedAt: observedAt}
+		x := model.Topic{Name: t.Topic, Partitions: []model.Partition{}, ObservedAt: observedAt, Internal: t.IsInternal}
 		for _, p := range t.Partitions {
 			x.Partitions = append(x.Partitions, model.Partition{ID: p.Partition, Leader: p.Leader, Replicas: p.Replicas, ISR: p.ISR})
 			if len(p.ISR) < len(p.Replicas) {

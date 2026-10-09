@@ -501,7 +501,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		snap.Topics = filtered
-		a.topics(w, r, snap, parts)
+		a.topics(w, r, provider, snap, parts)
 	case "balance":
 		report := a.capacityReport(r.Context(), provider, snap)
 		ds := []model.Distribution{}
@@ -565,7 +565,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	respond(w, map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "canManageSessions": (auth.Authorizer{Grants: a.o.Grants}).Allowed(s.User, "*", "manage-sessions", "*")})
 }
 func topicRow(t model.Topic) map[string]any {
-	return map[string]any{"name": t.Name, "partitions": len(t.Partitions), "replicationFactor": t.ReplicationFactor, "sizeBytes": t.SizeBytes, "urp": t.URP, "cleanupPolicy": t.CleanupPolicy, "retentionMs": t.RetentionMs, "observedAt": t.ObservedAt}
+	return map[string]any{"name": t.Name, "partitions": len(t.Partitions), "replicationFactor": t.ReplicationFactor, "sizeBytes": t.SizeBytes, "urp": t.URP, "cleanupPolicy": t.CleanupPolicy, "retentionMs": t.RetentionMs, "observedAt": t.ObservedAt, "internal": t.IsInternal(), "messages": t.MessageCount()}
 }
 
 // compareTopics orders by a topic list column; unknown sizes sort below known ones.
@@ -593,7 +593,7 @@ func boolInt(v bool) int {
 	}
 	return 0
 }
-func (a *API) topics(w http.ResponseWriter, r *http.Request, s model.Snapshot, parts []string) {
+func (a *API) topics(w http.ResponseWriter, r *http.Request, p kafka.Provider, s model.Snapshot, parts []string) {
 	if len(parts) > 5 {
 		for _, t := range s.Topics {
 			if t.Name == parts[5] {
@@ -607,9 +607,10 @@ func (a *API) topics(w http.ResponseWriter, r *http.Request, s model.Snapshot, p
 		return
 	}
 	q := strings.ToLower(r.URL.Query().Get("q"))
+	hideInternal := r.URL.Query().Get("internal") == "false"
 	list := []model.Topic{}
 	for _, t := range s.Topics {
-		if strings.Contains(strings.ToLower(t.Name), q) {
+		if strings.Contains(strings.ToLower(t.Name), q) && !(hideInternal && t.IsInternal()) {
 			list = append(list, t)
 		}
 	}
@@ -648,6 +649,19 @@ func (a *API) topics(w http.ResponseWriter, r *http.Request, s model.Snapshot, p
 	rows := []map[string]any{}
 	for _, t := range list[start:end] {
 		rows = append(rows, topicRow(t))
+	}
+	// Snapshots from native clusters carry no offsets; list them for this page only.
+	if counter, ok := p.(kafka.MessageCounter); ok {
+		names := make([]string, 0, len(rows))
+		for _, t := range list[start:end] {
+			names = append(names, t.Name)
+		}
+		counts := counter.MessageCounts(r.Context(), names)
+		for i, name := range names {
+			if v, ok := counts[name]; ok {
+				rows[i]["messages"] = &v
+			}
+		}
 	}
 	respond(w, rows, map[string]int{"total": len(list), "page": page, "pageSize": size})
 }

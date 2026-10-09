@@ -114,6 +114,13 @@ func (d *Demo) Produce(ctx context.Context, m model.Message) (model.Message, err
 		return m, fmt.Errorf("unknown topic partition")
 	}
 	m.Offset = int64(len(all))
+	for _, t := range d.state.Topics {
+		for _, p := range t.Partitions {
+			if t.Name == m.Topic && p.ID == m.Partition && p.EndOffset != nil {
+				m.Offset = *p.EndOffset
+			}
+		}
+	}
 	m.Timestamp = time.Now().UTC()
 	m.KeyBase64 = base64.StdEncoding.EncodeToString([]byte(m.Key))
 	m.ValueBase64 = base64.StdEncoding.EncodeToString([]byte(m.Value))
