@@ -159,3 +159,44 @@ func (d *Demo) Reassign(ctx context.Context, c []model.Change) error {
 func (d *Demo) Pending(context.Context) (map[string][]int32, error) { return map[string][]int32{}, nil }
 func (d *Demo) Close()                                              {}
 func (d *Demo) Simulated() bool                                     { return true }
+
+// ElectPreferredLeaders makes each partition's first replica its leader.
+func (d *Demo) ElectPreferredLeaders(_ context.Context, changes []model.Change) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	wanted := map[string]bool{}
+	for _, c := range changes {
+		wanted[fmt.Sprintf("%s/%d", c.Topic, c.Partition)] = true
+	}
+	for i := range d.state.Topics {
+		for j := range d.state.Topics[i].Partitions {
+			p := &d.state.Topics[i].Partitions[j]
+			if wanted[fmt.Sprintf("%s/%d", d.state.Topics[i].Name, p.ID)] && len(p.Replicas) > 0 {
+				p.Leader = p.Replicas[0]
+			}
+		}
+	}
+	return nil
+}
+
+// ReplicaSizes reports every replica at its partition's simulated size.
+func (d *Demo) ReplicaSizes(context.Context) map[string]map[int32]map[int32]int64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := map[string]map[int32]map[int32]int64{}
+	for _, t := range d.state.Topics {
+		parts := map[int32]map[int32]int64{}
+		for _, p := range t.Partitions {
+			if p.SizeBytes == nil {
+				continue
+			}
+			byBroker := map[int32]int64{}
+			for _, r := range p.Replicas {
+				byBroker[r] = *p.SizeBytes
+			}
+			parts[p.ID] = byBroker
+		}
+		out[t.Name] = parts
+	}
+	return out
+}

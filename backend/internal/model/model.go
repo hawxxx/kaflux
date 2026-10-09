@@ -17,6 +17,8 @@ type Cluster struct {
 	BrokerCount    int    `json:"brokerCount"`
 	TopicCount     int    `json:"topicCount"`
 	PartitionCount int    `json:"partitionCount"`
+	// RequireThrottle rejects rebalance execution without a replication throttle.
+	RequireThrottle bool `json:"requireThrottle"`
 }
 type Broker struct {
 	ID         int32  `json:"id"`
@@ -114,6 +116,8 @@ type Change struct {
 	Partition int32   `json:"partition"`
 	Before    []int32 `json:"before"`
 	After     []int32 `json:"after"`
+	// FinishedAt is set by the worker when the partition first reaches its target.
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }
 type Distribution struct {
 	Broker   int32 `json:"broker"`
@@ -146,6 +150,77 @@ type Plan struct {
 	TerminalError         string           `json:"terminalError,omitempty"`
 	CancellationRequested bool             `json:"cancellationRequested"`
 	RackAware             bool             `json:"rackAware"`
+
+	// Steps run one topic at a time in the order the user chose; CurrentStep is the checkpoint.
+	Steps               []TopicStep `json:"steps,omitempty"`
+	CurrentStep         int         `json:"currentStep"`
+	PauseRequested      bool        `json:"pauseRequested"`
+	PauseRequestedBy    string      `json:"pauseRequestedBy,omitempty"`
+	PauseReason         string      `json:"pauseReason,omitempty"`
+	RollbackRequested   bool        `json:"rollbackRequested"`
+	RollbackRequestedBy string      `json:"rollbackRequestedBy,omitempty"`
+	RollbackOf          string      `json:"rollbackOf,omitempty"`
+	RollbackJob         string      `json:"rollbackJob,omitempty"`
+	HealthWaitSince     *time.Time  `json:"healthWaitSince,omitempty"`
+	Warnings            []string    `json:"warnings,omitempty"`
+	PartitionsDone      int         `json:"partitionsDone"`
+	PartitionsTotal     int         `json:"partitionsTotal"`
+	BytesTotal          *int64      `json:"bytesTotal,omitempty"`
+	BytesDone           *int64      `json:"bytesDone,omitempty"`
+	RateBytesPerSec     *int64      `json:"rateBytesPerSec,omitempty"`
+	ETASeconds          *int64      `json:"etaSeconds,omitempty"`
+	ETABasis            string      `json:"etaBasis,omitempty"`
+	ProgressAt          *time.Time  `json:"progressAt,omitempty"`
+	ProgressLoggedAt    *time.Time  `json:"progressLoggedAt,omitempty"`
+	FinishedAt          *time.Time  `json:"finishedAt,omitempty"`
+}
+
+// Step states of a TopicStep.
+const (
+	StepPending  = "pending"
+	StepMoving   = "moving"
+	StepElecting = "electing"
+	StepDone     = "done"
+	StepSkipped  = "skipped"
+	StepFailed   = "failed"
+)
+
+// TopicStep is one topic of a rebalance, moved in a single reassignment.
+type TopicStep struct {
+	Topic            string     `json:"topic"`
+	State            string     `json:"state"`
+	Partitions       int        `json:"partitions"`
+	PartitionsDone   int        `json:"partitionsDone"`
+	Bytes            *int64     `json:"bytes,omitempty"`
+	BytesDone        *int64     `json:"bytesDone,omitempty"`
+	StartedAt        *time.Time `json:"startedAt,omitempty"`
+	FinishedAt       *time.Time `json:"finishedAt,omitempty"`
+	Error            string     `json:"error,omitempty"`
+	ElectionAttempts int        `json:"electionAttempts,omitempty"`
+}
+
+// ActiveJobStates hold the per-cluster lock: no other job may start and the job cannot be deleted.
+// rollback-queued is a legacy state kept so older rows stay protected.
+var ActiveJobStates = []string{"queued", "running", "paused", "rollback-queued"}
+
+// WorkerJobStates are the states the worker claims and advances. A paused job makes no Kafka calls.
+var WorkerJobStates = []string{"queued", "running"}
+
+func IsActiveJobState(state string) bool {
+	for _, s := range ActiveJobStates {
+		if s == state {
+			return true
+		}
+	}
+	return false
+}
+
+// JobEvent is one line of a job's activity log.
+type JobEvent struct {
+	Seq     int64     `json:"seq"`
+	At      time.Time `json:"at"`
+	Level   string    `json:"level"`
+	Message string    `json:"message"`
 }
 
 type ThrottleRequest struct {

@@ -176,6 +176,8 @@ func Generate(s model.Snapshot, r Request) (model.Plan, error) {
 	sort.Slice(p.Before, func(i, j int) bool { return p.Before[i].Broker < p.Before[j].Broker })
 	sort.Slice(p.After, func(i, j int) bool { return p.After[i].Broker < p.After[j].Broker })
 	p.Fingerprint = Fingerprint(s, p.Topics)
+	p.Steps = Steps(r.Topics, p.Changes, s)
+	p.PartitionsTotal = len(p.Changes)
 	if sizesKnown {
 		p.EstimatedBytes = &estimated
 	}

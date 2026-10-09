@@ -108,7 +108,7 @@ func NewSQLite(ctx context.Context, path string) (*Store, error) {
 		q.close()
 		return nil, e
 	}
-	if version.Valid && version.Int64 != 1 {
+	if version.Valid && version.Int64 != 1 && version.Int64 != sqliteSchemaVersion {
 		_ = tx.Rollback()
 		q.close()
 		return nil, fmt.Errorf("unsupported SQLite schema version %d", version.Int64)
@@ -117,13 +117,15 @@ func NewSQLite(ctx context.Context, path string) (*Store, error) {
  CREATE TABLE IF NOT EXISTS kaflux_sessions(id TEXT PRIMARY KEY,handle TEXT NOT NULL UNIQUE,payload BLOB NOT NULL,expires INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS kaflux_sessions_inventory ON kaflux_sessions(expires,handle);
  CREATE TABLE IF NOT EXISTS kaflux_jobs(id TEXT PRIMARY KEY,cluster_id TEXT NOT NULL,state TEXT NOT NULL,payload BLOB NOT NULL,lease_until INTEGER,lease_owner TEXT);
- CREATE UNIQUE INDEX IF NOT EXISTS kaflux_one_active_job ON kaflux_jobs(cluster_id) WHERE state IN ('queued','running','rollback-queued');
+ CREATE UNIQUE INDEX IF NOT EXISTS kaflux_one_active_job_v2 ON kaflux_jobs(cluster_id) WHERE state IN ('queued','running','paused','rollback-queued');
+ DROP INDEX IF EXISTS kaflux_one_active_job;
+ CREATE TABLE IF NOT EXISTS kaflux_job_events(job_id TEXT NOT NULL,seq INTEGER NOT NULL,at INTEGER NOT NULL,level TEXT NOT NULL,message TEXT NOT NULL,PRIMARY KEY(job_id,seq));
  CREATE TABLE IF NOT EXISTS kaflux_audit(id TEXT PRIMARY KEY,payload BLOB NOT NULL,created_at INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS kaflux_audit_created ON kaflux_audit(created_at);
  CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id TEXT PRIMARY KEY,payload BLOB NOT NULL);
  CREATE TABLE IF NOT EXISTS oidc_flows(id TEXT PRIMARY KEY,nonce TEXT NOT NULL,verifier TEXT NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS kaflux_cluster_names(cluster_id TEXT PRIMARY KEY,name TEXT NOT NULL);
- INSERT OR IGNORE INTO kaflux_schema(version) VALUES(1);`)
+ INSERT OR IGNORE INTO kaflux_schema(version) VALUES(2);`)
 	if e == nil {
 		e = tx.Commit()
 	} else {
@@ -141,6 +143,10 @@ func NewSQLite(ctx context.Context, path string) (*Store, error) {
 	}
 	return &Store{sqlite: q}, nil
 }
+
+// sqliteSchemaVersion 2 adds the paused state to the active-job index and the job events table.
+const sqliteSchemaVersion = 2
+
 func (s *Store) IsPersistent() bool { return s.DB != nil || s.sqlite != nil }
 func (s *Store) Ping(ctx context.Context) error {
 	if s.sqlite != nil {
@@ -231,7 +237,16 @@ func readSQLiteJob(ctx context.Context, tx *sql.Tx, id string) (model.Plan, leas
 	}
 	return p, lease{Owner: owner.String, Until: time.Unix(0, until.Int64)}, e
 }
-func (q *sqliteStore) changeJob(ctx context.Context, id string, change func(*model.Plan, lease) error) error {
+
+// sqliteExec runs extra statements inside changeJob's transaction.
+type sqliteExec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func marshalPlan(p model.Plan) ([]byte, error)    { return json.Marshal(p) }
+func unmarshalPlan(b []byte, p *model.Plan) error { return json.Unmarshal(b, p) }
+
+func (q *sqliteStore) changeJob(ctx context.Context, id string, change func(*model.Plan, lease) error, also ...func(sqliteExec) error) error {
 	tx, e := q.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
@@ -250,6 +265,11 @@ func (q *sqliteStore) changeJob(ctx context.Context, id string, change func(*mod
 	}
 	if _, e = tx.ExecContext(ctx, "UPDATE kaflux_jobs SET state=?,payload=? WHERE id=?", p.State, b, id); e != nil {
 		return e
+	}
+	for _, f := range also {
+		if e = f(tx); e != nil {
+			return e
+		}
 	}
 	return tx.Commit()
 }

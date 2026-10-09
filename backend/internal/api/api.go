@@ -344,7 +344,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		action = "plan"
 		if len(parts) > 6 {
 			action = parts[6]
-			if action == "cancel" || action == "throttle" {
+			if executeActions[action] {
 				action = "execute"
 			}
 			if action == "dry-run" {
@@ -873,9 +873,9 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 	if r.Method == "DELETE" {
 		planAction = "plan"
 	}
-	if len(parts) == 7 {
+	if len(parts) == 7 && r.Method != "GET" {
 		planAction = parts[6]
-		if planAction == "cancel" || planAction == "throttle" {
+		if executeActions[planAction] {
 			planAction = "execute"
 		}
 		if planAction == "dry-run" {
@@ -897,6 +897,10 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		}
 		return
 	}
+	if len(parts) == 7 && r.Method == "GET" {
+		a.jobRead(w, r, p, parts[6])
+		return
+	}
 	if len(parts) != 7 || r.Method != "POST" {
 		fail(w, 405, "method_not_allowed", "POST action required")
 		return
@@ -908,6 +912,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 	var approval struct {
 		Confirmation bool   `json:"confirmation"`
 		PlanHash     string `json:"planHash"`
+		Skip         bool   `json:"skip"`
 	}
 	if !decode(w, r, &approval) {
 		return
@@ -916,15 +921,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		fail(w, 409, "approval_required", "Explicit confirmation and matching plan hash required")
 		return
 	}
-	if parts[6] == "cancel" {
-		if a.adminMutation(w, r, u, id, "cancel", p.ID, map[string]string{"state": p.State}, map[string]bool{"cancellationRequested": true}, func() error { return a.o.Store.RequestCancel(r.Context(), p.ID) }) {
-			updated, e := a.o.Store.Job(r.Context(), p.ID)
-			if e != nil {
-				failCause(w, r, 503, "store_unavailable", "Cancellation requested; job status unavailable", e)
-				return
-			}
-			respond(w, updated)
-		}
+	if a.controlJob(w, r, u, id, provider, p, parts[6], approval.Skip) {
 		return
 	}
 	// Dry run and rollback only read metadata and write a plan, so planning is enough for them.
@@ -944,56 +941,19 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 			fail(w, 409, "invalid_state", "Only finished jobs can be rolled back")
 			return
 		}
-		brokers := map[int32]bool{}
-		for _, b := range snap.Brokers {
-			brokers[b.ID] = true
-		}
-		for i := range p.Changes {
-			c := &p.Changes[i]
-			for _, b := range c.Before {
-				if !brokers[b] {
-					fail(w, 422, "unsafe_rollback", "Original broker no longer exists")
-					return
-				}
-			}
-			original := append([]int32{}, c.Before...)
-			for _, t := range snap.Topics {
-				if t.Name == c.Topic {
-					for _, partition := range t.Partitions {
-						if partition.ID == c.Partition {
-							c.Before = append([]int32{}, partition.Replicas...)
-						}
-					}
-				}
-			}
-			c.After = original
-		}
-		if e = jobs.Validate(snap, p.Changes); e != nil {
+		rollback, e := jobs.RollbackPlan(snap, p, u.ID)
+		if e != nil {
 			fail(w, 422, "unsafe_rollback", e.Error())
 			return
 		}
-		p.ID = auth.Token()
-		p.State = "planned"
-		p.Actor = u.ID
-		p.ApprovedBy = ""
-		p.CreatedAt = time.Now().UTC()
-		p.Progress = 0
-		p.Error = ""
-		p.StartedAt = time.Time{}
-		p.CleanupPending = false
-		p.CancellationRequested = false
-		p.TerminalState = ""
-		p.TerminalError = ""
-		p.Fingerprint = balance.Fingerprint(snap, p.Topics)
-		p.PlanHash = balance.Hash(p.Changes)
-		if !a.audit(w, r, u, "rollback", p.ID, "planned") {
+		if !a.audit(w, r, u, "rollback", rollback.ID, "planned") {
 			return
 		}
-		if e = a.o.Store.SaveJob(r.Context(), p); e != nil {
+		if e = a.o.Store.SaveJob(r.Context(), rollback); e != nil {
 			fail(w, 409, "job_conflict", "Cannot persist rollback")
 			return
 		}
-		respond(w, p)
+		respond(w, rollback)
 		return
 	}
 	if parts[6] == "dry-run" {
@@ -1033,8 +993,8 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		fail(w, 404, "not_found", "Unknown action")
 		return
 	}
-	if !a.o.Demo && p.ThrottleBytesPerSec <= 0 {
-		fail(w, 422, "execution_policy", "Production execution requires a positive replication throttle")
+	if p.ThrottleBytesPerSec <= 0 && a.requiresThrottle(id) {
+		fail(w, 422, "throttle_required", "This cluster requires a replication throttle (requireThrottle in the cluster configuration)")
 		return
 	}
 	if e = jobs.Validate(snap, p.Changes); e != nil {
@@ -1065,6 +1025,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		fail(w, 409, "job_conflict", e.Error())
 		return
 	}
+	a.logJob(r, p.ID, "info", "Execution approved by %s", u.ID)
 	p, _ = a.o.Store.Job(r.Context(), p.ID)
 	respond(w, p)
 }
