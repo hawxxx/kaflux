@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -741,6 +742,10 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 			return
 		}
 	}
+	if raw := q.Get("offsets"); raw != "" {
+		a.messagesAcross(w, r, u, id, p, raw, registry, decoder, target)
+		return
+	}
 	part, e := strconv.ParseInt(q.Get("partition"), 10, 32)
 	if e != nil || part < 0 {
 		fail(w, 400, "invalid_request", "partition must be nonnegative")
@@ -751,13 +756,7 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		fail(w, 400, "invalid_request", "offset must be nonnegative")
 		return
 	}
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	if limit < 1 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit := readLimit(q)
 	if timestamp := q.Get("timestamp"); timestamp != "" {
 		at, e := time.Parse(time.RFC3339, timestamp)
 		if e != nil {
@@ -778,6 +777,68 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		}
 	}
 	m, e := p.Messages(r.Context(), q.Get("topic"), int32(part), offset, limit)
+	if e != nil {
+		failCause(w, r, 503, "consume_failed", "Unable to read messages", e)
+		return
+	}
+	if registry != nil {
+		a.decodeMessageFields(r.Context(), u, id, registry, m, decoder, target)
+	}
+	respond(w, m)
+}
+func readLimit(q url.Values) int {
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	return min(max(limit, 1), 100)
+}
+
+// messagesAcross reads several partitions of one topic in a single request. offsets lists
+// "partition:offset" pairs; with a timestamp the offsets are ignored and each listed partition
+// starts at the first record at or after that time.
+func (a *API) messagesAcross(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider, raw string, registry *integrations.Client, decoder, target string) {
+	reader, ok := p.(kafka.MultiReader)
+	if !ok {
+		fail(w, 422, "unsupported", "Reading several partitions is unavailable")
+		return
+	}
+	pairs := strings.Split(raw, ",")
+	if len(pairs) > 4096 {
+		fail(w, 400, "invalid_request", "Too many partitions")
+		return
+	}
+	from := make(map[int32]int64, len(pairs))
+	for _, pair := range pairs {
+		partition, offset, found := strings.Cut(pair, ":")
+		part, e1 := strconv.ParseInt(partition, 10, 32)
+		start, e2 := strconv.ParseInt(offset, 10, 64)
+		if !found || e1 != nil || e2 != nil || part < 0 || start < 0 {
+			fail(w, 400, "invalid_request", "offsets must be partition:offset pairs, both nonnegative")
+			return
+		}
+		from[int32(part)] = start
+	}
+	q := r.URL.Query()
+	topic := q.Get("topic")
+	if timestamp := q.Get("timestamp"); timestamp != "" {
+		at, e := time.Parse(time.RFC3339, timestamp)
+		if e != nil {
+			fail(w, 400, "invalid_request", "timestamp must be RFC3339")
+			return
+		}
+		resolved, e := reader.OffsetsAt(r.Context(), topic, at)
+		if e != nil {
+			failCause(w, r, 503, "offset_lookup_failed", "Timestamp offset unavailable", e)
+			return
+		}
+		for part := range from {
+			offset, found := resolved[part]
+			if !found {
+				fail(w, 422, "unknown_partition", fmt.Sprintf("Partition %d not found", part))
+				return
+			}
+			from[part] = offset
+		}
+	}
+	m, e := reader.MessagesAt(r.Context(), topic, from, readLimit(q))
 	if e != nil {
 		failCause(w, r, 503, "consume_failed", "Unable to read messages", e)
 		return

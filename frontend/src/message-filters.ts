@@ -1,8 +1,11 @@
 import type {Message} from './api';
-export function mergeMessages(previous:Message[],incoming:Message[],limit:number){
+// Records from different partitions interleave by time; offsets only order records within one partition.
+export const chronological=(a:Message,b:Message)=>Date.parse(a.timestamp)-Date.parse(b.timestamp)||a.partition-b.partition||a.offset-b.offset;
+export function mergeMessages(previous:Message[],incoming:Message[],limit:number,byTime=false){
   const merged=new Map<string,Message>();
   for(const record of [...previous,...incoming])merged.set(`${record.partition}:${record.offset}`,record);
-  return Array.from(merged.values()).slice(-Math.max(1,limit));
+  const all=Array.from(merged.values());
+  return (byTime?all.sort(chronological):all).slice(-Math.max(1,limit));
 }
 export type SearchScope='all'|'key'|'value'|'headers';
 function searchable(value:unknown){if(value==null)return '';return (typeof value==='string'?value:JSON.stringify(value)??'').toLowerCase()}

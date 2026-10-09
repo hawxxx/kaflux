@@ -930,16 +930,38 @@ paths:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
     get:
-      summary: Bounded read from a topic partition starting at an offset
+      summary: Bounded read from one topic partition, or from several through one consumer
       operationId: consumeMessages
       parameters:
         - { name: topic, in: query, required: true, schema: { type: string } }
-        - { name: partition, in: query, required: true, schema: { type: integer, minimum: 0 } }
+        - {
+            name: partition,
+            in: query,
+            description: "Partition to read; required with offset unless offsets is set",
+            schema: { type: integer, minimum: 0 },
+          }
         - {
             name: offset,
             in: query,
-            required: true,
+            description: "Starting offset; required with partition unless offsets is set",
             schema: { type: integer, format: int64, minimum: 0 },
+          }
+        - {
+            name: offsets,
+            in: query,
+            description:
+              "Comma-separated partition:offset pairs, for example 0:150,1:7. Reads each listed
+              partition from its offset through one consumer, up to limit records per partition.
+              Replaces partition and offset",
+            schema: { type: string, example: "0:150,1:7" },
+          }
+        - {
+            name: timestamp,
+            in: query,
+            description:
+              "RFC 3339 time. Starts the partition, or every partition in offsets, at the first
+              record at or after it",
+            schema: { type: string, format: date-time },
           }
         - {
             name: limit,

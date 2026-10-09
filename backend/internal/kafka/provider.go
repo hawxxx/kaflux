@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"github.com/hawxxx/kaflux/backend/internal/model"
+	"time"
 )
 
 type Provider interface {
@@ -13,6 +14,15 @@ type Provider interface {
 	Reassign(context.Context, []model.Change) error
 	Pending(context.Context) (map[string][]int32, error)
 	Close()
+}
+
+// MultiReader reads several partitions of one topic through a single consumer,
+// so a topic-wide view costs one connection instead of one per partition.
+type MultiReader interface {
+	// MessagesAt reads up to limit records from each partition, starting at its offset.
+	MessagesAt(ctx context.Context, topic string, from map[int32]int64, limit int) ([]model.Message, error)
+	// OffsetsAt returns, per partition, the first offset at or after the time.
+	OffsetsAt(ctx context.Context, topic string, at time.Time) (map[int32]int64, error)
 }
 
 // MessageCounter is implemented by providers whose snapshots carry no

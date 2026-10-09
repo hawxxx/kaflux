@@ -105,6 +105,28 @@ func (d *Demo) Messages(ctx context.Context, t string, p int32, o int64, l int) 
 	}
 	return out, nil
 }
+func (d *Demo) MessagesAt(ctx context.Context, t string, from map[int32]int64, l int) ([]model.Message, error) {
+	out := []model.Message{}
+	for p, o := range from {
+		m, e := d.Messages(ctx, t, p, o, l)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m...)
+	}
+	return out, nil
+}
+func (d *Demo) OffsetsAt(ctx context.Context, t string, at time.Time) (map[int32]int64, error) {
+	out := map[int32]int64{}
+	for p := int32(0); ; p++ {
+		o, e := d.OffsetAt(ctx, t, p, at)
+		if e != nil {
+			break
+		}
+		out[p] = o
+	}
+	return out, nil
+}
 func (d *Demo) Produce(ctx context.Context, m model.Message) (model.Message, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

@@ -22,8 +22,9 @@
 .message-list { position: relative; max-height: 720px; overflow: auto; }
 
 .record { border-bottom: 1px solid var(--border); animation: record-in .24s ease-out both; }
-.record-summary { display: grid; grid-template-columns: var(--record-cols); gap: 12px; align-items: center; width: 100%; padding: 10px 16px; border: 0; border-left: 2px solid transparent; background: none; text-align: left; font: 11px 'IBM Plex Mono'; transition: background-color .12s ease; }
-.record-summary:hover { background: var(--hover); }
+.record-summary { display: grid; grid-template-columns: var(--record-cols); gap: 12px; align-items: center; width: 100%; padding: 10px 16px; border: 0; border-left: 2px solid transparent; background: none; text-align: left; font: 11px 'IBM Plex Mono'; cursor: pointer; transition: background-color .12s ease, border-color .12s ease; }
+.record-summary:hover { background: var(--hover); border-left-color: color-mix(in srgb, var(--purple) 55%, transparent); }
+.record-offset b { margin: 0 3px; font-weight: 400; color: var(--muted); }
 .record-summary:focus-visible { outline: 1px solid var(--purple); outline-offset: -1px; }
 .record.open > .record-summary { border-left-color: var(--purple); background: color-mix(in srgb, var(--purple) 7%, transparent); }
 .record-chevron { color: var(--muted); transition: transform .15s ease; }
