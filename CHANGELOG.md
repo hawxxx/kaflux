@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/hawxxx/kaflux/compare/v0.2.1...v0.3.0) (2026-10-09)
+
+
+### Features
+
+* **clusters:** rename any cluster from settings with unique names ([#31](https://github.com/hawxxx/kaflux/issues/31)) ([0910282](https://github.com/hawxxx/kaflux/commit/0910282d437e309b1f942c5abdcf5b7cc77d399c))
+* **reassignments:** lead plan review with the changes table ([#29](https://github.com/hawxxx/kaflux/issues/29)) ([4935fb2](https://github.com/hawxxx/kaflux/commit/4935fb21d41294ca0b2b0700e2824d30bc79efd0))
+* **ui:** add 404 and error pages ([#33](https://github.com/hawxxx/kaflux/issues/33)) ([1e6963a](https://github.com/hawxxx/kaflux/commit/1e6963afff200ab7ee05f04de13929cea5def2e5))
+
 ## [0.2.1](https://github.com/hawxxx/kaflux/compare/v0.2.0...v0.2.1) (2026-10-09)
 
 
