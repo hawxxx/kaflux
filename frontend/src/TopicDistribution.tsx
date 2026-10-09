@@ -3,6 +3,7 @@ import {AlertTriangle,ArrowRight,CircleAlert,Info,Layers3,RefreshCw,Shield} from
 import type {CSSProperties} from 'react';
 import {api,bytes} from './api';
 import {SortButton,useSortedRows} from './table-sort';
+import {useTimeZone} from './TimeZone';
 
 type Deviation={broker:number;value:number;differenceFromMean:number;percentageDifference:number};
 type Dimension={id:string;status:'GOOD'|'MODERATE'|'HIGH_SKEW'|'UNAVAILABLE';mean:number;maxMinusMin:number;coefficientOfVariation:number;maxToMeanRatio:number;brokers:Deviation[];reason?:string};
@@ -22,7 +23,7 @@ function SkewBadge({status}:{status:Dimension['status']}){return <span className
 function role(p:TopicPartition,broker:number){if(!p.replicas.includes(broker))return null;if(p.leader===broker)return {kind:'leader',mark:'L',text:'Leader'};if(!p.isr.includes(broker))return {kind:'lagging',mark:'!',text:'Out of sync'};return {kind:'follower',mark:'F',text:'In-sync follower'}}
 
 export function TopicDistribution({clusterId,topic,onPlan}:{clusterId:string;topic:string;onPlan?:()=>void}){
-  const query=useQuery({queryKey:[`/clusters/${clusterId}/topics/${encodeURIComponent(topic)}/balance`],queryFn:()=>api<TopicAnalysis>(`/clusters/${clusterId}/topics/${encodeURIComponent(topic)}/balance`)});
+  const tz=useTimeZone();const query=useQuery({queryKey:[`/clusters/${clusterId}/topics/${encodeURIComponent(topic)}/balance`],queryFn:()=>api<TopicAnalysis>(`/clusters/${clusterId}/topics/${encodeURIComponent(topic)}/balance`)});
   const a=query.data?.data;
   const dimension=(id:string)=>a?.dimensions.find(d=>d.id===id);
   const replicas=dimension('replicas'),leaders=dimension('leaders'),storage=dimension('bytes');
@@ -33,7 +34,7 @@ export function TopicDistribution({clusterId,topic,onPlan}:{clusterId:string;top
   const columns=[...colored].sort((x,y)=>x.rack.localeCompare(y.rack)||x.broker-y.broker);
   const analyze=<button className="button primary" onClick={()=>query.refetch()} disabled={query.isFetching}><RefreshCw size={13} className={query.isFetching?'spin':undefined}/>{query.isFetching?'Analyzing…':'Analyze'}</button>;
   return <section className="panel topic-distribution">
-    <div className="panel-title"><div><h2>Topic distribution</h2><p>{a?`How ${topic} spreads across ${a.brokers.length} brokers · observed ${new Date(a.observedAt).toLocaleTimeString()} · source: Kafka Admin API`:'Partition, replica and leader placement per broker'}</p></div><div className="heading-actions">{onPlan&&<button className="button" onClick={onPlan}>Plan reassignment <ArrowRight size={13}/></button>}{analyze}</div></div>
+    <div className="panel-title"><div><h2>Topic distribution</h2><p>{a?`How ${topic} spreads across ${a.brokers.length} brokers · observed ${tz.time(a.observedAt)} · source: Kafka Admin API`:'Partition, replica and leader placement per broker'}</p></div><div className="heading-actions">{onPlan&&<button className="button" onClick={onPlan}>Plan reassignment <ArrowRight size={13}/></button>}{analyze}</div></div>
     {query.error&&<div className="error-box" role="alert"><Shield size={17}/><div><strong>Unable to analyze this topic</strong><p>{query.error.message}</p></div></div>}
     {query.isLoading?<div className="loading" role="status"><span aria-hidden="true"/>Analyzing placement…</div>:a&&<>
       <div className="distribution-kpis">
