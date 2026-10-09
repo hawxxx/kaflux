@@ -2,8 +2,9 @@ import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,expect,it,vi} from 'vitest';
 import {Integrations} from './Integrations';
+import {allPermissions} from './test-permissions';
 afterEach(()=>vi.restoreAllMocks());
-const session={user:{username:'admin',role:'administrator'},csrfToken:'test',demo:false};
+const session={user:{username:'admin',role:'administrator'},permissions:allPermissions('demo'),csrfToken:'test',demo:false};
 function mount(kind:'schemas'|'connectors'){render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><Integrations clusterId="demo" kind={kind} session={session}/></QueryClientProvider>)}
 it('explains unconfigured schema integration without synthetic subjects',async()=>{
   vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,status:422,json:async()=>({error:{code:'integration_unconfigured',message:'Schema Registry integration not configured'}})} as Response)));

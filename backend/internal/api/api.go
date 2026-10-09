@@ -174,7 +174,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/api/v1/auth/session" {
-		respond(w, map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "canManageSessions": (auth.Authorizer{Grants: a.o.Grants}).Allowed(s.User, "*", "manage-sessions", "*")})
+		respond(w, a.sessionView(s))
 		return
 	}
 	if path == "/api/v1/auth/logout" {
@@ -513,6 +513,17 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "Endpoint not found")
 	}
 }
+
+// sessionView reports the signed-in user and the actions they may attempt per
+// cluster ("*" holds global actions such as audit and manage-sessions).
+func (a *API) sessionView(s auth.Session) map[string]any {
+	authorizer := auth.Authorizer{Grants: a.o.Grants}
+	permissions := map[string][]string{"*": authorizer.Permissions(s.User, "*")}
+	for _, c := range a.o.Clusters {
+		permissions[c.ID] = authorizer.Permissions(s.User, c.ID)
+	}
+	return map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "canManageSessions": authorizer.Allowed(s.User, "*", "manage-sessions", "*"), "permissions": permissions}
+}
 func (a *API) allowed(u auth.User, c, action, resource string, w http.ResponseWriter) bool {
 	if (auth.Authorizer{Grants: a.o.Grants}).Allowed(u, c, action, resource) {
 		return true
@@ -562,7 +573,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	respond(w, map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "canManageSessions": (auth.Authorizer{Grants: a.o.Grants}).Allowed(s.User, "*", "manage-sessions", "*")})
+	respond(w, a.sessionView(s))
 }
 func topicRow(t model.Topic) map[string]any {
 	return map[string]any{"name": t.Name, "partitions": len(t.Partitions), "replicationFactor": t.ReplicationFactor, "sizeBytes": t.SizeBytes, "urp": t.URP, "cleanupPolicy": t.CleanupPolicy, "retentionMs": t.RetentionMs, "observedAt": t.ObservedAt, "internal": t.IsInternal(), "messages": t.MessageCount()}

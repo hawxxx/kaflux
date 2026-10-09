@@ -4,8 +4,9 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {clearable,DeleteTopics,TopicRowMenu} from './TopicActions';
 import {validateTopicSearch} from './topic-search';
 import type {Session,Topic} from './api';
+import {allPermissions} from './test-permissions';
 afterEach(()=>vi.restoreAllMocks());
-const admin:Session={user:{username:'admin',role:'administrator'},csrfToken:'test',demo:true};
+const admin:Session={user:{username:'admin',role:'administrator'},permissions:allPermissions('demo'),csrfToken:'test',demo:true};
 const topic:Topic={name:'orders',partitions:6,replicationFactor:3,sizeBytes:null,urp:0,cleanupPolicy:'delete',retentionMs:1000,observedAt:'',internal:false,messages:42};
 const wrap=(ui:React.ReactNode)=>render(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 function stubFetch(data:(url:string,init?:RequestInit)=>unknown=()=>({ok:true})){

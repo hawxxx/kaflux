@@ -2,7 +2,8 @@ import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {ConsumerGroups} from './ConsumerGroups';
-const session={user:{username:'admin',role:'administrator'},csrfToken:'test',demo:true};
+import {allPermissions} from './test-permissions';
+const session={user:{username:'admin',role:'administrator'},permissions:allPermissions('demo'),csrfToken:'test',demo:true};
 function mount(){render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><ConsumerGroups clusterId="demo" session={session}/></QueryClientProvider>)}
 afterEach(()=>vi.restoreAllMocks());
 describe('consumer offset administration',()=>{

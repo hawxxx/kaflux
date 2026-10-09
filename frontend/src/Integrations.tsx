@@ -2,7 +2,7 @@ import {useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
 import {ArrowLeft,ArrowRight,Plus,Shield,X} from 'lucide-react';
-import {api,pretty,type Session} from './api';
+import {api,can,pretty,type Session} from './api';
 import {MessageValue} from './MessageValue';
 type Integration={id:string;kind:string};
 type Action={title:string;method:string;suffix:string;payload?:string;requiresName?:boolean};
@@ -14,7 +14,7 @@ export function Integrations({clusterId,kind,session}:{clusterId:string;kind:'sc
   const detail=useQuery({queryKey:[resource,tab],queryFn:()=>api<unknown>(`${resource}${tab?`/${tab}`:''}`),enabled:!!id&&!!selected});
   const versions=useQuery({queryKey:[resource,'versions'],queryFn:()=>api<number[]>(`${resource}/versions`),enabled:schemas&&!!id&&!!selected});
   const status=useQuery({queryKey:[resource,'status'],queryFn:()=>api<{tasks?:{id:number;state:string}[]}>(`${resource}/status`),enabled:!schemas&&!!id&&!!selected});
-  const allowed=session?.user.role==='administrator'||session?.user.roles?.includes('administrator')||session?.user.permissions?.includes(schemas?'schema-update':'connector-update');
+  const allowed=can(session,clusterId,schemas?'schema-update':'connector-update');
   async function open(a:Action){setAction(a);setName(selected);setPayload(a.payload??'');setApproved(false);setError('');setResult(null);if(!schemas&&selected&&a.suffix==='/config'&&a.method==='PUT'){setBusy(true);try{setPayload(pretty((await api<unknown>(`${resource}/config`)).data))}catch(e){setError((e as Error).message)}finally{setBusy(false)}}}
   async function submit(e:React.FormEvent){e.preventDefault();if(!action||!approved)return;setBusy(true);setError('');try{let data:unknown={};if(action.payload!==undefined){data=JSON.parse(payload);if(data===null||Array.isArray(data)||typeof data!=='object')throw new Error('Enter a JSON object payload.');if(action.requiresName&&JSON.stringify(data).includes('[REDACTED]'))throw new Error('New connectors cannot contain redaction placeholders.')}const response=await api<unknown>(`${path}/${encodeURIComponent(name)}${action.suffix}`,{method:action.method,body:JSON.stringify({confirmation:true,payload:data})});setResult(response.data);setNotice(`${action.title} completed.`);setAction(null);await qc.invalidateQueries({queryKey:[path]});if(action.method==='DELETE'){setSelected('');setTab('')}else await qc.invalidateQueries({queryKey:[resource]})}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
   const schemaActions:Action[]=[{title:'Register schema',method:'POST',suffix:'',payload:'{"schema":"","schemaType":"AVRO","references":[]}',requiresName:true},{title:'Check compatibility',method:'POST',suffix:'/compatibility',payload:'{"schema":"","schemaType":"AVRO","references":[]}'},{title:'Update compatibility policy',method:'PUT',suffix:'/configuration',payload:'{"compatibility":"BACKWARD"}'},{title:'Delete subject',method:'DELETE',suffix:''}];

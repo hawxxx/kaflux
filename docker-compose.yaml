@@ -30,6 +30,9 @@ services:
       KAFLUX_ADMIN_PASSWORD_HASH: ${KAFLUX_ADMIN_PASSWORD_HASH:-}
       KAFLUX_CONFIG: /app/config.yaml
       KAFLUX_PROMETHEUS_URL: ${KAFLUX_PROMETHEUS_URL:-}
+      # Secrets referenced by oidc[].clientSecretEnv and ldap[].bindPasswordEnv in config.yaml.
+      KAFLUX_OIDC_SECRET: ${KAFLUX_OIDC_SECRET:-}
+      KAFLUX_LDAP_BIND_PASSWORD: ${KAFLUX_LDAP_BIND_PASSWORD:-}
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     depends_on:

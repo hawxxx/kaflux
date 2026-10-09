@@ -2,7 +2,7 @@ import {useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
 import {Plus,Shield,Trash2,X} from 'lucide-react';
-import {api,pretty,type Session} from './api';
+import {api,can,pretty,type Session} from './api';
 import {SortTh,useSortedRows} from './table-sort';
 type ACL={resourceType:string;resourceName:string;patternType:string;principal:string;host:string;operation:string;permission:string;raw?:Record<string,number>};
 const blank:ACL={resourceType:'TOPIC',resourceName:'',patternType:'LITERAL',principal:'User:',host:'*',operation:'READ',permission:'ALLOW'};
@@ -11,7 +11,7 @@ function binding(acl:ACL){const {raw:_,...fields}=acl;return fields}
 export function AccessControl({clusterId,session}:{clusterId:string;session?:Session}){
   const qc=useQueryClient();const path=`/clusters/${clusterId}/acls`;const query=useQuery({queryKey:[path],queryFn:()=>api<ACL[]>(path)});
   const [principal,setPrincipal]=useState('');const [resource,setResource]=useState('');const [view,setView]=useState('readable');const [action,setAction]=useState('');const [acl,setAcl]=useState<ACL>(blank);const [approved,setApproved]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
-  const allowed=session?.user.role==='administrator'||session?.user.roles?.includes('administrator')||session?.user.permissions?.includes('manage-acls');
+  const allowed=can(session,clusterId,'manage-acls');
   const rows=(query.data?.data??[]).filter(a=>a.principal.toLowerCase().includes(principal.toLowerCase())&&`${a.resourceType} ${a.resourceName}`.toLowerCase().includes(resource.toLowerCase()));
   const table=useSortedRows(rows,{principal:a=>a.principal,permission:a=>a.permission,operation:a=>a.operation,resource:a=>`${a.resourceType}/${a.resourceName}`,pattern:a=>a.patternType,host:a=>a.host});
   function open(kind:string,b:ACL){setAction(kind);setAcl(binding(b));setApproved(false);setError('');setNotice('')}

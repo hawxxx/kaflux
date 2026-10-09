@@ -2,8 +2,9 @@ import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,expect,it,vi} from 'vitest';
 import {AccessControl} from './AccessControl';
+import {allPermissions} from './test-permissions';
 const acl={resourceType:'TOPIC',resourceName:'orders',patternType:'PREFIXED',principal:'User:orders',host:'*',operation:'READ',permission:'ALLOW',raw:{resourceType:2,patternType:4,operation:3,permission:3}};
-const session={user:{username:'admin',role:'administrator'},csrfToken:'test',demo:true};
+const session={user:{username:'admin',role:'administrator'},permissions:allPermissions('demo'),csrfToken:'test',demo:true};
 function mount(){render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><AccessControl clusterId="demo" session={session}/></QueryClientProvider>)}
 afterEach(()=>vi.restoreAllMocks());
 it('requires reviewed approval and deletes only the exact selected binding',async()=>{

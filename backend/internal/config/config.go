@@ -203,7 +203,7 @@ func Load(path string) (Config, error) {
 	default:
 		return c, fmt.Errorf("storage backend must be sqlite, postgres, or memory")
 	}
-	return c, nil
+	return c, validateIdentity(&c)
 }
 
 func override(name, fallback string) string {

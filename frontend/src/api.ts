@@ -2,7 +2,9 @@ export type Cluster = {id:string;name:string;configuredName:string;environment:s
 export type Topic = {name:string;partitions:number;replicationFactor:number;sizeBytes:number|null;urp:number;cleanupPolicy:string;retentionMs:number;observedAt:string;internal?:boolean;messages?:number|null};
 export type Broker = {id:number;host:string;port:number;rack:string;partitions:number;leaders:number;sizeBytes:number|null};
 export type Message = {partition:number;offset:number;timestamp:string;key:unknown;value:unknown;headers:{key:string;value:string}[];valueBase64?:string;keyBase64?:string;truncated?:boolean;decodedValue?:unknown;schemaId?:number;decodeError?:string;decodedFormat?:string;decodedKey?:unknown;keyDecodedFormat?:string;keySchemaId?:number;keyDecodeError?:string};
-export type Session = {user:{username:string;name?:string;role?:string;roles?:string[];permissions?:string[]};csrfToken:string;demo:boolean;canManageSessions?:boolean};
+export type Session = {user:{username:string;name?:string;role?:string;roles?:string[]};csrfToken:string;demo:boolean;canManageSessions?:boolean;permissions?:Record<string,string[]>};
+/** Whether the backend grants the action on at least one resource of the cluster; each request is still authorized server-side. */
+export function can(session:Session|undefined,clusterId:string,action:string){return !!session?.permissions?.[clusterId]?.includes(action)}
 export type Envelope<T> = {data:T;meta?:{total:number;page:number;pageSize:number}};
 export class ApiError extends Error {code:string;status:number;constructor(message:string,code:string,status:number){super(message);this.code=code;this.status=status}}
 let csrf='';

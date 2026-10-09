@@ -120,7 +120,7 @@ paths:
   /auth/providers:
     get:
       security: []
-      summary: List configured local, OIDC and LDAP login providers
+      summary: List configured login providers (local only when a local account is configured)
       operationId: listAuthProviders
       responses:
         "200": { $ref: "#/components/responses/Envelope" }
@@ -179,11 +179,13 @@ paths:
       operationId: callbackOIDC
       parameters:
         - { name: state, in: query, required: true, schema: { type: string } }
-        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: code, in: query, required: false, schema: { type: string } }
+        - { name: error, in: query, required: false, schema: { type: string } }
       responses:
-        "302": { description: Redirect to console with HttpOnly session cookie }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
+        "302":
+          description: >-
+            Redirect to the console with an HttpOnly session cookie, or to
+            /login?error=sso_state|sso_denied|sso_rejected when sign-in fails
   /clusters:
     get:
       summary: Authorized cluster inventory and connectivity status
@@ -1284,6 +1286,13 @@ components:
                       description:
                         Effective global session inventory permission; returned by GET /auth/session,
                     }
+                  permissions:
+                    type: object
+                    description: >-
+                      Actions the user may perform on at least one resource, keyed by cluster ID;
+                      "*" holds global actions such as audit and manage-sessions. Advisory for the
+                      UI; every request is still authorized.
+                    additionalProperties: { type: array, items: { type: string } }
     Plan:
       description: Persisted plan or execution job
       content:

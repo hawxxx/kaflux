@@ -24,6 +24,27 @@ type Grant struct {
 }
 type Authorizer struct{ Grants []Grant }
 
+// Actions lists every action the API authorizes. Grants may use "*" or one of these.
+var Actions = []string{
+	"read", "consume", "produce",
+	"create", "delete", "alter-config", "reset-offsets", "rename",
+	"plan", "execute", "rollback",
+	"manage-acls", "schema-read", "schema-update", "connector-read", "connector-update",
+	"audit", "manage-sessions",
+}
+
+// Permissions returns the actions the user may perform on at least one resource
+// of the cluster. It drives UI affordances; each request is still authorized.
+func (a Authorizer) Permissions(u User, cluster string) []string {
+	out := []string{}
+	for _, action := range Actions {
+		if a.AnyAllowed(u, cluster, action) {
+			out = append(out, action)
+		}
+	}
+	return out
+}
+
 func (a Authorizer) AnyAllowed(u User, cluster, action string) bool {
 	for _, g := range a.Grants {
 		if g.Cluster != "*" && g.Cluster != cluster {
