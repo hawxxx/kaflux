@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {test,expect,type Page} from '@playwright/test';
+async function pickTopic(page:Page,name:string){const input=page.getByRole('combobox',{name:'Topic',exact:true});await input.fill(name);await page.getByRole('option',{name,exact:true}).click()}
 test('Protobuf value selection sends the correct decoder and retains original bytes',async({page})=>{
  await page.route('**/api/v1/clusters/demo/schemas',route=>route.fulfill({json:{data:[{id:'sr'}]}}));
  await page.route('**/api/v1/clusters/demo/messages?*',route=>{
@@ -8,16 +9,18 @@ test('Protobuf value selection sends the correct decoder and retains original by
   return route.fulfill({json:{data:[{partition:0,offset:42,timestamp:new Date().toISOString(),key:'event',keyBase64:'AAAAACoACgNhYmM=',value:'binary',valueBase64:'AAAAACoACgNhYmM=',headers:[],...(protobuf?{decodedValue:{name:'abc'},schemaId:42,decodedFormat:'protobuf'}:{}),...(protobuf&&params.get('decoderTarget')==='both'?{decodedKey:{name:'abc'},keySchemaId:42,keyDecodedFormat:'protobuf'}:{})}]}});
  });
  await page.goto('/clusters/demo/messages');
- await page.locator('.message-filter select').first().selectOption('orders.created');
+ await pickTopic(page,'orders.created');
+ await page.locator('.record-summary').first().click();
  await page.getByLabel('Value decoder').selectOption({label:'Protobuf · sr'});
- const value=page.locator('.message-inspector > .payload');
+ const value=page.locator('.record-detail > .payload');
  await value.getByRole('button',{name:'Schema',exact:true}).click();
  await expect(value.getByText('Protobuf · schema 42')).toBeVisible();
  await expect(value.getByText('"abc"')).toBeVisible();
  await value.getByRole('button',{name:'Base64',exact:true}).click();
  await expect(value.getByText('AAAAACoACgNhYmM=')).toBeVisible();
  await page.getByLabel('Decode field',{exact:true}).selectOption('both');
- const key=page.locator('.message-metadata details').first();
+ await page.getByRole('tab',{name:'Key',exact:true}).click();
+ const key=page.locator('.record-detail > .payload');
  await key.getByRole('button',{name:'Schema',exact:true}).click();
  await expect(key.getByText('Protobuf · schema 42')).toBeVisible();
  await expect(key.getByText('"abc"')).toBeVisible();
@@ -31,9 +34,10 @@ test('Avro value decoding retains raw bytes and explains individual failures',as
   return route.fulfill({json:{data:[{partition:0,offset:42,timestamp:new Date().toISOString(),key:'event',value:'binary preview',valueBase64:'AAAAACoGYWJj',headers:[],...(decoded?{decodedValue:{name:'abc'},schemaId:42}:{})}]}});
  });
  await page.goto('/clusters/demo/messages');
- await page.locator('.message-filter select').first().selectOption('orders.created');
+ await pickTopic(page,'orders.created');
+ await page.locator('.record-summary').first().click();
  await page.getByLabel('Value decoder').selectOption('sr');
- const value=page.locator('.message-inspector > .payload');
+ const value=page.locator('.record-detail > .payload');
  await value.getByRole('button',{name:'Schema',exact:true}).click();
  await expect(value.getByText('Avro · schema 42')).toBeVisible();
  await expect(value.getByText('"abc"')).toBeVisible();
@@ -120,7 +124,7 @@ test('live tail advances beyond a bounded initial read and discovers produced re
     const response=await page.request.post('/api/v1/clusters/demo/messages',{headers:{'X-CSRF-Token':session.data.csrfToken},data:{topic:'orders.created',partition:0,key:`bounded-seed-${Date.now()}-${i}`,value:'bounded tail test fixture',headers:[]}});
     expect(response.ok()).toBeTruthy();
   }
-  await page.getByRole('combobox',{name:'Topic',exact:true}).selectOption('orders.created');
+  await pickTopic(page,'orders.created');
   await page.getByLabel('Record limit').selectOption('25');
   await expect(page.locator('.record')).toHaveCount(25);
   await page.getByRole('button',{name:'Start live tail'}).click();
@@ -129,7 +133,7 @@ test('live tail advances beyond a bounded initial read and discovers produced re
   await page.getByLabel('Message value').fill('{"type":"tail-verification"}');
   await page.getByRole('button',{name:'Confirm & produce'}).click();
   await expect(page.locator('.record').filter({hasText:key})).toBeVisible({timeout:15000});
-  await page.getByLabel('Filter returned keys').fill(key);
+  await page.getByLabel('Search returned records').fill(key);
   await expect(page.locator('.record')).toHaveCount(1);
   await page.getByRole('button',{name:'Pause live tail'}).click();
 });
@@ -197,9 +201,10 @@ test('demo inventory, record inspection, live tail, theme and deep links',async(
   await expect(page.locator('.topic-name').first()).toBeVisible();
   const topic=(await page.locator('.topic-name').first().innerText()).trim();
   await page.goto('/clusters/demo/messages');
-  await page.getByRole('combobox',{name:'Topic',exact:true}).selectOption({label:topic});
+  await pickTopic(page,topic);
   await expect(page.locator('.record').first()).toBeVisible();
-  await expect(page.locator('.message-inspector .payload').first()).toBeVisible();
+  await page.locator('.record-summary').first().click();
+  await expect(page.locator('.record-detail .payload').first()).toBeVisible();
   await page.getByRole('button',{name:'Hex',exact:true}).first().click();
   await expect(page.locator('.payload-code pre').first()).toContainText(/[0-9a-f]{2}/);
   await page.getByRole('button',{name:'JSON',exact:true}).first().click();
