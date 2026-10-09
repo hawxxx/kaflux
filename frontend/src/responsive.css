@@ -38,8 +38,6 @@
 }
 
 /* Native select is the hit target; keep it tall enough for touch and pointer use. */
-.cluster-select{padding-block:6px}
-.cluster-select select{min-height:32px;cursor:pointer}
 
 /* Hover legends are unreliable on touch screens and crowd narrow charts; multi-series charts keep a static name list so lines stay identifiable. */
 @media(max-width:640px){.chart-area .u-legend{display:none}.chart-area .multi-series .u-legend{display:block}.chart-area .multi-series .u-legend .u-series:first-child,.chart-area .multi-series .u-legend .u-value{display:none}.chart-area .multi-series .u-legend th::after{content:none}.monitoring-note{flex-wrap:wrap}.chart-legend{flex-wrap:wrap}}
