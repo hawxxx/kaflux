@@ -40,3 +40,10 @@ it('disables cluster rename for a viewer',()=>{
   render(<QueryClientProvider client={new QueryClient()}><ClusterSettings clusterId="demo" cluster={cluster} session={{user:{username:'viewer',role:'viewer'},csrfToken:'test',demo:true}}/></QueryClientProvider>);
   expect(screen.getByLabelText('Cluster name')).toBeDisabled();
 });
+it('hides the rebalancing status for clusters where it does not apply',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({data:{kind:'Kafka',rebalancingStatus:'NOT_APPLICABLE'}})} as Response)));
+  const cluster={id:'k',name:'K',configuredName:'K',environment:'development',kind:'Kafka',mode:'live',state:'healthy',brokerCount:3,topicCount:1,partitionCount:1};
+  render(<QueryClientProvider client={new QueryClient()}><ClusterSettings clusterId="k" cluster={cluster} session={{user:{username:'viewer',role:'viewer'},csrfToken:'test',demo:false}}/></QueryClientProvider>);
+  await waitFor(()=>expect(screen.getByText('kind')).toBeVisible());
+  expect(screen.queryByText(/rebalancing/i)).toBeNull();
+});
