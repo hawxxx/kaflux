@@ -19,10 +19,12 @@ import (
 
 type OIDCConfig struct {
 	ID              string              `yaml:"id"`
+	Name            string              `yaml:"name"`
 	Issuer          string              `yaml:"issuer"`
 	ClientID        string              `yaml:"clientId"`
 	ClientSecretEnv string              `yaml:"clientSecretEnv"`
 	RedirectURL     string              `yaml:"redirectURL"`
+	Scopes          []string            `yaml:"scopes"`
 	GroupClaim      string              `yaml:"groupClaim"`
 	GroupRoles      map[string][]string `yaml:"groupRoles"`
 	DefaultRoles    []string            `yaml:"defaultRoles"`
@@ -85,7 +87,15 @@ func NewOIDC(ctx context.Context, cfg OIDCConfig) (*OIDC, error) {
 			return nil, fmt.Errorf("OIDC discovery returned an insecure endpoint")
 		}
 	}
-	return &OIDC{cfg: cfg, oauth: oauth2.Config{ClientID: cfg.ClientID, ClientSecret: secret, Endpoint: endpoint, RedirectURL: cfg.RedirectURL, Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}, verifier: provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}), pending: map[string]OIDCPending{}}, nil
+	return &OIDC{cfg: cfg, oauth: oauth2.Config{ClientID: cfg.ClientID, ClientSecret: secret, Endpoint: endpoint, RedirectURL: cfg.RedirectURL, Scopes: append([]string{oidc.ScopeOpenID, "profile", "email"}, cfg.Scopes...)}, verifier: provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}), pending: map[string]OIDCPending{}}, nil
+}
+
+// Name is the label shown on the sign-in button.
+func (o *OIDC) Name() string {
+	if o.cfg.Name != "" {
+		return o.cfg.Name
+	}
+	return o.cfg.ID
 }
 
 // SetFlowStore installs shared flow persistence before the HTTP server starts.

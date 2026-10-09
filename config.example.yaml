@@ -43,45 +43,49 @@ clusters:
 # exactly one cluster's name and generation match. Discovery is lazy and
 # cached, and never blocks startup; set mskClusterArn explicitly if discovery
 # cannot find a unique match, or to skip the extra AWS call.
+# Grants give roles actions. cluster and pattern default to "*"; pattern matches
+# the topic, group or subject name (glob, or regex with regex: true). Actions:
+# read consume produce create delete alter-config reset-offsets rename plan
+# execute rollback manage-acls schema-read schema-update connector-read
+# connector-update audit manage-sessions, or "*". The local admin account always
+# has the administrator role. See docs/authentication.md#roles-and-grants.
 grants:
-  - role: administrator
-    cluster: "*"
-    action: "*"
-    pattern: "*"
-  - role: viewer
-    cluster: "*"
-    action: read
-    pattern: "*"
-  - role: operator
-    cluster: "*"
-    action: read
-    pattern: "*"
-  - role: operator
-    cluster: "*"
-    action: consume
-    pattern: "*"
-  - role: operator
-    cluster: "*"
-    action: plan
-    pattern: "*"
+  - {role: administrator, action: "*"}
+  # Read-only: browse everything, change nothing, cannot read message payloads.
+  - {role: viewer, action: read}
+  - {role: viewer, action: schema-read}
+  - {role: viewer, action: connector-read}
+  - {role: operator, action: read}
+  - {role: operator, action: consume}
+  - {role: operator, action: plan}
+  - {role: operator, action: schema-read}
+  - {role: operator, action: connector-read}
 # Enable only with an authorized tenant and pre-created confidential client.
+# The redirect path must be /api/v1/auth/oidc/<id>/callback. Copy issuer exactly
+# from the provider's discovery document (Authentik keeps the trailing slash).
 # oidc:
 #   - id: authentik
+#     name: Authentik
 #     issuer: https://identity.example.invalid/application/o/kaflux/
 #     clientId: kaflux
 #     clientSecretEnv: KAFLUX_OIDC_SECRET
 #     redirectURL: https://console.example.invalid/api/v1/auth/oidc/authentik/callback
 #     groupClaim: groups
+#     # scopes: [groups]   # extra scopes, e.g. Okta needs "groups"
 #     groupRoles:
+#       kafka-admins: [administrator]
 #       kafka-operators: [operator]
 #       kafka-viewers: [viewer]
+#     # defaultRoles: [viewer]   # every verified user; omit to deny unmapped users
 # ldap:
 #   - id: directory
 #     url: ldaps://directory.example.invalid:636
+#     # caFile: /etc/kaflux/ldap-ca.pem   # private CA for the directory certificate
 #     bindDN: cn=kaflux,ou=services,dc=example,dc=invalid
 #     bindPasswordEnv: KAFLUX_LDAP_BIND_PASSWORD
 #     baseDN: ou=people,dc=example,dc=invalid
 #     userFilter: '(sAMAccountName={username})'
 #     groupAttribute: memberOf
-#     groupRoles:
+#     groupRoles:   # group DNs match case-insensitively
 #       cn=kafka-operators,ou=groups,dc=example,dc=invalid: [operator]
+#       cn=kafka-viewers,ou=groups,dc=example,dc=invalid: [viewer]

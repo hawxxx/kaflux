@@ -2,8 +2,8 @@ import {useState} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {ArrowRight,Copy,Eraser,MessageSquare,MoreHorizontal,Plus,RefreshCw,Shield,Trash2,X} from 'lucide-react';
-import {api,type Session,type Topic} from './api';
-import {canAdmin,Modal} from './Administration';
+import {api,can,type Session,type Topic} from './api';
+import {Modal} from './Administration';
 import {useTopicConfig} from './TopicConfiguration';
 
 type Action=''|'copy'|'clear'|'recreate'|'delete';
@@ -20,18 +20,18 @@ const confirmations:Record<'clear'|'recreate'|'delete',{title:string;warning:str
 /** Per-row "⋯" menu on the topic list. Rendered inside a clickable row, so clicks never reach it. */
 export function TopicRowMenu({clusterId,topic,session,onBrowse,onCreated}:{clusterId:string;topic:Topic;session?:Session;onBrowse:()=>void;onCreated:(name:string)=>void}){
   const [action,setAction]=useState<Action>('');const [notice,setNotice]=useState('');
-  const admin=canAdmin(session);
+  const canCopy=can(session,clusterId,'create'),canDelete=can(session,clusterId,'delete');
   const done=(message:string)=>{setAction('');setNotice(message)};
   return <span className="row-actions" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
     <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger className="icon-button row-menu-trigger" aria-label={`Actions for ${topic.name}`}><MoreHorizontal size={16}/></DropdownMenu.Trigger>
       <DropdownMenu.Portal><DropdownMenu.Content className="row-menu" align="end" sideOffset={4}>
         <DropdownMenu.Item className="row-menu-item" onSelect={onBrowse}><MessageSquare size={14}/>Browse messages</DropdownMenu.Item>
-        <DropdownMenu.Item className="row-menu-item" disabled={!admin} onSelect={()=>setAction('copy')}><Copy size={14}/>Copy topic…</DropdownMenu.Item>
+        <DropdownMenu.Item className="row-menu-item" disabled={!canCopy} onSelect={()=>setAction('copy')}><Copy size={14}/>Copy topic…</DropdownMenu.Item>
         <DropdownMenu.Separator className="row-menu-separator"/>
-        <DropdownMenu.Item className="row-menu-item" disabled={!admin||!clearable(topic.cleanupPolicy)} onSelect={()=>setAction('clear')}><Eraser size={14}/><span>Clear messages{!clearable(topic.cleanupPolicy)&&<small>Requires delete cleanup policy</small>}</span></DropdownMenu.Item>
-        <DropdownMenu.Item className="row-menu-item" disabled={!admin||!!topic.internal} onSelect={()=>setAction('recreate')}><RefreshCw size={14}/><span>Recreate topic{topic.internal&&<small>Not available for internal topics</small>}</span></DropdownMenu.Item>
-        <DropdownMenu.Item className="row-menu-item danger" disabled={!admin} onSelect={()=>setAction('delete')}><Trash2 size={14}/>Delete topic</DropdownMenu.Item>
+        <DropdownMenu.Item className="row-menu-item" disabled={!canDelete||!clearable(topic.cleanupPolicy)} onSelect={()=>setAction('clear')}><Eraser size={14}/><span>Clear messages{!clearable(topic.cleanupPolicy)&&<small>Requires delete cleanup policy</small>}</span></DropdownMenu.Item>
+        <DropdownMenu.Item className="row-menu-item" disabled={!canDelete||!!topic.internal} onSelect={()=>setAction('recreate')}><RefreshCw size={14}/><span>Recreate topic{topic.internal&&<small>Not available for internal topics</small>}</span></DropdownMenu.Item>
+        <DropdownMenu.Item className="row-menu-item danger" disabled={!canDelete} onSelect={()=>setAction('delete')}><Trash2 size={14}/>Delete topic</DropdownMenu.Item>
       </DropdownMenu.Content></DropdownMenu.Portal>
     </DropdownMenu.Root>
     {action==='copy'&&<CopyTopic clusterId={clusterId} source={topic} onClose={()=>setAction('')} onCreated={name=>{done(`Created ${name} from ${topic.name}.`);onCreated(name)}}/>}
@@ -94,7 +94,7 @@ export function DeleteTopics({clusterId,topics,internal,session,onDone}:{cluster
     setBusy(false);await queryClient.invalidateQueries();
     const deleted=out.filter(r=>!r.error).map(r=>r.topic);onDone(deleted);if(deleted.length===topics.length)setOpen(false);
   }
-  return <><button className="button danger-button" disabled={!canAdmin(session)} onClick={show}><Trash2 size={14}/>Delete selected</button>
+  return <><button className="button danger-button" disabled={!can(session,clusterId,'delete')} onClick={show}><Trash2 size={14}/>Delete selected</button>
     <Modal open={open} onClose={()=>{if(!busy)setOpen(false)}} title={`Delete ${topics.length} topic${topics.length===1?'':'s'}`} description="Each topic is deleted separately with its own authorization check and audit entry."><form onSubmit={submit}>
       <ul className="bulk-topic-list">{topics.map(t=>{const r=results.find(x=>x.topic===t);return <li key={t}><span className="mono">{t}</span>{internal.includes(t)&&<span className="tag tag-internal">INTERNAL</span>}{r&&(r.error?<span className="bad-text" title={r.error}>Failed</span>:<span className="good-text">Deleted</span>)}</li>})}</ul>
       <div className="mutation-warning"><Trash2 size={16}/><p>Deletion removes these topics and their records. This cannot be rolled back through Kaflux.</p></div>

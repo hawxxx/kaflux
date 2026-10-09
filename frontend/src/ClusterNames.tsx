@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {Pencil,RotateCcw} from 'lucide-react';
-import {api,type Cluster} from './api';
+import {api,can,type Cluster,type Session} from './api';
 import './ClusterNames.css';
 
 function ClusterNameRow({cluster,current,admin}:{cluster:Cluster;current:boolean;admin:boolean}){
@@ -14,8 +14,8 @@ function ClusterNameRow({cluster,current,admin}:{cluster:Cluster;current:boolean
 }
 
 /** Display names for every cluster the user can read; names are unique and shared by all users. */
-export function ClusterNames({clusterId,admin}:{clusterId:string;admin:boolean}){
+export function ClusterNames({clusterId,session}:{clusterId:string;session?:Session}){
   const clusters=useQuery({queryKey:['/clusters'],queryFn:()=>api<Cluster[]>('/clusters')});
   const list=[...clusters.data?.data??[]].sort((a,b)=>Number(b.id===clusterId)-Number(a.id===clusterId));
-  return <section className="panel"><div className="panel-title"><div><h2>Cluster names</h2><p>How each cluster appears in Kaflux for every user. Names must be unique; reset restores the configured name.</p></div><Pencil size={18}/></div>{clusters.error&&<div className="inline-error" role="alert">{clusters.error.message}</div>}<ul className="cluster-names">{list.map(c=><ClusterNameRow key={c.id} cluster={c} current={c.id===clusterId} admin={admin}/>)}</ul></section>
+  return <section className="panel"><div className="panel-title"><div><h2>Cluster names</h2><p>How each cluster appears in Kaflux for every user. Names must be unique; reset restores the configured name.</p></div><Pencil size={18}/></div>{clusters.error&&<div className="inline-error" role="alert">{clusters.error.message}</div>}<ul className="cluster-names">{list.map(c=><ClusterNameRow key={c.id} cluster={c} current={c.id===clusterId} admin={can(session,c.id,'rename')}/>)}</ul></section>
 }

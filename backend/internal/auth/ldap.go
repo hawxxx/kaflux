@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/url"
@@ -17,6 +18,7 @@ type LDAPConfig struct {
 	ID              string              `yaml:"id"`
 	URL             string              `yaml:"url"`
 	StartTLS        bool                `yaml:"startTLS"`
+	CAFile          string              `yaml:"caFile"`
 	BindDN          string              `yaml:"bindDN"`
 	BindPasswordEnv string              `yaml:"bindPasswordEnv"`
 	BaseDN          string              `yaml:"baseDN"`
@@ -31,6 +33,37 @@ func ldapUserFilter(template, username string) (string, error) {
 		return "", fmt.Errorf("invalid LDAP user filter or username")
 	}
 	return strings.Replace(template, "{username}", ldap.EscapeFilter(username), 1), nil
+}
+
+// ldapGroupRoles maps group DNs to roles. DN comparison ignores case and
+// spacing around separators, as directories do, so "CN=Ops, DC=x" matches "cn=ops,dc=x".
+func ldapGroupRoles(groups []string, mapping map[string][]string, defaults []string) []string {
+	normalized := make(map[string][]string, len(mapping))
+	for group, roles := range mapping {
+		key := normalizeDN(group)
+		normalized[key] = append(normalized[key], roles...)
+	}
+	keys := make([]string, len(groups))
+	for i, group := range groups {
+		keys[i] = normalizeDN(group)
+	}
+	return mappedRoles(keys, normalized, defaults)
+}
+
+func normalizeDN(value string) string {
+	dn, err := ldap.ParseDN(value)
+	if err != nil || len(dn.RDNs) == 0 {
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+	rdns := make([]string, len(dn.RDNs))
+	for i, rdn := range dn.RDNs {
+		parts := make([]string, len(rdn.Attributes))
+		for j, attribute := range rdn.Attributes {
+			parts[j] = strings.ToLower(attribute.Type) + "=" + strings.ToLower(attribute.Value)
+		}
+		rdns[i] = strings.Join(parts, "+")
+	}
+	return strings.Join(rdns, ",")
 }
 
 func AuthenticateLDAP(ctx context.Context, cfg LDAPConfig, username, password string) (User, error) {
@@ -52,6 +85,16 @@ func AuthenticateLDAP(ctx context.Context, cfg LDAPConfig, username, password st
 		return User{}, err
 	}
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: endpoint.Hostname()}
+	if cfg.CAFile != "" {
+		pem, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return User{}, fmt.Errorf("LDAP CA file unreadable")
+		}
+		tlsConfig.RootCAs = x509.NewCertPool()
+		if !tlsConfig.RootCAs.AppendCertsFromPEM(pem) {
+			return User{}, fmt.Errorf("LDAP CA file contains no PEM certificates")
+		}
+	}
 	conn, err := ldap.DialURL(cfg.URL, ldap.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}), ldap.DialWithTLSConfig(tlsConfig))
 	if err != nil {
 		return User{}, fmt.Errorf("LDAP connection failed")
@@ -89,7 +132,7 @@ func AuthenticateLDAP(ctx context.Context, cfg LDAPConfig, username, password st
 	if err := ctx.Err(); err != nil {
 		return User{}, err
 	}
-	roles := mappedRoles(entry.GetAttributeValues(groupAttribute), cfg.GroupRoles, cfg.DefaultRoles)
+	roles := ldapGroupRoles(entry.GetAttributeValues(groupAttribute), cfg.GroupRoles, cfg.DefaultRoles)
 	if len(roles) == 0 {
 		return User{}, fmt.Errorf("LDAP identity has no assigned roles")
 	}

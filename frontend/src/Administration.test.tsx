@@ -2,12 +2,13 @@ import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,expect,it,vi} from 'vitest';
 import {ClusterSettings,TopicAdministration} from './Administration';
+import {allPermissions} from './test-permissions';
 afterEach(()=>vi.restoreAllMocks());
 it('edits any broker-described topic config and sends only the changes',async()=>{
   const entries=[{name:'retention.ms',value:'123456',source:'DYNAMIC_TOPIC_CONFIG',override:true,sensitive:false},{name:'cleanup.policy',value:'compact',source:'DYNAMIC_TOPIC_CONFIG',override:true,sensitive:false},{name:'compression.type',value:'producer',source:'DEFAULT_CONFIG',override:false,sensitive:false},{name:'segment.bytes',value:'1073741824',source:'DEFAULT_CONFIG',override:false,sensitive:false}];
   const fetch=vi.fn(async(_url:string,init?:RequestInit)=>({ok:true,json:async()=>({data:init?.method==='POST'?{ok:true}:entries})} as Response));
   vi.stubGlobal('fetch',fetch);
-  render(<QueryClientProvider client={new QueryClient()}><TopicAdministration clusterId="demo" topic="events" session={{user:{username:'admin',role:'administrator'},csrfToken:'test',demo:true}}/></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient()}><TopicAdministration clusterId="demo" topic="events" session={{user:{username:'admin',role:'administrator'},permissions:allPermissions('demo','west','east','k'),csrfToken:'test',demo:true}}/></QueryClientProvider>);
   fireEvent.click(screen.getByRole('button',{name:'Edit configuration'}));
   await waitFor(()=>expect(screen.getByLabelText(/^retention\.ms/)).toHaveValue('123456'));
   expect(screen.getByLabelText(/^cleanup\.policy/)).toHaveValue('compact');
@@ -24,7 +25,7 @@ it('disables topic mutations for a viewer',()=>{
   render(<QueryClientProvider client={new QueryClient()}><TopicAdministration clusterId="demo" session={{user:{username:'viewer',role:'viewer'},csrfToken:'test',demo:true}}/></QueryClientProvider>);
   expect(screen.getByRole('button',{name:'Create topic'})).toBeDisabled();
 });
-const session=(role:string)=>({user:{username:role,role},csrfToken:'test',demo:true});
+const session=(role:string)=>({user:{username:role,role},csrfToken:'test',demo:true,...(role==='administrator'?{permissions:allPermissions('demo','west','east','k')}:{})});
 const clusterFixture=(id:string,name:string,configuredName=name)=>({id,name,configuredName,environment:'development',kind:'Kafka',mode:'demo',state:'healthy',brokerCount:3,topicCount:1,partitionCount:1});
 it('lists every cluster and renames any of them through the backend',async()=>{
   let clusters=[clusterFixture('west','West'),clusterFixture('east','East')];
