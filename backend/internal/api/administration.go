@@ -183,20 +183,16 @@ func (a *API) renameCluster(w http.ResponseWriter, r *http.Request, u auth.User,
 		fail(w, 400, "invalid_request", "Cluster name must be at most 64 characters without control characters")
 		return
 	}
-	configured := id
-	for _, c := range a.o.Clusters {
-		if c.ID == id {
-			configured = c.Name
-		}
-	}
 	names, e := a.o.Store.ClusterNames(r.Context())
 	if e != nil {
 		failCause(w, r, 503, "store_unavailable", "Cluster names unavailable", e)
 		return
 	}
-	before := configured
-	if names[id] != "" {
-		before = names[id]
+	configured := id
+	for _, c := range a.o.Clusters {
+		if c.ID == id {
+			configured = c.Name
+		}
 	}
 	if name == configured {
 		name = ""
@@ -204,6 +200,25 @@ func (a *API) renameCluster(w http.ResponseWriter, r *http.Request, u auth.User,
 	after := name
 	if after == "" {
 		after = configured
+	}
+	// Display names identify clusters in the switcher, so they must stay unique.
+	for _, c := range a.o.Clusters {
+		other := c.Name
+		if names[c.ID] != "" {
+			other = names[c.ID]
+		}
+		if c.ID != id && strings.EqualFold(other, after) {
+			fail(w, 409, "name_conflict", "Another cluster already uses this name")
+			return
+		}
+	}
+	before := configured
+	if names[id] != "" {
+		before = names[id]
+	}
+	if name == names[id] {
+		respond(w, map[string]string{"id": id, "name": after, "configuredName": configured})
+		return
 	}
 	if e = a.adminAudit(r, u, id, "rename", id, "intent", before, after); e != nil {
 		failCause(w, r, 503, "audit_unavailable", "Rename blocked because audit storage is unavailable", e)

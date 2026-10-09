@@ -222,6 +222,43 @@ func TestClusterRenameIsAuthorizedAuditedAndResettable(t *testing.T) {
 	}
 }
 
+func TestClusterRenameAcrossMultipleClusters(t *testing.T) {
+	s, _ := store.New(context.Background(), "")
+	clusters := []model.Cluster{{ID: "east", Name: "East"}, {ID: "west", Name: "West"}}
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"east": kafka.NewDemo(), "west": kafka.NewDemo()}, Clusters: clusters})
+	request := func(id, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("PUT", "/api/v1/clusters/"+id+"/name", strings.NewReader(body))
+		r.Header.Set("X-CSRF-Token", a.demo.CSRF)
+		a.ServeHTTP(w, r)
+		return w
+	}
+	if w := request("east", `{"name":"Payments"}`); w.Code != 200 {
+		t.Fatalf("rename east %d %s", w.Code, w.Body.String())
+	}
+	if w := request("west", `{"name":"payments"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "name_conflict") {
+		t.Fatalf("duplicate override accepted %d %s", w.Code, w.Body.String())
+	}
+	if w := request("west", `{"name":"east"}`); w.Code != 200 {
+		t.Fatalf("renamed cluster still reserves configured name %d %s", w.Code, w.Body.String())
+	}
+	if w := request("east", `{"name":"EAST"}`); w.Code != 409 {
+		t.Fatalf("name now used by west accepted for east %d", w.Code)
+	}
+	names, _ := s.ClusterNames(context.Background())
+	if names["east"] != "Payments" || names["west"] != "east" || len(names) != 2 {
+		t.Fatalf("overrides not independent %v", names)
+	}
+	audits, _ := s.Audits(context.Background())
+	before := len(audits)
+	if w := request("east", `{"name":"Payments"}`); w.Code != 200 {
+		t.Fatalf("unchanged rename %d", w.Code)
+	}
+	if audits, _ = s.Audits(context.Background()); len(audits) != before {
+		t.Fatalf("unchanged rename audited")
+	}
+}
+
 func TestTopicConfigEditsAnyDescribedKey(t *testing.T) {
 	s, _ := store.New(context.Background(), "")
 	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: []model.Cluster{{ID: "demo"}}})
