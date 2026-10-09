@@ -4,6 +4,8 @@ import {Pause,Play,SkipForward,Undo2,X} from 'lucide-react';
 import {api,bytes} from './api';
 import {BrailleSpinner} from './BrailleSpinner';
 import {JobState} from './JobState';
+import {ClusterHealth} from './ClusterHealth';
+import {BalanceEstimate} from './BalanceEstimate';
 import {duration,type RebalanceJob,type TopicStep} from './rebalance';
 
 type Action='pause'|'resume'|'skip'|'cancel'|'cancel-rollback';
@@ -86,13 +88,14 @@ export function RebalanceProgress({clusterId,job,canAct,onChange}:{clusterId:str
       <div className="rp-top"><span className="rp-percent">{progress}%</span>
         <span className="rp-meta">{running&&job.etaSeconds!=null&&<>ETA <b>{duration(job.etaSeconds)}</b>{job.etaBasis==='topics'&&<span title="Estimated from the average time per topic, because partition sizes are unavailable"> (by topic)</span>} · </>}{running&&job.rateBytesPerSec!=null&&<><b>{bytes(job.rateBytesPerSec)}/s</b> · </>}{elapsed!=null&&<>elapsed <b>{duration(elapsed)}</b></>}</span>
       </div>
-      <div className="rp-bar" role="progressbar" aria-label="Rebalance progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div style={{width:`${progress}%`}}/></div>
+      <div className={`rp-bar${running?' live':''}`} role="progressbar" aria-label="Rebalance progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div style={{width:`${progress}%`}}/></div>
       <div className="rp-stats">
         <div><span>Topics</span><strong>{finished} / {steps.length}</strong><small>{steps.length-finished} left</small></div>
         <div><span>Partitions</span><strong>{job.partitionsDone??0} / {job.partitionsTotal??job.changes.length}</strong><small>{(job.partitionsTotal??job.changes.length)-(job.partitionsDone??0)} left</small></div>
         <div><span>Data moved</span>{job.bytesTotal!=null?<><strong>{bytes(job.bytesDone??0)} / {bytes(job.bytesTotal)}</strong><small>{bytes(Math.max(0,job.bytesTotal-(job.bytesDone??0)))} left</small></>:<><strong>Unknown</strong><small>Partition sizes unavailable</small></>}</div>
       </div>
     </div>
+    <ClusterHealth clusterId={clusterId} live={active}/>
     {!!steps.length&&<div className="rp-steps"><table><tbody>
       {visible.map((s,i)=>{
         const percent=s.bytes&&s.bytesDone!=null?Math.round(s.bytesDone*100/s.bytes):s.partitions?Math.round(s.partitionsDone*100/s.partitions):0;
@@ -107,6 +110,7 @@ export function RebalanceProgress({clusterId,job,canAct,onChange}:{clusterId:str
       })}
       {visible.length<steps.length&&<tr><td/><td colSpan={5}><button type="button" className="link-button" onClick={()=>setExpanded(true)}>+ {steps.length-visible.length} more topics</button></td></tr>}
     </tbody></table></div>}
+    {!!job.before?.length&&!!job.after?.length&&<BalanceEstimate before={job.before} after={job.after} measured={job.measuredAfter}/>}
     <Dialog.Root open={!!pending} onOpenChange={o=>{if(!o){setPending(null);setError('')}}}>
       <Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="dialog">
         {pending&&<>

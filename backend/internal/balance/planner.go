@@ -175,6 +175,7 @@ func Generate(s model.Snapshot, r Request) (model.Plan, error) {
 	}
 	sort.Slice(p.Before, func(i, j int) bool { return p.Before[i].Broker < p.Before[j].Broker })
 	sort.Slice(p.After, func(i, j int) bool { return p.After[i].Broker < p.After[j].Broker })
+	addBytes(p.Before, p.After, s, p.Changes, wanted)
 	p.Fingerprint = Fingerprint(s, p.Topics)
 	p.Steps = Steps(r.Topics, p.Changes, s)
 	p.PartitionsTotal = len(p.Changes)
@@ -187,4 +188,42 @@ func Generate(s model.Snapshot, r Request) (model.Plan, error) {
 		Throttle    int64
 	}{p.Fingerprint, p.Changes, p.ThrottleBytesPerSec})
 	return p, nil
+}
+
+// addBytes fills per-broker replica bytes before and after the plan, leaving
+// them nil when any partition size of the selected topics is unknown.
+func addBytes(before, after []model.Distribution, s model.Snapshot, changes []model.Change, wanted map[string]bool) {
+	target := map[string][]int32{}
+	for _, c := range changes {
+		target[fmt.Sprintf("%s/%d", c.Topic, c.Partition)] = c.After
+	}
+	was, will := map[int32]int64{}, map[int32]int64{}
+	for _, t := range s.Topics {
+		if !wanted[t.Name] {
+			continue
+		}
+		for _, x := range t.Partitions {
+			if x.SizeBytes == nil {
+				return
+			}
+			for _, id := range x.Replicas {
+				was[id] += *x.SizeBytes
+			}
+			replicas := x.Replicas
+			if a, ok := target[fmt.Sprintf("%s/%d", t.Name, x.ID)]; ok {
+				replicas = a
+			}
+			for _, id := range replicas {
+				will[id] += *x.SizeBytes
+			}
+		}
+	}
+	for i := range before {
+		b := was[before[i].Broker]
+		before[i].Bytes = &b
+	}
+	for i := range after {
+		b := will[after[i].Broker]
+		after[i].Bytes = &b
+	}
 }

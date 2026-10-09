@@ -2,6 +2,7 @@ package balance
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/hawxxx/kaflux/backend/internal/model"
 )
@@ -70,4 +71,60 @@ func Steps(order []string, changes []model.Change, s model.Snapshot) []model.Top
 
 func partitionKey(topic string, partition int32) string {
 	return fmt.Sprintf("%s/%d", topic, partition)
+}
+
+// Distributions counts replicas, preferred leaders and replica bytes per broker
+// for the given topics as they are placed now. Every broker in brokers appears,
+// with zeros when it holds nothing. Bytes stay nil when any size is unknown.
+func Distributions(s model.Snapshot, topics []string, brokers []int32) []model.Distribution {
+	wanted := map[string]bool{}
+	for _, t := range topics {
+		wanted[t] = true
+	}
+	out := map[int32]*model.Distribution{}
+	order := []int32{}
+	add := func(id int32) *model.Distribution {
+		if d, ok := out[id]; ok {
+			return d
+		}
+		d := &model.Distribution{Broker: id}
+		out[id] = d
+		order = append(order, id)
+		return d
+	}
+	for _, id := range brokers {
+		add(id)
+	}
+	known := true
+	var bytes = map[int32]int64{}
+	for _, t := range s.Topics {
+		if !wanted[t.Name] {
+			continue
+		}
+		for _, p := range t.Partitions {
+			for i, id := range p.Replicas {
+				d := add(id)
+				d.Replicas++
+				if i == 0 {
+					d.Leaders++
+				}
+				if p.SizeBytes == nil {
+					known = false
+				} else {
+					bytes[id] += *p.SizeBytes
+				}
+			}
+		}
+	}
+	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+	result := make([]model.Distribution, 0, len(order))
+	for _, id := range order {
+		d := *out[id]
+		if known {
+			b := bytes[id]
+			d.Bytes = &b
+		}
+		result = append(result, d)
+	}
+	return result
 }

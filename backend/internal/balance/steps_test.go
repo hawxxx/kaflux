@@ -34,3 +34,45 @@ func TestStepsFollowRequestedOrderAndCountNewReplicaBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestDistributionsCountZeroBrokersAndUnknownSizes(t *testing.T) {
+	size := int64(10)
+	snap := model.Snapshot{Topics: []model.Topic{
+		{Name: "a", Partitions: []model.Partition{{ID: 0, Replicas: []int32{1, 2}, SizeBytes: &size}, {ID: 1, Replicas: []int32{2, 1}, SizeBytes: &size}}},
+		{Name: "other", Partitions: []model.Partition{{ID: 0, Replicas: []int32{3}}}},
+	}}
+	d := Distributions(snap, []string{"a"}, []int32{1, 2, 3})
+	if len(d) != 3 || d[2].Broker != 3 || d[2].Replicas != 0 || d[0].Leaders != 1 || *d[0].Bytes != 20 || *d[2].Bytes != 0 {
+		t.Fatalf("distributions = %+v", d)
+	}
+	snap.Topics[0].Partitions[1].SizeBytes = nil
+	if d = Distributions(snap, []string{"a"}, nil); d[0].Bytes != nil {
+		t.Fatal("unknown size must leave bytes nil")
+	}
+}
+
+func TestPlanCarriesBytesBeforeAndAfter(t *testing.T) {
+	size := int64(100)
+	snap := model.Snapshot{Brokers: []model.Broker{{ID: 1}, {ID: 2}, {ID: 3}}}
+	topic := model.Topic{Name: "a"}
+	for i := int32(0); i < 6; i++ {
+		topic.Partitions = append(topic.Partitions, model.Partition{ID: i, Leader: 1, Replicas: []int32{1, 2}, ISR: []int32{1, 2}, SizeBytes: &size})
+	}
+	snap.Topics = []model.Topic{topic}
+	p, e := Generate(snap, Request{Topics: []string{"a"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	total := func(ds []model.Distribution) (n int64) {
+		for _, d := range ds {
+			if d.Bytes == nil {
+				t.Fatalf("bytes missing on broker %d", d.Broker)
+			}
+			n += *d.Bytes
+		}
+		return n
+	}
+	if total(p.Before) != 1200 || total(p.After) != 1200 {
+		t.Fatalf("bytes before %d after %d, want 1200 each", total(p.Before), total(p.After))
+	}
+}

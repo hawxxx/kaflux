@@ -57,6 +57,14 @@ func (w *Worker) run(ctx context.Context, p model.Plan, provider kafka.Provider,
 	// waiting on Kafka ends the pass.
 	for advanced := true; advanced; {
 		if p.CurrentStep >= len(p.Steps) {
+			// Read placement after the last election so "after" values are measured, not estimated.
+			if fresh, e := FreshSnapshot(ctx, provider); e == nil {
+				ids := []int32{}
+				for _, d := range p.After {
+					ids = append(ids, d.Broker)
+				}
+				p.MeasuredAfter = balance.Distributions(fresh, p.Topics, ids)
+			}
 			w.finish(ctx, p, provider, "completed", "")
 			return
 		}

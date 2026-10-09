@@ -155,6 +155,19 @@ func TestTopicsRunOneAtATimeInChosenOrderWithElections(t *testing.T) {
 	if strings.Join(provider.elections, ",") != "payments.authorized,orders.created" {
 		t.Fatalf("elections = %v", provider.elections)
 	}
+	if len(done.MeasuredAfter) == 0 || done.MeasuredAfter[0].Bytes == nil {
+		t.Fatalf("measured placement missing: %+v", done.MeasuredAfter)
+	}
+	measured, planned := 0, 0
+	for i := range done.MeasuredAfter {
+		measured += done.MeasuredAfter[i].Replicas
+	}
+	for _, d := range done.After {
+		planned += d.Replicas
+	}
+	if measured != planned {
+		t.Fatalf("measured %d replicas, planned %d", measured, planned)
+	}
 	if done.Progress != 100 || done.PartitionsDone != done.PartitionsTotal || done.FinishedAt == nil {
 		t.Fatalf("final progress = %d %d/%d", done.Progress, done.PartitionsDone, done.PartitionsTotal)
 	}

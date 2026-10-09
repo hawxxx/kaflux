@@ -4,6 +4,8 @@ import {RebalanceProgress} from './RebalanceProgress';
 import type {RebalanceJob} from './rebalance';
 
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals()});
+// Calls to rebalance actions only; the health strip also fetches cluster data.
+const actions=(f:ReturnType<typeof vi.fn>)=>f.mock.calls.filter(c=>String(c[0]).includes('/rebalances/'));
 const GiB=1024**3;
 const job={id:'job-1',state:'running',planHash:'reviewed',topics:['a','b','c'],changes:[],before:null,after:null,createdAt:'',
   throttleBytesPerSec:10485760,progress:63,etaSeconds:2460,etaBasis:'bytes',rateBytesPerSec:10276044,partitionsDone:214,partitionsTotal:340,bytesDone:30*GiB,bytesTotal:48*GiB,currentStep:1,startedAt:new Date(Date.now()-3600_000).toISOString(),
@@ -29,11 +31,11 @@ it('confirms pause before asking the server',async()=>{
   const onChange=vi.fn();
   render(<RebalanceProgress clusterId="demo" job={job} canAct onChange={onChange}/>);
   fireEvent.click(screen.getByRole('button',{name:'Pause after this topic'}));
-  expect(fetch).not.toHaveBeenCalled();
+  expect(actions(fetch)).toHaveLength(0);
   fireEvent.click(screen.getAllByRole('button',{name:'Pause after this topic'}).at(-1)!);
   await waitFor(()=>expect(onChange).toHaveBeenCalled());
-  expect(fetch.mock.calls[0][0]).toBe('/api/v1/clusters/demo/rebalances/job-1/pause');
-  expect(JSON.parse(fetch.mock.calls[0][1]?.body as string)).toEqual({confirmation:true,planHash:'reviewed',skip:false});
+  expect(actions(fetch)[0][0]).toBe('/api/v1/clusters/demo/rebalances/job-1/pause');
+  expect(JSON.parse(actions(fetch)[0][1]?.body as string)).toEqual({confirmation:true,planHash:'reviewed',skip:false});
 });
 
 it('offers resume and skip with the reason while paused',async()=>{
@@ -44,9 +46,9 @@ it('offers resume and skip with the reason while paused',async()=>{
   expect(screen.queryByRole('button',{name:'Pause after this topic'})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Skip topic'}));
   fireEvent.click(screen.getAllByRole('button',{name:'Skip topic'}).at(-1)!);
-  await waitFor(()=>expect(fetch).toHaveBeenCalled());
-  expect(fetch.mock.calls[0][0]).toBe('/api/v1/clusters/demo/rebalances/job-1/resume');
-  expect(JSON.parse(fetch.mock.calls[0][1]?.body as string).skip).toBe(true);
+  await waitFor(()=>expect(actions(fetch)).toHaveLength(1));
+  expect(actions(fetch)[0][0]).toBe('/api/v1/clusters/demo/rebalances/job-1/resume');
+  expect(JSON.parse(actions(fetch)[0][1]?.body as string).skip).toBe(true);
 });
 
 it('falls back to unknown data size and disables actions without permission',()=>{

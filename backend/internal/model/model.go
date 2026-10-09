@@ -123,6 +123,8 @@ type Distribution struct {
 	Broker   int32 `json:"broker"`
 	Replicas int   `json:"replicas"`
 	Leaders  int   `json:"leaders"`
+	// Bytes is the replica data on the broker; nil when any partition size is unknown.
+	Bytes *int64 `json:"bytes,omitempty"`
 }
 type Plan struct {
 	ThrottleRequest       *ThrottleRequest `json:"throttleRequest,omitempty"`
@@ -173,6 +175,8 @@ type Plan struct {
 	ProgressAt          *time.Time  `json:"progressAt,omitempty"`
 	ProgressLoggedAt    *time.Time  `json:"progressLoggedAt,omitempty"`
 	FinishedAt          *time.Time  `json:"finishedAt,omitempty"`
+	// MeasuredAfter is the placement of the plan's topics read from the cluster on completion.
+	MeasuredAfter []Distribution `json:"measuredAfter,omitempty"`
 }
 
 // Step states of a TopicStep.
