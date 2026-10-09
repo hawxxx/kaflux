@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/hawxxx/kaflux/compare/v0.2.0...v0.2.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* show generic reasons for blocked reassignments on non-MSK clusters ([#25](https://github.com/hawxxx/kaflux/issues/25)) ([cf9b232](https://github.com/hawxxx/kaflux/commit/cf9b2327282847c99c6c6f73aa4c72fb41b7ed8a))
+
 ## [0.2.0](https://github.com/hawxxx/kaflux/compare/v0.1.0...v0.2.0) (2026-10-09)
 
 
