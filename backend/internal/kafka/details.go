@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/hawxxx/kaflux/backend/internal/model"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"strconv"
 	"time"
 )
@@ -99,6 +100,46 @@ func (n *Native) OffsetAt(ctx context.Context, topic string, partition int32, at
 		return x.Offset, nil
 	}
 	return o.Offset, nil
+}
+func (n *Native) OffsetsAt(ctx context.Context, topic string, at time.Time) (map[int32]int64, error) {
+	c, done, e := n.bounded(ctx)
+	if e != nil {
+		return nil, e
+	}
+	defer done()
+	offsets, e := n.admin.ListOffsetsAfterMilli(c, at.UnixMilli(), topic)
+	if e != nil {
+		return nil, e
+	}
+	// Partitions with nothing at or after the time report -1; they resume at their end.
+	var end kadm.ListedOffsets
+	loaded := false
+	out := map[int32]int64{}
+	offsets.Each(func(o kadm.ListedOffset) {
+		if e != nil {
+			return
+		}
+		if o.Err != nil {
+			e = o.Err
+		} else if o.Offset >= 0 {
+			out[o.Partition] = o.Offset
+		} else {
+			if !loaded {
+				end, e = n.admin.ListEndOffsets(c, topic)
+				loaded = true
+			}
+			if e != nil {
+				return
+			}
+			x, ok := end.Lookup(topic, o.Partition)
+			if !ok || x.Err != nil {
+				e = fmt.Errorf("partition end offset unavailable")
+				return
+			}
+			out[o.Partition] = x.Offset
+		}
+	})
+	return out, e
 }
 func (d *Demo) OffsetAt(ctx context.Context, topic string, partition int32, at time.Time) (int64, error) {
 	d.mu.Lock()

@@ -391,6 +391,73 @@ func (n *Native) Messages(ctx context.Context, t string, p int32, o int64, l int
 	})
 	return out, nil
 }
+
+// MessagesAt polls every requested partition from one client. A partition is done once it has
+// limit records or reaches its end; a poll that returns nothing within the wait ends the read.
+func (n *Native) MessagesAt(ctx context.Context, t string, from map[int32]int64, l int) ([]model.Message, error) {
+	c, done, e := n.bounded(ctx)
+	if e != nil {
+		return nil, e
+	}
+	defer done()
+	end, e := n.admin.ListEndOffsets(c, t)
+	if e != nil {
+		return nil, e
+	}
+	assign := map[int32]kgo.Offset{}
+	want := map[int32]int{}
+	for p, o := range from {
+		x, ok := end.Lookup(t, p)
+		if !ok || x.Err != nil {
+			return nil, fmt.Errorf("partition %d end offset unavailable", p)
+		}
+		if left := x.Offset - o; left > 0 {
+			assign[p] = kgo.NewOffset().At(o)
+			want[p] = int(min(int64(l), left))
+		}
+	}
+	out := []model.Message{}
+	if len(assign) == 0 {
+		return out, nil
+	}
+	opts := append([]kgo.Opt{}, n.opts...)
+	opts = append(opts, kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{t: assign}), kgo.FetchMaxWait(500*time.Millisecond), kgo.BrokerMaxReadBytes(4<<20))
+	cl, e := kgo.NewClient(opts...)
+	if e != nil {
+		return nil, e
+	}
+	defer cl.Close()
+	previewBytes := 0
+	for len(want) > 0 && previewBytes < 1<<20 {
+		total := 0
+		for _, left := range want {
+			total += left
+		}
+		pc, cancel := context.WithTimeout(c, 1500*time.Millisecond)
+		f := cl.PollRecords(pc, total)
+		cancel()
+		if e = f.Err(); e != nil && !errors.Is(e, context.DeadlineExceeded) {
+			return nil, e
+		}
+		got := 0
+		f.EachRecord(func(r *kgo.Record) {
+			if want[r.Partition] == 0 || previewBytes >= 1<<20 {
+				return
+			}
+			message, bytes := previewRecord(r, (1<<20)-previewBytes)
+			previewBytes += bytes
+			out = append(out, message)
+			got++
+			if want[r.Partition]--; want[r.Partition] == 0 {
+				delete(want, r.Partition)
+			}
+		})
+		if got == 0 {
+			break
+		}
+	}
+	return out, nil
+}
 func (n *Native) Produce(ctx context.Context, m model.Message) (model.Message, error) {
 	c, done, e := n.bounded(ctx)
 	if e != nil {
