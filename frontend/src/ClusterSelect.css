@@ -1,0 +1,12 @@
+.cluster-picker{position:relative;margin-bottom:11px}
+.cluster-trigger{display:flex;align-items:center;gap:10px;width:100%;padding:12px 11px;text-align:left;background:var(--panel);border:1px solid var(--border);border-radius:7px}
+.cluster-trigger:hover,.cluster-trigger[aria-expanded=true]{border-color:color-mix(in srgb,var(--purple) 45%,var(--border))}
+.cluster-trigger>svg:first-child{color:var(--purple);flex:none}
+.cluster-trigger-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.cluster-trigger-text strong{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cluster-trigger-text small{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px;margin-top:5px}
+.cluster-trigger-text small i{width:3px;height:3px;border-radius:50%;background:var(--muted)}
+.cluster-chevron{flex:none;opacity:.65;transition:transform .15s ease}
+.cluster-trigger[aria-expanded=true] .cluster-chevron{transform:rotate(180deg)}
+.cluster-menu{left:0;right:0;min-width:0;transform-origin:top left}
+@media(prefers-reduced-motion:reduce){.cluster-chevron{transition:none}}

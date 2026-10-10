@@ -506,10 +506,17 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "balance":
 		report := a.capacityReport(r.Context(), provider, snap)
 		ds := []model.Distribution{}
+		sized := len(snap.Brokers) > 0
 		for _, b := range snap.Brokers {
-			ds = append(ds, model.Distribution{Broker: b.ID, Replicas: b.Partitions, Leaders: b.Leaders})
+			ds = append(ds, model.Distribution{Broker: b.ID, Replicas: b.Partitions, Leaders: b.Leaders, Bytes: b.SizeBytes})
+			sized = sized && b.SizeBytes != nil
 		}
-		respond(w, map[string]any{"dimensions": []string{"replicas", "leaders"}, "distribution": ds, "analysis": balance.Analyze(snap), "formula": "CV = population standard deviation / mean; moderate >= 0.10, high skew >= 0.25", "capacityKnown": report.Known, "capacity": report})
+		// Bytes compare only when every broker reported its log size; a partial set would skew the spread.
+		dimensions := []string{"replicas", "leaders"}
+		if sized {
+			dimensions = append(dimensions, "bytes")
+		}
+		respond(w, map[string]any{"dimensions": dimensions, "distribution": ds, "analysis": balance.Analyze(snap), "formula": "CV = population standard deviation / mean; moderate >= 0.10, high skew >= 0.25", "capacityKnown": report.Known, "capacity": report})
 	default:
 		fail(w, 404, "not_found", "Endpoint not found")
 	}

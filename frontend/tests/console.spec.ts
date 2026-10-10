@@ -240,16 +240,23 @@ test('MSK active intelligent balancing blocks manual plans with actionable reaso
   await page.goto('/clusters/demo/reassignments');
   await expect(page.getByText('AWS owns partition balancing')).toBeVisible();
   await expect(page.getByRole('button',{name:'Generate plan',exact:true})).toBeDisabled();
-  await page.goto('/clusters/demo/balance');
+  await page.goto('/clusters/demo/brokers/balance');
   await expect(page.getByText('AWS owns partition balancing')).toBeVisible();
   await expect(page.getByRole('button',{name:'Generate plan',exact:true})).toBeDisabled();
   await expect(page.getByRole('heading',{name:'Distribution analysis'})).toBeVisible();
 });
-test('topic balance tab hands its topic to the reassignment planner',async({page})=>{
+test('old balance links open the Balance tab under Brokers',async({page})=>{
+  await page.goto('/clusters/demo/balance');
+  await expect(page).toHaveURL(/\/clusters\/demo\/brokers\/balance(\?|$)/);
+  await expect(page.getByRole('heading',{name:'Distribution analysis'})).toBeVisible();
+  await page.getByRole('button',{name:'Brokers',exact:true}).last().click();
+  await expect(page).toHaveURL(/\/clusters\/demo\/brokers(\?|$)/);
+});
+test('topic distribution hands its topic to the reassignment planner',async({page})=>{
   await page.goto('/clusters/demo/topics');
   await page.getByText('orders.created',{exact:true}).first().click();
-  await page.getByRole('button',{name:'Balance',exact:true}).click();
-  await page.getByRole('button',{name:'Open reassignments'}).click();
+  await page.getByRole('button',{name:'Distribution',exact:true}).click();
+  await page.getByRole('button',{name:'Plan reassignment'}).click();
   await expect(page).toHaveURL(/reassignments/);
   await expect(page.getByRole('button',{name:'Remove orders.created'})).toBeVisible();
 });
