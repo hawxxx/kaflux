@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/hawxxx/kaflux/backend/internal/auth"
 	"github.com/hawxxx/kaflux/backend/internal/balance"
@@ -788,7 +789,10 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 }
 func readLimit(q url.Values) int {
 	limit, _ := strconv.Atoi(q.Get("limit"))
-	return min(max(limit, 1), 100)
+	if limit < 1 {
+		return 50
+	}
+	return min(limit, 100)
 }
 
 // messagesAcross reads several partitions of one topic in a single request. offsets lists
@@ -839,6 +843,10 @@ func (a *API) messagesAcross(w http.ResponseWriter, r *http.Request, u auth.User
 		}
 	}
 	m, e := reader.MessagesAt(r.Context(), topic, from, readLimit(q))
+	if errors.Is(e, kafka.ErrUnknownPartition) {
+		fail(w, 422, "unknown_partition", e.Error())
+		return
+	}
 	if e != nil {
 		failCause(w, r, 503, "consume_failed", "Unable to read messages", e)
 		return

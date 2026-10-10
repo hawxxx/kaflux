@@ -110,7 +110,7 @@ func (d *Demo) MessagesAt(ctx context.Context, t string, from map[int32]int64, l
 	for p, o := range from {
 		m, e := d.Messages(ctx, t, p, o, l)
 		if e != nil {
-			return nil, e
+			return nil, fmt.Errorf("partition %d: %w", p, ErrUnknownPartition)
 		}
 		out = append(out, m...)
 	}

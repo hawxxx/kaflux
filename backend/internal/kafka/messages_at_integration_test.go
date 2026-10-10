@@ -2,8 +2,10 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,6 +61,27 @@ func TestNativeMessagesAtReadsPartitionsThroughOneClient(t *testing.T) {
 	past, e := p.MessagesAt(ctx, topic, map[int32]int64{0: 3, 1: 3}, 5)
 	if e != nil || len(past) != 0 {
 		t.Fatalf("reading from the end must return nothing: %v %v", e, past)
+	}
+	if _, e = p.MessagesAt(ctx, topic, map[int32]int64{7: 0}, 5); !errors.Is(e, ErrUnknownPartition) {
+		t.Fatalf("unknown partition must report ErrUnknownPartition: %v", e)
+	}
+	// Large records on partition 0 must not use up the budget the other partitions are owed.
+	big := strings.Repeat("x", 500<<10)
+	for i := 0; i < 4; i++ {
+		if _, e = p.Produce(ctx, model.Message{Topic: topic, Partition: 0, Value: big}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	fair, e := p.MessagesAt(ctx, topic, map[int32]int64{0: 3, 1: 0, 2: 0}, 10)
+	if e != nil {
+		t.Fatal(e)
+	}
+	count = map[int32]int{}
+	for _, m := range fair {
+		count[m.Partition]++
+	}
+	if count[0] == 0 || count[1] != 3 || count[2] != 3 {
+		t.Fatalf("one partition crowded out the others: %v", count)
 	}
 	starts, e := p.OffsetsAt(ctx, topic, before)
 	if e != nil || len(starts) != 3 || starts[0] != 0 {
