@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/hawxxx/kaflux/compare/v0.4.1...v0.5.0) (2026-10-10)
+
+
+### Features
+
+* **messages:** search a topic on the server ([#46](https://github.com/hawxxx/kaflux/issues/46)) ([abd91cf](https://github.com/hawxxx/kaflux/commit/abd91cf71ee4dabcf8de1d6aad782671784e27ea))
+
 ## [0.4.1](https://github.com/hawxxx/kaflux/compare/v0.4.0...v0.4.1) (2026-10-10)
 
 
