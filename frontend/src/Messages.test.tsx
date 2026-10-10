@@ -86,4 +86,51 @@ describe('topic messages',()=>{
     expect(await screen.findByText('Reading every partition…')).toBeVisible();
     expect(screen.getByRole('progressbar',{name:'Reading every partition'})).toBeVisible();
   });
+  it('scans the topic on the server, continues where a budget stopped and returns to records',async()=>{
+    const found={partition:1,offset:3,timestamp:'2026-10-02T00:00:00Z',key:'dev',value:'mac aa:bb',valueBase64:btoa('mac aa:bb'),headers:[]};
+    const later={...found,partition:0,offset:190,key:'dev-2'};
+    const searches:any[]=[];
+    const fetch=vi.fn(async(url:string,init?:RequestInit)=>{
+      if(!String(url).includes('/messages/search'))return respond(url);
+      const body=JSON.parse(String(init?.body));searches.push(body);
+      const data=searches.length===1?{matches:[found],scanned:{records:2000000,bytes:1024},resume:{'0':160},done:false,stoppedBy:'records'}:{matches:[later],scanned:{records:40,bytes:10},resume:{},done:true,stoppedBy:'end'};
+      return {ok:true,json:async()=>({data})} as Response;
+    });
+    mount(fetch);
+    await screen.findByText('order-1');
+    expect(screen.getByRole('button',{name:'Scan topic'})).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Search returned records'),{target:{value:' aa:bb '}});
+    fireEvent.change(screen.getByLabelText('Search in'),{target:{value:'value'}});
+    fireEvent.click(screen.getByRole('button',{name:'Scan topic'}));
+    expect(await screen.findByText('1 match for “aa:bb”')).toBeVisible();
+    expect(searches[0]).toEqual({topic:'orders',match:{in:'value',text:'aa:bb'}});
+    expect(screen.getByText('Stopped after the record limit')).toBeVisible();
+    expect(screen.getByText(/Scanned 2,000,000 records/)).toBeVisible();
+    expect(screen.getByRole('button',{name:'Start live tail'})).toBeDisabled();
+    fireEvent.click(screen.getByRole('button',{name:'Continue scanning'}));
+    expect(await screen.findByText('2 matches for “aa:bb”')).toBeVisible();
+    expect(searches[1]).toEqual({topic:'orders',from:{offsets:{'0':160}},match:{in:'value',text:'aa:bb'}});
+    expect(screen.getByText('Scanned to the end of the range')).toBeVisible();
+    expect(screen.queryByRole('button',{name:'Continue scanning'})).toBeNull();
+    expect(screen.getByText('dev-2')).toBeVisible();
+    fireEvent.click(screen.getByRole('button',{name:'Back to records'}));
+    expect(screen.queryByText(/matches for/)).toBeNull();
+  });
+  it('cancels a running scan',async()=>{
+    let signal:AbortSignal|undefined;
+    mount(vi.fn((url:string,init?:RequestInit)=>{
+      if(!String(url).includes('/messages/search'))return Promise.resolve(respond(url));
+      signal=init?.signal??undefined;
+      return new Promise<Response>((_,reject)=>signal!.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError'))));
+    }));
+    await screen.findByText('order-1');
+    fireEvent.change(screen.getByLabelText('Search returned records'),{target:{value:'needle'}});
+    fireEvent.click(screen.getByRole('button',{name:'Scan topic'}));
+    expect(await screen.findByText('Scanning orders for “needle”…')).toBeVisible();
+    fireEvent.click(screen.getByRole('button',{name:'Cancel scan'}));
+    expect(signal?.aborted).toBe(true);
+    await vi.waitFor(()=>expect(screen.queryByText('Scanning orders for “needle”…')).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('No returned records match this search.')).toBeVisible();
+  });
 });

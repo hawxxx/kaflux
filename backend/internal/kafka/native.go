@@ -62,6 +62,7 @@ type Native struct {
 	admin       *kadm.Client
 	opts        []kgo.Opt
 	budget      chan struct{}
+	searches    chan struct{}
 	mu          sync.Mutex
 	cached      model.Snapshot
 	expires     time.Time
@@ -186,7 +187,7 @@ func NewNative(c Config) (*Native, error) {
 		}
 		return nil, e
 	}
-	n := &Native{client: cl, admin: kadm.NewClient(cl), opts: opts, budget: make(chan struct{}, 8), oauthTokens: tokens, capacity: c.Capacity}
+	n := &Native{client: cl, admin: kadm.NewClient(cl), opts: opts, budget: make(chan struct{}, 8), searches: make(chan struct{}, 2), oauthTokens: tokens, capacity: c.Capacity}
 	n.knownMSK = c.SASL == "msk-iam" || c.MSKClusterARN != ""
 	for _, seed := range c.Seeds {
 		if strings.Contains(seed, ".kafka.") || strings.Contains(seed, ".kafka-serverless.") {
@@ -469,6 +470,114 @@ func (n *Native) MessagesAt(ctx context.Context, t string, from map[int32]int64,
 	}
 	return out, nil
 }
+
+// Search scans the query's range through one consumer. It runs outside the request budget, which
+// guards short admin calls, and under its own small limit so long scans cannot starve them.
+func (n *Native) Search(ctx context.Context, q SearchQuery) (SearchResult, error) {
+	select {
+	case n.searches <- struct{}{}:
+		defer func() { <-n.searches }()
+	default:
+		return SearchResult{}, ErrSearchBusy
+	}
+	s, e := n.planSearch(ctx, q)
+	if e != nil {
+		return SearchResult{}, e
+	}
+	if len(s.next) == 0 {
+		return s.finish(), nil
+	}
+	assign := map[int32]kgo.Offset{}
+	for p, o := range s.next {
+		assign[p] = kgo.NewOffset().At(o)
+	}
+	opts := append([]kgo.Opt{}, n.opts...)
+	opts = append(opts, kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{q.Topic: assign}), kgo.FetchMaxWait(500*time.Millisecond))
+	cl, e := kgo.NewClient(opts...)
+	if e != nil {
+		return SearchResult{}, e
+	}
+	defer cl.Close()
+	deadline := time.Now().Add(searchTimeBudget)
+	empty := 0
+	for len(s.next) > 0 && s.stoppedBy == "" {
+		if !time.Now().Before(deadline) {
+			s.stop("time")
+			break
+		}
+		pc, cancel := context.WithTimeout(ctx, min(time.Until(deadline), 1500*time.Millisecond))
+		f := cl.PollFetches(pc)
+		cancel()
+		if e = ctx.Err(); e != nil {
+			return SearchResult{}, e
+		}
+		if e = f.Err(); e != nil && !errors.Is(e, context.DeadlineExceeded) {
+			return SearchResult{}, e
+		}
+		if f.NumRecords() == 0 {
+			// A fetch answers as soon as a partition has data, so two empty polls mean the remaining
+			// partitions end in records the consumer never returns, such as transaction markers.
+			if empty++; empty >= 2 && time.Now().Before(deadline) {
+				clear(s.next)
+			}
+			continue
+		}
+		empty = 0
+		finished := []int32{}
+		f.EachPartition(func(p kgo.FetchTopicPartition) {
+			for _, r := range p.Records {
+				if s.stoppedBy != "" {
+					return
+				}
+				if s.offer(r) {
+					finished = append(finished, r.Partition)
+					return
+				}
+			}
+		})
+		if len(finished) > 0 {
+			cl.PauseFetchPartitions(map[string][]int32{q.Topic: finished})
+		}
+	}
+	return s.finish(), nil
+}
+
+func (n *Native) planSearch(ctx context.Context, q SearchQuery) (*scan, error) {
+	c, done, e := n.bounded(ctx)
+	if e != nil {
+		return nil, e
+	}
+	defer done()
+	listed := func(l kadm.ListedOffsets, e error) (map[int32]int64, error) {
+		if e != nil {
+			return nil, e
+		}
+		out := map[int32]int64{}
+		var failed error
+		l.Each(func(o kadm.ListedOffset) {
+			if errors.Is(o.Err, kerr.UnknownTopicOrPartition) {
+				return
+			}
+			if o.Err != nil && failed == nil {
+				failed = o.Err
+			}
+			out[o.Partition] = o.Offset
+		})
+		return out, failed
+	}
+	starts, e := listed(n.admin.ListStartOffsets(c, q.Topic))
+	if e != nil {
+		return nil, e
+	}
+	ends, e := listed(n.admin.ListEndOffsets(c, q.Topic))
+	if e != nil {
+		return nil, e
+	}
+	return planScan(q, starts, ends, func(at time.Time) (map[int32]int64, error) {
+		return listed(n.admin.ListOffsetsAfterMilli(c, at.UnixMilli(), q.Topic))
+	})
+}
+
 func (n *Native) Produce(ctx context.Context, m model.Message) (model.Message, error) {
 	c, done, e := n.bounded(ctx)
 	if e != nil {

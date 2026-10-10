@@ -1008,6 +1008,99 @@ paths:
         "200": { $ref: "#/components/responses/Envelope" }
         "403": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/messages/search:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+    post:
+      summary: Scan a topic on the server and return only the records that match
+      description:
+        "Requires consume on the topic. Matching runs on full record bytes, not previews. Each
+        search stops at 500 matches or a 4 MiB preview total, 2,000,000 records, 2 GiB or 30
+        seconds, whichever comes first, and reports per-partition offsets to resume from. Each
+        partition ends before to.timestamp, or at the end offset it had when the search started.
+        The search text is sent in the body so it stays out of URLs and logs; searches are not
+        audited."
+      operationId: searchMessages
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [topic, match]
+              additionalProperties: false
+              properties:
+                topic: { type: string }
+                partitions:
+                  type: array
+                  description: "Partitions to scan; all when omitted. Not allowed with from.offsets"
+                  items: { type: integer, minimum: 0 }
+                  maxItems: 4096
+                from:
+                  type: object
+                  description: "Start of the range; the first retained record when omitted"
+                  additionalProperties: false
+                  properties:
+                    timestamp: { type: string, format: date-time }
+                    offsets:
+                      type: object
+                      description:
+                        "Per-partition start offsets, usually a previous response's resume. Limits
+                        the search to these partitions"
+                      additionalProperties: { type: integer, format: int64, minimum: 0 }
+                to:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    timestamp: { type: string, format: date-time, description: "Exclusive end" }
+                match:
+                  type: object
+                  required: [text]
+                  additionalProperties: false
+                  properties:
+                    in: { type: string, enum: [key, value, headers, any], default: any }
+                    op: { type: string, enum: [contains, equals, regex], default: contains }
+                    text: { type: string, minLength: 1, maxLength: 1024, description: "Regex uses RE2 syntax" }
+                    caseSensitive: { type: boolean, default: false }
+                partitioner:
+                  type: string
+                  enum: [murmur2, crc32]
+                  description:
+                    "Producer key partitioner (murmur2 for Java clients, crc32 for librdkafka's
+                    default). With a case-sensitive key equals match, only that key's partition is
+                    scanned"
+                maxMatches: { type: integer, minimum: 1, maximum: 500, default: 50 }
+      responses:
+        "200":
+          description: Matches found within the budget
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [matches, scanned, resume, done, stoppedBy]
+                    properties:
+                      matches: { type: array, items: { $ref: "#/components/schemas/Message" } }
+                      scanned:
+                        type: object
+                        properties:
+                          records: { type: integer, format: int64 }
+                          bytes: { type: integer, format: int64 }
+                      resume:
+                        type: object
+                        description: "Next offset per partition not yet scanned to its end; post as from.offsets to continue"
+                        additionalProperties: { type: integer, format: int64 }
+                      done: { type: boolean }
+                      stoppedBy: { type: string, enum: [end, matches, records, bytes, time] }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/balance:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }

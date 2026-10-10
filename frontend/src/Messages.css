@@ -11,6 +11,8 @@
 .message-search input { flex: 1; border: 0; background: none; padding: 10px 0; font-size: 11px; }
 .message-search select { width: auto; border: 0; border-left: 1px solid var(--border); border-radius: 0 6px 6px 0; font-size: 11px; }
 .message-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.message-results-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.scan-progress { display: grid; justify-items: center; gap: 12px; padding-bottom: 20px; }
 
 .message-results { --record-cols: 16px 88px 92px minmax(80px, 1fr) minmax(0, 3fr) 92px; }
 .message-results-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 11px; }

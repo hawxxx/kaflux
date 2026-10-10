@@ -1,6 +1,6 @@
 import {useLayoutEffect,useRef,useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
-import {ArrowDownToLine,ChevronRight,Copy,Pause,Play,RefreshCw,Search,SendHorizontal} from 'lucide-react';
+import {ArrowDownToLine,ChevronRight,Copy,Pause,Play,RefreshCw,ScanSearch,Search,SendHorizontal,X} from 'lucide-react';
 import {api,bytes,type Message} from './api';
 import {MessageValue} from './MessageValue';
 import {TopicPicker} from './TopicPicker';
@@ -16,6 +16,11 @@ import './Messages.css';
 type Start='latest'|'earliest'|'offset'|'time';
 const starts:[Start,string][]=[['latest','Latest'],['earliest','Earliest'],['offset','Offset'],['time','Time']];
 const recordId=(m:Message)=>`${m.partition}-${m.offset}`;
+type SearchBody={topic:string;partitions?:number[];from?:{timestamp?:string;offsets?:Record<string,number>};match:{in:string;text:string}};
+type SearchResult={matches:Message[];scanned:{records:number;bytes:number};resume:Record<string,number>|null;done:boolean;stoppedBy:string};
+type Scan=SearchResult&{text:string;body:SearchBody};
+const stopReasons:Record<string,string>={end:'Scanned to the end of the range',matches:'Stopped at the match limit',records:'Stopped after the record limit',bytes:'Stopped after the byte limit',time:'Stopped at the 30 s time limit'};
+const count=new Intl.NumberFormat();
 const byteLength=(base64?:string)=>base64==null?undefined:Math.floor(base64.length*3/4)-(base64.endsWith('==')?2:base64.endsWith('=')?1:0);
 // One-line preview of a payload; schema-decoded content wins over the raw text.
 function preview(value:unknown,decoded?:unknown){
@@ -52,6 +57,9 @@ export function Messages({clusterId,initialTopic,canProduce}:{clusterId:string;i
   const [producing,setProducing]=useState(false);
   const [draft,setDraft]=useState<Draft>(emptyDraft);
   const [notice,setNotice]=useState('');
+  const [scan,setScan]=useState<Scan|null>(null);
+  const [scanning,setScanning]=useState<AbortController|null>(null);
+  const [scanError,setScanError]=useState<Error|null>(null);
   const registries=useQuery({queryKey:[`/clusters/${clusterId}/schemas`],queryFn:()=>api<{id:string}[]>(`/clusters/${clusterId}/schemas`)});
   const detailPath=`/clusters/${clusterId}/topics/${encodeURIComponent(topic)}`;
   const detail=useQuery({queryKey:[detailPath],queryFn:()=>api<TopicDetail>(detailPath),enabled:!!topic});
@@ -108,7 +116,20 @@ export function Messages({clusterId,initialTopic,canProduce}:{clusterId:string;i
       return {data:tail?state.records:bounded};
     }});
   const returned=query.data?.data??[];
-  const records=filterMessages(returned,{text:search,scope});
+  const records=scan?scan.matches:filterMessages(returned,{text:search,scope});
+  // Scanning reads the topic on the server and returns only matches; "Continue" resumes where a budget stopped it.
+  async function runScan(previous?:Scan){
+    const ctrl=new AbortController();setScanning(ctrl);setScanError(null);setTail(false);
+    const from=start==='time'&&params.has('timestamp')?{timestamp:params.get('timestamp')!}:start==='offset'&&!all?{offsets:{[partition]:Number(offset||'0')}}:undefined;
+    const body:SearchBody=previous?{...previous.body,partitions:undefined,from:{offsets:previous.resume??{}}}:{topic,partitions:all||from?.offsets?undefined:[Number(partition)],from,match:{in:scope==='all'?'any':scope,text:search.trim()}};
+    try{
+      const r=(await api<SearchResult>(`/clusters/${clusterId}/messages/search`,{method:'POST',body:JSON.stringify(body),signal:ctrl.signal})).data;
+      setScan({...r,text:previous?.text??search.trim(),body:previous?.body??body,matches:[...previous?.matches??[],...r.matches],
+        scanned:{records:(previous?.scanned.records??0)+r.scanned.records,bytes:(previous?.scanned.bytes??0)+r.scanned.bytes}});
+    }catch(e){if(!ctrl.signal.aborted)setScanError(e as Error)}
+    finally{setScanning(null)}
+  }
+  const resetScan=()=>{scanning?.abort();setScan(null);setScanError(null)};
   const follow=useTailFollow(records.map(recordId),tail);
   const allOpen=records.length>0&&records.every(m=>expanded.has(recordId(m)));
   const toggle=(id:string)=>setExpanded(s=>{const next=new Set(s);if(!next.delete(id))next.add(id);return next});
@@ -119,7 +140,7 @@ export function Messages({clusterId,initialTopic,canProduce}:{clusterId:string;i
   return <>
     <section className="panel message-controls">
       <div className="message-read">
-        {initialTopic===undefined&&<label className="message-topic">Topic<TopicPicker clusterId={clusterId} value={topic} onChange={t=>{setTopic(t);setPartition('all');setExpanded(new Set())}}/></label>}
+        {initialTopic===undefined&&<label className="message-topic">Topic<TopicPicker clusterId={clusterId} value={topic} onChange={t=>{setTopic(t);setPartition('all');setExpanded(new Set());resetScan()}}/></label>}
         <label>Partition
           <select value={partition} onChange={e=>{setPartition(e.target.value);if(e.target.value==='all'&&start==='offset')setStart('latest')}} disabled={!topic}>
             <option value="all">All partitions</option>
@@ -150,31 +171,42 @@ export function Messages({clusterId,initialTopic,canProduce}:{clusterId:string;i
         </label>
         {registry&&<label>Decode<select aria-label="Decode field" value={decoderTarget} onChange={e=>setDecoderTarget(e.target.value)}><option value="value">Value</option><option value="key">Key</option><option value="both">Key and value</option></select></label>}
         <div className="message-buttons">
-          <button className={`button ${tail?'':'primary'}`} disabled={!topic} onClick={()=>setTail(!tail)}>{tail?<Pause size={14}/>:<Play size={14}/>}{tail?'Pause live tail':'Start live tail'}</button>
+          <button className="button" title="Scan the topic on the server for records matching the search" disabled={!topic||!search.trim()||!!scanning} onClick={()=>runScan()}><ScanSearch size={14}/>Scan topic</button>
+          <button className={`button ${tail?'':'primary'}`} disabled={!topic||!!scan} onClick={()=>setTail(!tail)}>{tail?<Pause size={14}/>:<Play size={14}/>}{tail?'Pause live tail':'Start live tail'}</button>
           <button className="button" disabled={!topic||fetching} aria-busy={fetching} onClick={()=>query.refetch()}><RefreshCw size={14} className={fetching?'spin':undefined}/>{fetching?'Fetching…':'Fetch'}</button>
           <button className="button" title={canProduce?'Produce a record':'Your role cannot produce messages'} disabled={!canProduce||!topic} onClick={()=>openProducer()}><SendHorizontal size={14}/>Produce</button>
         </div>
       </div>
     </section>
-    <ErrorBox error={query.error}/>
+    <ErrorBox error={scanError??query.error}/>
     {!topic?<Empty text="Choose a topic to begin inspecting messages."/>:<section className={`panel message-results${tail?' live':''}`}>
       <div className="message-results-heading">
-        <div>
+        {scan?<div>
+          <strong>{scan.matches.length} {scan.matches.length===1?'match':'matches'} for “{scan.text}”</strong>
+          <span>Scanned {count.format(scan.scanned.records)} records · {bytes(scan.scanned.bytes)}</span>
+          <span className="message-tail-state"><i className={scan.done?'good-dot':'paused-dot'}/>{stopReasons[scan.stoppedBy]??scan.stoppedBy}</span>
+        </div>:<div>
           <strong>{search?`${records.length} of ${returned.length}`:returned.length} records</strong>
           <span>{all?'All partitions':`Partition ${partition}`}{range&&` · ${range}`}</span>
           <span className="message-tail-state"><i className={tail?'good-dot':'paused-dot'}/>{tail?'Live · polling every 3s':'Bounded read'}</span>
+        </div>}
+        <div className="message-results-actions">
+          {scan&&!scan.done&&<button className="link-button" disabled={!!scanning} onClick={()=>runScan(scan)}><ScanSearch size={13}/>Continue scanning</button>}
+          {scan&&<button className="link-button" onClick={resetScan}>Back to records</button>}
+          <button className="link-button" disabled={!records.length} onClick={()=>setExpanded(allOpen?new Set():new Set(records.map(recordId)))}>{allOpen?'Collapse all':'Expand all'}</button>
         </div>
-        <button className="link-button" disabled={!records.length} onClick={()=>setExpanded(allOpen?new Set():new Set(records.map(recordId)))}>{allOpen?'Collapse all':'Expand all'}</button>
       </div>
       <UpdatingBar active={fetching} label="Fetching records"/>
-      <div className="message-columns" aria-hidden="true"><span/><span>{all?'Part · Offset':'Offset'}</span><span>Timestamp</span><span>Key</span><span>Value</span><span>Size</span></div>
+      <div className="message-columns" aria-hidden="true"><span/><span>{all||scan?'Part · Offset':'Offset'}</span><span>Timestamp</span><span>Key</span><span>Value</span><span>Size</span></div>
       <div className="message-list" ref={follow.ref} onScroll={follow.onScroll}>
-        {query.isLoading?<LoadingPanel label={all?'Reading every partition':`Reading partition ${partition}`}/>:!records.length?<Empty text={returned.length?'No returned records match this search.':'No records returned within the read limits.'}/>:records.map(m=>{
+        {scanning?<div className="scan-progress"><LoadingPanel label={`Scanning ${topic} for “${scan?.text??search.trim()}”`} slowAfterSeconds={10}/><button className="button" onClick={()=>scanning.abort()}><X size={14}/>Cancel scan</button></div>
+        :query.isLoading&&!scan?<LoadingPanel label={all?'Reading every partition':`Reading partition ${partition}`}/>
+        :!records.length?<Empty text={scan?`No records match “${scan.text}” in the scanned range.`:returned.length?'No returned records match this search.':'No records returned within the read limits.'}/>:records.map(m=>{
           const id=recordId(m),open=expanded.has(id),key=preview(m.key,m.decodedKey),size=byteLength(m.valueBase64);
           return <div className={`record${open?' open':''}`} key={id}>
             <button className="record-summary" aria-expanded={open} aria-controls={`record-${id}`} onClick={()=>toggle(id)}>
               <ChevronRight size={14} className="record-chevron" aria-hidden="true"/>
-              <span className="record-offset" title={`Partition ${m.partition}, offset ${m.offset}`}>{all&&<>p{m.partition}<b>·</b></>}{m.offset}</span>
+              <span className="record-offset" title={`Partition ${m.partition}, offset ${m.offset}`}>{(all||scan)&&<>p{m.partition}<b>·</b></>}{m.offset}</span>
               <span className="record-time" title={tz.dateTime(m.timestamp)}>{tz.time(m.timestamp)}</span>
               <span className={`record-key${key?'':' none'}`}>{key||'no key'}</span>
               <span className="record-value">{preview(m.value,m.decodedValue)||<em>empty</em>}</span>
