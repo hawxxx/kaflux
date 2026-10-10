@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"time"
 )
@@ -15,6 +16,9 @@ type Provider interface {
 	Pending(context.Context) (map[string][]int32, error)
 	Close()
 }
+
+// ErrUnknownPartition reports a partition the topic does not have.
+var ErrUnknownPartition = errors.New("unknown partition")
 
 // MultiReader reads several partitions of one topic through a single consumer,
 // so a topic-wide view costs one connection instead of one per partition.

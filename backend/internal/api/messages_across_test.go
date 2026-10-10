@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/hawxxx/kaflux/backend/internal/kafka"
@@ -44,7 +45,17 @@ func TestMessagesAcrossPartitions(t *testing.T) {
 			t.Fatalf("%s: %d", bad, code)
 		}
 	}
-	if code, _ = read("&offsets=99:0"); code != 503 {
-		t.Fatalf("unknown partition: %d", code)
+	for _, unknown := range []string{"&offsets=99:0", "&offsets=99:0&timestamp=2026-10-01T12:00:01Z"} {
+		if code, _ = read(unknown); code != 422 {
+			t.Fatalf("%s: unknown partition answered %d", unknown, code)
+		}
+	}
+}
+
+func TestMessagesLimitDefaultsToFifty(t *testing.T) {
+	for raw, want := range map[string]int{"": 50, "0": 50, "-3": 50, "x": 50, "7": 7, "500": 100} {
+		if got := readLimit(url.Values{"limit": {raw}}); got != want {
+			t.Fatalf("limit %q: got %d, want %d", raw, got, want)
+		}
 	}
 }

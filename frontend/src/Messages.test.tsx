@@ -62,6 +62,15 @@ describe('topic messages',()=>{
     expect(screen.getAllByTitle(/^Partition 0, offset/)).toHaveLength(2);
     expect(screen.queryByRole('button',{name:'Offset'})).toBeNull();
   });
+  it('tails each partition from where it was read, not past records the server did not return',async()=>{
+    Element.prototype.scrollTo=vi.fn();
+    const fetch=vi.fn(async(url:string)=>respond(url));mount(fetch);
+    await screen.findByText('order-1');fetch.mockClear();
+    fireEvent.click(screen.getByRole('button',{name:'Start live tail'}));
+    await vi.waitFor(()=>expect(fetch.mock.calls.some(c=>String(c[0]).includes('/messages?'))).toBe(true));
+    const read=new URL(String(fetch.mock.calls.map(c=>c[0]).find(u=>String(u).includes('/messages?'))),'http://x').searchParams;
+    expect(read.get('offsets')).toBe('0:152,1:0');
+  });
   it('reads a single partition once chosen',async()=>{
     const fetch=vi.fn(async(url:string)=>respond(url));mount(fetch);
     await screen.findByText('order-1');fetch.mockClear();
