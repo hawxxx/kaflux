@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/hawxxx/kaflux/backend/internal/model"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"sync"
 	"time"
 )
@@ -126,6 +127,47 @@ func (d *Demo) OffsetsAt(ctx context.Context, t string, at time.Time) (map[int32
 		out[p] = o
 	}
 	return out, nil
+}
+func (d *Demo) Search(ctx context.Context, q SearchQuery) (SearchResult, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	records := map[int32][]model.Message{}
+	starts, ends := map[int32]int64{}, map[int32]int64{}
+	for p := int32(0); ; p++ {
+		all, ok := d.messages[fmt.Sprintf("%s/%d", q.Topic, p)]
+		if !ok {
+			break
+		}
+		records[p], starts[p], ends[p] = all, 0, int64(len(all))
+	}
+	s, e := planScan(q, starts, ends, func(at time.Time) (map[int32]int64, error) {
+		out := map[int32]int64{}
+		for p, all := range records {
+			out[p] = -1
+			for _, m := range all {
+				if !m.Timestamp.Before(at) {
+					out[p] = m.Offset
+					break
+				}
+			}
+		}
+		return out, nil
+	})
+	if e != nil {
+		return SearchResult{}, e
+	}
+	for _, p := range s.active() {
+		for _, m := range records[p][s.next[p]:] {
+			headers := make([]kgo.RecordHeader, len(m.Headers))
+			for i, h := range m.Headers {
+				headers[i] = kgo.RecordHeader{Key: h.Key, Value: []byte(h.Value)}
+			}
+			if s.offer(&kgo.Record{Topic: m.Topic, Partition: p, Offset: m.Offset, Timestamp: m.Timestamp, Key: []byte(m.Key), Value: []byte(m.Value), Headers: headers}) || s.stoppedBy != "" {
+				break
+			}
+		}
+	}
+	return s.finish(), nil
 }
 func (d *Demo) Produce(ctx context.Context, m model.Message) (model.Message, error) {
 	d.mu.Lock()

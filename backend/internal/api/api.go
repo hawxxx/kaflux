@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -331,10 +332,11 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if (endpoint == "topics" || endpoint == "consumer-groups") && len(parts) > 5 {
 		resource = parts[5]
 	}
+	search := endpoint == "messages" && len(parts) == 6 && parts[5] == "search"
 	if endpoint == "messages" {
 		action = "consume"
 		resource = r.URL.Query().Get("topic")
-		if r.Method == "POST" {
+		if r.Method == "POST" && !search {
 			action = "produce"
 			resource = "*"
 		}
@@ -374,6 +376,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if endpoint == "rebalances" {
 		a.rebalances(w, r, s.User, id, provider, parts)
+		return
+	}
+	if search {
+		a.searchMessages(w, r, s.User, id, provider)
 		return
 	}
 	if endpoint == "messages" {
@@ -1140,4 +1146,100 @@ func (a *API) static(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.FileServer(http.Dir(a.o.StaticDir)).ServeHTTP(w, r)
+}
+
+// searchMessages scans a topic on the server for records matching the request. The search text
+// travels in the body, never the URL, and is not logged or audited.
+func (a *API) searchMessages(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) {
+	if r.Method != "POST" {
+		fail(w, 405, "method_not_allowed", "POST required")
+		return
+	}
+	searcher, ok := p.(kafka.Searcher)
+	if !ok {
+		fail(w, 422, "unsupported", "Searching messages is unavailable")
+		return
+	}
+	var body struct {
+		Topic      string  `json:"topic"`
+		Partitions []int32 `json:"partitions"`
+		From       struct {
+			Timestamp *time.Time      `json:"timestamp"`
+			Offsets   map[int32]int64 `json:"offsets"`
+		} `json:"from"`
+		To struct {
+			Timestamp *time.Time `json:"timestamp"`
+		} `json:"to"`
+		Match struct {
+			In            string `json:"in"`
+			Op            string `json:"op"`
+			Text          string `json:"text"`
+			CaseSensitive bool   `json:"caseSensitive"`
+		} `json:"match"`
+		Partitioner string `json:"partitioner"`
+		MaxMatches  int    `json:"maxMatches"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Topic == "" {
+		fail(w, 400, "invalid_request", "topic is required")
+		return
+	}
+	if !a.allowed(u, id, "consume", body.Topic, w) {
+		return
+	}
+	invalid := func(msg string) { fail(w, 400, "invalid_request", msg) }
+	if len(body.Partitions) > 4096 || len(body.From.Offsets) > 4096 {
+		invalid("Too many partitions")
+		return
+	}
+	if slices.ContainsFunc(body.Partitions, func(p int32) bool { return p < 0 }) {
+		invalid("partitions must be nonnegative")
+		return
+	}
+	for part, offset := range body.From.Offsets {
+		if part < 0 || offset < 0 {
+			invalid("from.offsets must map nonnegative partitions to nonnegative offsets")
+			return
+		}
+	}
+	if body.From.Offsets != nil && (body.From.Timestamp != nil || len(body.Partitions) > 0) {
+		invalid("from.offsets resumes a search and replaces from.timestamp and partitions")
+		return
+	}
+	if body.From.Timestamp != nil && body.To.Timestamp != nil && !body.To.Timestamp.After(*body.From.Timestamp) {
+		invalid("to.timestamp must be after from.timestamp")
+		return
+	}
+	if body.Partitioner != "" && body.Partitioner != "murmur2" && body.Partitioner != "crc32" {
+		invalid("partitioner must be murmur2 or crc32")
+		return
+	}
+	match, e := kafka.NewMatcher(body.Match.In, body.Match.Op, body.Match.Text, body.Match.CaseSensitive)
+	if e != nil {
+		invalid(e.Error())
+		return
+	}
+	maxMatches := body.MaxMatches
+	if maxMatches < 1 {
+		maxMatches = 50
+	}
+	result, e := searcher.Search(r.Context(), kafka.SearchQuery{
+		Topic: body.Topic, Partitions: body.Partitions, FromOffsets: body.From.Offsets,
+		FromTime: body.From.Timestamp, ToTime: body.To.Timestamp, Match: match,
+		Partitioner: body.Partitioner, MaxMatches: min(maxMatches, 500),
+	})
+	switch {
+	case errors.Is(e, kafka.ErrUnknownPartition):
+		fail(w, 422, "unknown_partition", e.Error())
+	case errors.Is(e, kafka.ErrUnknownTopic):
+		fail(w, 422, "unknown_topic", "Topic not found")
+	case errors.Is(e, kafka.ErrSearchBusy):
+		fail(w, 429, "search_busy", "Too many searches are running on this cluster; try again shortly")
+	case e != nil:
+		failCause(w, r, 503, "search_failed", "Unable to search messages", e)
+	default:
+		respond(w, result)
+	}
 }
