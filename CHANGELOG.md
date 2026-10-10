@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/hawxxx/kaflux/compare/v0.4.0...v0.4.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **frontend:** hide app shell until the session is known ([#41](https://github.com/hawxxx/kaflux/issues/41)) ([11a5511](https://github.com/hawxxx/kaflux/commit/11a551175c10e82226baa9a6bab76c690b1f200a))
+* **messages:** keep all-partition reads complete and fair ([#43](https://github.com/hawxxx/kaflux/issues/43)) ([70f8d3a](https://github.com/hawxxx/kaflux/commit/70f8d3afd4d116f602549329d323136731a0960b))
+* **ui:** polish topic toggles, degraded health color and cluster menu ([#40](https://github.com/hawxxx/kaflux/issues/40)) ([d9774d0](https://github.com/hawxxx/kaflux/commit/d9774d034404785119aad86d9af488957680599c))
+
 ## [0.4.0](https://github.com/hawxxx/kaflux/compare/v0.3.0...v0.4.0) (2026-10-09)
 
 
