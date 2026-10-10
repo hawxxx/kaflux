@@ -2,6 +2,8 @@
 
 Kaflux is a Kafka operations console built with Go and React. Explore clusters and messages, monitor activity, and manage rebalancing from one interface.
 
+![Kaflux cluster overview with throughput, lag and health](docs/images/overview.png)
+
 ## Features
 
 - **Cluster management:** brokers, topics, partitions, consumer groups, and access controls.
@@ -9,6 +11,16 @@ Kaflux is a Kafka operations console built with Go and React. Explore clusters a
 - **Monitoring:** metrics, consumer lag, partition balance, and per-topic broker distribution.
 - **Rebalancing:** plan review, approval, audited execution, and live throttle controls.
 - **Integrations:** Kafka Connect, Schema Registry, OIDC, and LDAP.
+
+## Screenshots
+
+Captured from the built-in demo simulator. See [Try the demo](#try-the-demo).
+
+| | |
+| --- | --- |
+| ![Topics list with partitions, size and health](docs/images/topics.png)<br>**Topics.** Partitions, replication, size and health per topic. | ![Message browser with an expanded JSON record](docs/images/messages.png)<br>**Messages.** Fetch or live-tail records and inspect decoded values. |
+| ![Metrics catalog with throughput and consumer lag charts](docs/images/metrics.png)<br>**Metrics.** Search the metric catalog and chart throughput and lag. | ![Reassignment plan showing replicas before and after](docs/images/reassignment-plan.png)<br>**Plan review.** Every replica change is shown before approval. |
+| ![Completed reassignment with progress and cluster health](docs/images/reassignment-progress.png)<br>**Execution.** Topic-by-topic progress, cluster health and before/after balance. | ![Brokers list in the light theme](docs/images/brokers-light.png)<br>**Brokers.** Racks, partitions, leaders and size per broker, in light or dark theme. |
 
 ## Installation
 
