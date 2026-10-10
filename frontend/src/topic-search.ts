@@ -1,6 +1,6 @@
 export const topicSortKeys=['name','partitions','replicationFactor','cleanupPolicy','sizeBytes','urp'] as const;
 /** Topic detail tabs; a topic link may open one directly. */
-export const topicTabs=['Overview','Partitions','Distribution','Metrics','Messages','Consumers','Configuration','Balance','Audit'] as const;
+export const topicTabs=['Overview','Partitions','Distribution','Metrics','Messages','Consumers','Configuration','Audit'] as const;
 export type TopicSearch = {q:string;sort:typeof topicSortKeys[number];order:'asc'|'desc';page:number;showSize:boolean;showInternal:boolean;planTopic?:string;group?:string;tab?:typeof topicTabs[number]};
 
 /** Shared table state is bounded before it reaches Kafka inventory requests. */

@@ -6,7 +6,7 @@ import {SortButton,useSortedRows} from './table-sort';
 import {useTimeZone} from './TimeZone';
 
 type Deviation={broker:number;value:number;differenceFromMean:number;percentageDifference:number};
-type Dimension={id:string;status:'GOOD'|'MODERATE'|'HIGH_SKEW'|'UNAVAILABLE';mean:number;maxMinusMin:number;coefficientOfVariation:number;maxToMeanRatio:number;brokers:Deviation[];reason?:string};
+export type Dimension={id:string;status:'GOOD'|'MODERATE'|'HIGH_SKEW'|'UNAVAILABLE';mean:number;maxMinusMin:number;coefficientOfVariation:number;maxToMeanRatio:number;brokers:Deviation[];reason?:string};
 type TopicBroker={broker:number;rack:string;replicas:number;leaders:number;preferredReplicas:number;outOfSync:number;bytes:number|null};
 type TopicPartition={id:number;leader:number;replicas:number[];isr:number[];sizeBytes:number|null;preferredLeader:boolean;underReplicated:boolean;offline:boolean;singleRack:boolean};
 type Finding={severity:'critical'|'warning'|'info';kind:string;message:string;partition?:number;broker?:number};
@@ -15,10 +15,10 @@ export type TopicAnalysis={topic:string;replicationFactor:number;brokers:TopicBr
 const statusLabel={GOOD:'Balanced',MODERATE:'Moderate skew',HIGH_SKEW:'High skew',UNAVAILABLE:'Unavailable'};
 const severityIcon={critical:CircleAlert,warning:AlertTriangle,info:Info};
 // Broker identity follows broker position in the cluster, never rank, so a broker keeps its color across views.
-const brokerColor=(i:number)=>i<8?`var(--series-${i+1})`:'var(--muted)';
+export const brokerColor=(i:number)=>i<8?`var(--series-${i+1})`:'var(--muted)';
 const percent=(x:number)=>`${(x*100).toFixed(1)}%`;
 
-function SkewBadge({status}:{status:Dimension['status']}){return <span className={`skew-badge ${status.toLowerCase()}`}><i aria-hidden="true"/>{statusLabel[status]}</span>}
+export function SkewBadge({status}:{status:Dimension['status']}){return <span className={`skew-badge ${status.toLowerCase()}`}><i aria-hidden="true"/>{statusLabel[status]}</span>}
 
 function role(p:TopicPartition,broker:number){if(!p.replicas.includes(broker))return null;if(p.leader===broker)return {kind:'leader',mark:'L',text:'Leader'};if(!p.isr.includes(broker))return {kind:'lagging',mark:'!',text:'Out of sync'};return {kind:'follower',mark:'F',text:'In-sync follower'}}
 
@@ -66,6 +66,6 @@ export function TopicDistribution({clusterId,topic,onPlan}:{clusterId:string;top
   </section>
 }
 
-function Delta({value}:{value?:number}){if(value==null||Math.abs(value)<.5)return null;return <small className={Math.abs(value)>=25?'bad-text':Math.abs(value)>=10?'warn-text':''}>{value>0?'+':''}{value.toFixed(0)}%</small>}
+export function Delta({value}:{value?:number}){if(value==null||Math.abs(value)<.5)return null;return <small className={Math.abs(value)>=25?'bad-text':Math.abs(value)>=10?'warn-text':''}>{value>0?'+':''}{value.toFixed(0)}%</small>}
 
 function PartitionState({p}:{p:TopicPartition}){const states=[p.offline&&['high_skew','Offline'],p.underReplicated&&['moderate',`ISR ${p.isr.length}/${p.replicas.length}`],p.singleRack&&['moderate','Single rack'],!p.offline&&!p.preferredLeader&&['neutral','Non-preferred leader']].filter(Boolean) as string[][];return states.length?<>{states.map(([kind,label])=><span key={label} className={`skew-badge ${kind}`}><i aria-hidden="true"/>{label}</span>)}</>:<span className="skew-badge good"><i aria-hidden="true"/>Healthy</span>}
