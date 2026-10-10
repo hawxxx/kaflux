@@ -16,11 +16,15 @@ Kaflux is a Kafka operations console built with Go and React. Explore clusters a
 
 Captured from the built-in demo simulator. See [Try the demo](#try-the-demo).
 
+**Rebalancing in action.** An approved plan moves six topics one at a time, with live progress, per-topic status and the activity log console.
+
+![Reassignment running topic by topic with progress and activity log](docs/images/rebalance.gif)
+
 | | |
 | --- | --- |
 | ![Topics list with partitions, size and health](docs/images/topics.png)<br>**Topics.** Partitions, replication, size and health per topic. | ![Message browser with an expanded JSON record](docs/images/messages.png)<br>**Messages.** Fetch or live-tail records and inspect decoded values. |
 | ![Metrics catalog with throughput and consumer lag charts](docs/images/metrics.png)<br>**Metrics.** Search the metric catalog and chart throughput and lag. | ![Reassignment plan showing replicas before and after](docs/images/reassignment-plan.png)<br>**Plan review.** Every replica change is shown before approval. |
-| ![Completed reassignment with progress and cluster health](docs/images/reassignment-progress.png)<br>**Execution.** Topic-by-topic progress, cluster health and before/after balance. | ![Brokers list in the light theme](docs/images/brokers-light.png)<br>**Brokers.** Racks, partitions, leaders and size per broker, in light or dark theme. |
+| ![Topic distribution with replica and leader skew per broker](docs/images/topic-distribution.png)<br>**Topic distribution.** Replica and leader skew, preferred leaders and size per broker. | ![Brokers list in the light theme](docs/images/brokers-light.png)<br>**Brokers.** Racks, partitions, leaders and size per broker, in light or dark theme. |
 
 ## Installation
 
