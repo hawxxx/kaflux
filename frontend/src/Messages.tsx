@@ -70,7 +70,8 @@ export function Messages({clusterId,initialTopic,canProduce}:{clusterId:string;i
       if(tailState.current.signature!==signature)tailState.current={signature,cursors:{},records:[]};
       const state=tailState.current;
       const single=all?undefined:Number(partition);
-      const resumed=single!==undefined&&tail&&state.cursors[single]!==undefined;
+      // While tailing, cursors replace partition ends, so cached topic details are enough.
+      const resumed=tail&&(single!==undefined?state.cursors[single]!==undefined:Object.keys(state.cursors).length>0);
       const wantRange=(start==='latest'||start==='earliest')&&!resumed;
       // Ends are resolved per fetch so "Latest" always means the newest records at the time of reading.
       const ranges=all||wantRange?(await qc.fetchQuery({queryKey:[detailPath],queryFn:()=>api<TopicDetail>(detailPath),staleTime:wantRange&&start==='latest'?0:15_000})).data.partitions:[];
@@ -85,16 +86,20 @@ export function Messages({clusterId,initialTopic,canProduce}:{clusterId:string;i
         }
         return start==='offset'?Number(offset||'0'):0;
       };
+      const requested=Object.fromEntries(targets.map(id=>[id,offsetFor(id)]));
       const read=new URLSearchParams(params);
       read.delete('partition');read.delete('offset');
-      if(all)read.set('offsets',targets.map(id=>`${id}:${offsetFor(id)}`).join(','));
-      else{read.set('partition',String(single));read.set('offset',String(offsetFor(single!)))}
+      if(all)read.set('offsets',targets.map(id=>`${id}:${requested[id]}`).join(','));
+      else{read.set('partition',String(single));read.set('offset',String(requested[single!]))}
       if(tail&&targets.every(id=>state.cursors[id]!==undefined))read.delete('timestamp');
+      const byTime=read.has('timestamp');
       const incoming=(await api<Message[]>(`/clusters/${clusterId}/messages?${read}`)).data??[];
-      // Resume each partition after what it returned, or at its end when it had nothing.
+      // Resume each partition after what it returned. A partition that returned nothing resumes where it
+      // was asked to start, since the server may have stopped early; only a timestamp read, whose start
+      // the server chose, falls back to the end offset known before the request.
       for(const id of targets){
         const mine=incoming.filter(m=>m.partition===id);
-        const next=mine.length?Math.max(...mine.map(m=>m.offset))+1:ranges.find(x=>x.id===id)?.endOffset??undefined;
+        const next=mine.length?Math.max(...mine.map(m=>m.offset))+1:byTime?ranges.find(x=>x.id===id)?.endOffset??undefined:requested[id];
         if(next!==undefined)state.cursors[id]=Math.max(state.cursors[id]??0,next);
       }
       const keep=Number(limit);

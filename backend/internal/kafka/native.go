@@ -15,6 +15,7 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/hawxxx/kaflux/backend/internal/msk"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	saslaws "github.com/twmb/franz-go/pkg/sasl/aws"
@@ -393,7 +394,9 @@ func (n *Native) Messages(ctx context.Context, t string, p int32, o int64, l int
 }
 
 // MessagesAt polls every requested partition from one client. A partition is done once it has
-// limit records or reaches its end; a poll that returns nothing within the wait ends the read.
+// limit records, reaches its end or spends its even share of the 1 MiB preview budget, so one
+// busy partition cannot crowd out the others. A poll that returns nothing within the wait ends
+// the read.
 func (n *Native) MessagesAt(ctx context.Context, t string, from map[int32]int64, l int) ([]model.Message, error) {
 	c, done, e := n.bounded(ctx)
 	if e != nil {
@@ -408,8 +411,11 @@ func (n *Native) MessagesAt(ctx context.Context, t string, from map[int32]int64,
 	want := map[int32]int{}
 	for p, o := range from {
 		x, ok := end.Lookup(t, p)
-		if !ok || x.Err != nil {
-			return nil, fmt.Errorf("partition %d end offset unavailable", p)
+		if !ok || errors.Is(x.Err, kerr.UnknownTopicOrPartition) {
+			return nil, fmt.Errorf("partition %d: %w", p, ErrUnknownPartition)
+		}
+		if x.Err != nil {
+			return nil, fmt.Errorf("partition %d end offset unavailable: %w", p, x.Err)
 		}
 		if left := x.Offset - o; left > 0 {
 			assign[p] = kgo.NewOffset().At(o)
@@ -427,8 +433,9 @@ func (n *Native) MessagesAt(ctx context.Context, t string, from map[int32]int64,
 		return nil, e
 	}
 	defer cl.Close()
-	previewBytes := 0
-	for len(want) > 0 && previewBytes < 1<<20 {
+	share := max(1, (1<<20)/len(assign))
+	spent := map[int32]int{}
+	for len(want) > 0 {
 		total := 0
 		for _, left := range want {
 			total += left
@@ -439,21 +446,25 @@ func (n *Native) MessagesAt(ctx context.Context, t string, from map[int32]int64,
 		if e = f.Err(); e != nil && !errors.Is(e, context.DeadlineExceeded) {
 			return nil, e
 		}
-		got := 0
+		if f.NumRecords() == 0 {
+			break
+		}
+		finished := []int32{}
 		f.EachRecord(func(r *kgo.Record) {
-			if want[r.Partition] == 0 || previewBytes >= 1<<20 {
+			if want[r.Partition] == 0 {
 				return
 			}
-			message, bytes := previewRecord(r, (1<<20)-previewBytes)
-			previewBytes += bytes
+			message, bytes := previewRecord(r, share-spent[r.Partition])
+			spent[r.Partition] += bytes
 			out = append(out, message)
-			got++
-			if want[r.Partition]--; want[r.Partition] == 0 {
+			if want[r.Partition]--; want[r.Partition] == 0 || spent[r.Partition] >= share {
 				delete(want, r.Partition)
+				finished = append(finished, r.Partition)
 			}
 		})
-		if got == 0 {
-			break
+		// Stop fetching finished partitions so their records do not crowd the next poll.
+		if len(finished) > 0 {
+			cl.PauseFetchPartitions(map[string][]int32{t: finished})
 		}
 	}
 	return out, nil
