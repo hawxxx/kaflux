@@ -25,6 +25,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+		healthcheckMain()
+		return
+	}
 	if e := run(); e != nil {
 		slog.Error("Kaflux startup failed", "error", e)
 		os.Exit(1)
@@ -70,6 +74,7 @@ func run() error {
 			configs = append(configs, v)
 		}
 		if cfg.ClustersFile != "" {
+			// nosemgrep: gosec.G304-1 -- operator-supplied path from startup configuration; never derived from a request.
 			b, e := os.ReadFile(cfg.ClustersFile)
 			if e != nil {
 				return e

@@ -21,6 +21,8 @@ export function murmur2(data:Uint8Array){
   h^=h>>>13;h=Math.imul(h,m);h^=h>>>15;return h|0;
 }
 export function keyPartition(key:Uint8Array,partitions:number){return (murmur2(key)&0x7fffffff)%partitions}
+/** Picks a partition for a record without a key; rejection sampling keeps every partition equally likely. */
+export function randomPartition(partitions:number){const limit=Math.floor(0x100000000/partitions)*partitions;const draw=new Uint32Array(1);do{crypto.getRandomValues(draw)}while(draw[0]>=limit);return draw[0]%partitions}
 
 function base64Bytes(text:string){
   const clean=text.replace(/\s/g,'');
@@ -69,7 +71,7 @@ export function ProduceDialog({open,onOpenChange,clusterId,topic,partitions,draf
     if(problem||busy||!partitions)return;
     setBusy(true);setError('');
     try{
-      const partition=resolved??Math.floor(Math.random()*partitions);
+      const partition=resolved??randomPartition(partitions);
       const body={topic,partition,headers,...(key.base64?{keyBase64:key.base64}:{key:draft.keyEncoding==='base64'?'':draft.key}),...(value.base64?{valueBase64:value.base64}:{value:draft.valueEncoding==='base64'?'':draft.value})};
       const result=await api<Message>(`/clusters/${clusterId}/messages`,{method:'POST',body:JSON.stringify(body)});
       onProduced(result.data);onOpenChange(false);

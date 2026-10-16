@@ -1,5 +1,5 @@
-import {describe,expect,it} from 'vitest';
-import {bytes,latestSample,metricValue,prepareMetric,seriesNames,sparkTrend} from './api';
+import {afterEach,describe,expect,it,vi} from 'vitest';
+import {ApiError,api,apiRoot,bytes,latestSample,metricValue,prepareMetric,seriesNames,sparkTrend} from './api';
 
 describe('metric formatting',()=>{
   it('formats byte rates for chart axes',()=>{
@@ -64,5 +64,31 @@ describe('prepareMetric',()=>{
   it('assigns color slots by name so they do not follow rank',()=>{
     const m=prepareMetric([line('broker-10',[9]),line('broker-2',[1])]);
     expect([...m.slots]).toEqual([['broker-2',1],['broker-10',2]]);
+  });
+});
+
+describe('apiRoot',()=>{
+  it('returns the top-level API area of a path',()=>{
+    expect(apiRoot('/clusters/c1/topics?q=a%20b')).toBe('clusters');
+    expect(apiRoot('/auth/session')).toBe('auth');
+  });
+  it.each(['https://evil.example/x','//evil.example/x','clusters','/%2e%2e/admin','/../../admin','/a/../../b','/a\\b',''])('rejects %s',path=>{
+    expect(()=>apiRoot(path)).toThrow(ApiError);
+  });
+});
+describe('api',()=>{
+  afterEach(()=>{vi.unstubAllGlobals()});
+  it('requests allow-listed areas under the fixed base',async()=>{
+    const fetchMock=vi.fn(async()=>new Response(JSON.stringify({data:1}),{status:200}));
+    vi.stubGlobal('fetch',fetchMock);
+    await expect(api('/clusters/c1/topics?q=a')).resolves.toEqual({data:1});
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/clusters/c1/topics?q=a',expect.objectContaining({credentials:'include'}));
+  });
+  it('never sends a request for an unknown area or an escaping path',async()=>{
+    const fetchMock=vi.fn();
+    vi.stubGlobal('fetch',fetchMock);
+    await expect(api('/internal/secrets')).rejects.toMatchObject({code:'INVALID_PATH'});
+    await expect(api('//evil.example/x')).rejects.toMatchObject({code:'INVALID_PATH'});
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

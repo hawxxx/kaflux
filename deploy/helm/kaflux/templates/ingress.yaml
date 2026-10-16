@@ -3,6 +3,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "kaflux.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kaflux.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}

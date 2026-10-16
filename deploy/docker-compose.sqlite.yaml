@@ -18,6 +18,13 @@ services:
     volumes:
       - ../config.yaml:/app/config.yaml:ro
       - kaflux-data:/var/lib/kaflux
+    healthcheck:
+      # The image is distroless, so the binary probes its own /health endpoint.
+      test: [CMD, /app/kaflux, healthcheck]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

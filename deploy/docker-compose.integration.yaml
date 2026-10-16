@@ -26,6 +26,8 @@ services:
       interval: 10s
       timeout: 10s
       retries: 20
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
   kafka3:
     image: apache/kafka:3.9.1
     profiles: [integration]
@@ -49,3 +51,5 @@ services:
       interval: 10s
       timeout: 10s
       retries: 20
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

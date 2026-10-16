@@ -1,10 +1,18 @@
 import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {useState} from 'react';
-import {ProduceDialog,draftFrom,emptyDraft,encodeField,keyPartition,murmur2,type Draft} from './ProduceDialog';
+import {ProduceDialog,draftFrom,emptyDraft,encodeField,keyPartition,murmur2,randomPartition,type Draft} from './ProduceDialog';
 import type {Message} from './api';
 
 const utf8=(s:string)=>new TextEncoder().encode(s);
+describe('random partitioning',()=>{
+  it('stays within the partition count and reaches every partition',()=>{
+    const seen=new Set<number>();
+    for(let i=0;i<500;i++){const p=randomPartition(3);expect(Number.isInteger(p)&&p>=0&&p<3).toBe(true);seen.add(p)}
+    expect(seen.size).toBe(3);
+    expect(randomPartition(1)).toBe(0);
+  });
+});
 describe('key partitioning',()=>{
   // Reference values from Kafka's UtilsTest.testMurmur2.
   it('matches Kafka murmur2',()=>{
