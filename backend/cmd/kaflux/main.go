@@ -25,6 +25,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+		healthcheckMain()
+		return
+	}
 	if e := run(); e != nil {
 		slog.Error("Kaflux startup failed", "error", e)
 		os.Exit(1)
