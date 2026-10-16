@@ -263,6 +263,7 @@ func TestSQLiteProcessLock(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
+	// nosemgrep: go_subproc_rule-subproc -- re-executes the running test binary with fixed arguments.
 	cmd := exec.Command(os.Args[0], "-test.run=^TestSQLiteProcessLock$")
 	cmd.Env = append(os.Environ(), "KAFLUX_SQLITE_LOCK_TEST="+path)
 	if out, e := cmd.CombinedOutput(); e != nil {

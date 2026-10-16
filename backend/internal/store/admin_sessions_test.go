@@ -138,6 +138,7 @@ func TestPostgresSessionRevokeAuditAtomicity(t *testing.T) {
 	defer s.DeleteSession(context.Background(), v.ID)
 	actor := auth.Token()
 	name := "session_revoke_" + actor
+	// nosemgrep: go_sql_rule-concat-sqli -- DDL cannot bind parameters; the identifier and literal come from a hex token generated in this test.
 	_, e = s.DB.Exec(ctx, `CREATE FUNCTION `+name+`() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.payload->>'actor'='`+actor+`' AND NEW.payload->>'result'='success' THEN RAISE EXCEPTION 'audit unavailable'; END IF; RETURN NEW; END $$; CREATE TRIGGER `+name+` BEFORE INSERT ON kaflux_audit FOR EACH ROW EXECUTE FUNCTION `+name+`()`)
 	if e != nil {
 		t.Fatal(e)
@@ -154,6 +155,7 @@ func TestPostgresSessionRevokeAuditAtomicity(t *testing.T) {
 	if e = s.DB.QueryRow(ctx, `SELECT count(*) FROM kaflux_audit WHERE payload->>'actor'=$1`, actor).Scan(&n); e != nil || n != 0 {
 		t.Fatalf("partial audit persisted %d %v", n, e)
 	}
+	// nosemgrep: go_sql_rule-concat-sqli -- DDL cannot bind parameters; the identifier and literal come from a hex token generated in this test.
 	if _, e = s.DB.Exec(ctx, `DROP TRIGGER `+name+` ON kaflux_audit`); e != nil {
 		t.Fatal(e)
 	}

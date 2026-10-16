@@ -55,6 +55,7 @@ func NewSQLite(ctx context.Context, path string) (*Store, error) {
 	if info, e := os.Lstat(lockPath); e == nil && !info.Mode().IsRegular() {
 		return nil, errors.New("SQLite lock must be a regular file")
 	}
+	// nosemgrep: go_filesystem_rule-fileread -- operator-supplied path from startup configuration; never derived from a request.
 	f, e := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
 	if e != nil {
 		return nil, e
@@ -72,6 +73,7 @@ func NewSQLite(ctx context.Context, path string) (*Store, error) {
 		return nil, errors.New("SQLite database already belongs to another Kaflux instance")
 	}
 	fail := func(e error) (*Store, error) { _ = l.Unlock(); return nil, e }
+	// nosemgrep: go_filesystem_rule-fileread -- operator-supplied path from startup configuration; never derived from a request.
 	f, e = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if e != nil {
 		return fail(e)
