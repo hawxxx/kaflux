@@ -14,6 +14,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    # Runs as the image's postgres user from the start, so no capability is needed. A new named
+    # volume takes the ownership of the image's data directory.
+    user: postgres
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     restart: unless-stopped
   kaflux:
     build: .
@@ -38,6 +43,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      # The image is distroless, so the binary probes its own /health endpoint.
+      test: [CMD, /app/kaflux, healthcheck]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -66,6 +78,8 @@ services:
       interval: 10s
       timeout: 10s
       retries: 20
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
   prometheus:
     image: prom/prometheus:v3.2.1
     profiles: [integration]
@@ -73,5 +87,12 @@ services:
       - ./deploy/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: [CMD, wget, -q, --spider, "http://127.0.0.1:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
 volumes:
   postgres-data:

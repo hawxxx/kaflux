@@ -35,4 +35,6 @@ COPY --link --from=frontend /src/frontend/dist /app/frontend
 ENV KAFLUX_LISTEN=:8080 KAFLUX_STATIC_DIR=/app/frontend
 EXPOSE 8080
 USER 65532:65532
+# The image has no shell or curl, so the binary probes its own /health endpoint.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 CMD ["/app/kaflux", "healthcheck"]
 ENTRYPOINT ["/app/kaflux"]
