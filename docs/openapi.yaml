@@ -10,7 +10,12 @@ info:
     explicitly enabled and returned as demo=true. Missing telemetry is null. Kafka and datasource
     credentials are never returned to browsers.
 servers:
-  - url: /api/v1
+  - url: "https://{host}/api/v1"
+    description: Kaflux serves the console and API over HTTPS; session cookies are Secure outside simulator mode
+    variables:
+      host:
+        default: kaflux.example.invalid
+        description: Host name, with port when it is not 443
 security:
   - sessionCookie: []
 paths:
@@ -25,12 +30,12 @@ paths:
         - {
             name: limit,
             in: query,
-            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+            schema: { type: integer, format: int32, minimum: 1, maximum: 100, default: 25 },
           }
         - {
             name: offset,
             in: query,
-            schema: { type: integer, minimum: 0, maximum: 10000, default: 0 },
+            schema: { type: integer, format: int32, minimum: 0, maximum: 10000, default: 0 },
           }
       responses:
         "200":
@@ -43,6 +48,7 @@ paths:
                 properties:
                   data:
                     type: array
+                    maxItems: 100
                     items:
                       type: object
                       required: [handle, userId, provider, roles, expires, current]
@@ -64,13 +70,14 @@ paths:
                     type: object
                     required: [limit, offset, hasMore]
                     properties:
-                      limit: { type: integer }
-                      offset: { type: integer }
+                      limit: { type: integer, format: int32, minimum: 1, maximum: 100 }
+                      offset: { type: integer, format: int32, minimum: 0, maximum: 10000 }
                       hasMore: { type: boolean }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /admin/sessions/{handle}/revoke:
     post:
       summary: Revoke an active session with atomic audit persistence
@@ -111,28 +118,35 @@ paths:
                     properties:
                       ok: { type: boolean, enum: [true] }
                       current: { type: boolean }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /auth/providers:
     get:
+      # Public by design: sign-in runs before a session exists (identity and login handlers in backend/internal/api).
+      # kics-scan ignore-line
       security: []
       summary: List configured login providers (local only when a local account is configured)
       operationId: listAuthProviders
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /auth/session:
     get:
       summary: Get current identity, CSRF token and simulation flag
       operationId: getSession
       responses:
-        "200": { $ref: "#/components/responses/Session" }
-        "401": { $ref: "#/components/responses/Error" }
+        "200": { description: "Authenticated user and CSRF token", content: { application/json: { schema: { $ref: "#/components/schemas/SessionEnvelope" } } } }
+        "401": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /auth/login:
     post:
+      # Public by design: sign-in runs before a session exists (identity and login handlers in backend/internal/api).
+      # kics-scan ignore-line
       security: []
       summary: Sign in through local credentials or configured LDAP
       operationId: login
@@ -148,9 +162,10 @@ paths:
                 username: { type: string }
                 password: { type: string, format: password }
       responses:
-        "200": { $ref: "#/components/responses/Session" }
-        "401": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "200": { description: "Authenticated user and CSRF token", content: { application/json: { schema: { $ref: "#/components/schemas/SessionEnvelope" } } } }
+        "401": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /auth/logout:
     post:
       summary: Delete session
@@ -158,22 +173,28 @@ paths:
       parameters:
         - { $ref: "#/components/parameters/CSRF" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /auth/oidc/{provider}/start:
     parameters:
-      - { name: provider, in: path, required: true, schema: { type: string } }
+      - { name: provider, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 63, pattern: "^[a-z0-9][a-z0-9_-]{0,62}$" } }
     get:
+      # Public by design: sign-in runs before a session exists (identity and login handlers in backend/internal/api).
+      # kics-scan ignore-line
       security: []
       summary: Start discovery-backed OIDC authorization-code login with PKCE
       operationId: startOIDC
       responses:
-        "302": { description: Redirect to configured identity provider }
-        "503": { $ref: "#/components/responses/Error" }
+        "302": { description: Redirect to configured identity provider, content: { text/html: { schema: { type: string } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /auth/oidc/{provider}/callback:
     parameters:
-      - { name: provider, in: path, required: true, schema: { type: string } }
+      - { name: provider, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 63, pattern: "^[a-z0-9][a-z0-9_-]{0,62}$" } }
     get:
+      # Public by design: sign-in runs before a session exists (identity and login handlers in backend/internal/api).
+      # kics-scan ignore-line
       security: []
       summary: Verify state cookie, identity token and nonce, then create session
       operationId: callbackOIDC
@@ -186,6 +207,9 @@ paths:
           description: >-
             Redirect to the console with an HttpOnly session cookie, or to
             /login?error=sso_state|sso_denied|sso_rejected when sign-in fails
+          content:
+            text/html: { schema: { type: string } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters:
     get:
       summary: Authorized cluster inventory and connectivity status
@@ -199,6 +223,7 @@ paths:
                 type: object
                 properties:
                   data: { type: array, items: { $ref: "#/components/schemas/Cluster" } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/capabilities:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -213,9 +238,10 @@ paths:
         rebalancing.
       operationId: getClusterCapabilities
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/configuration:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -226,9 +252,10 @@ paths:
         exposed.
       operationId: getClusterConfiguration
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/overview:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -236,8 +263,9 @@ paths:
       summary: Cluster, broker summary, observedAt and nullable totals
       operationId: getOverview
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -247,11 +275,11 @@ paths:
       parameters:
         - { name: q, in: query, schema: { type: string } }
         - { name: internal, in: query, description: "false hides internal topics", schema: { type: boolean, default: true } }
-        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 2147483647, default: 1 } }
         - {
             name: pageSize,
             in: query,
-            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+            schema: { type: integer, format: int32, minimum: 1, maximum: 200, default: 50 },
           }
         - { name: sort, in: query, schema: { type: string, enum: [name, partitions, urp] } }
         - { name: order, in: query, schema: { type: string, enum: [asc, desc] } }
@@ -263,14 +291,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  data: { type: array, items: { $ref: "#/components/schemas/TopicRow" } }
+                  data: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/TopicRow" } }
                   meta:
                     type: object
                     properties:
-                      total: { type: integer }
-                      page: { type: integer }
-                      pageSize: { type: integer }
-        "503": { $ref: "#/components/responses/Error" }
+                      total: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+                      page: { type: integer, format: int32, minimum: 1, maximum: 2147483647 }
+                      pageSize: { type: integer, format: int32, minimum: 1, maximum: 200 }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     post:
       summary: Create a topic with authorized and audited broker administration
       operationId: createTopic
@@ -285,24 +314,26 @@ paths:
               additionalProperties: false
               required: [name, partitions, replicationFactor]
               properties:
-                name: { type: string }
-                partitions: { type: integer, minimum: 1 }
-                replicationFactor: { type: integer, minimum: 1 }
+                name: { $ref: "#/components/schemas/TopicName" }
+                partitions: { type: integer, format: int32, minimum: 1, maximum: 2147483647 }
+                replicationFactor: { type: integer, format: int32, minimum: 1, maximum: 32767 }
                 config: { type: object, additionalProperties: { type: string } }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/{topic}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
-      - { name: topic, in: path, required: true, schema: { type: string } }
+      - { name: topic, in: path, required: true, schema: { $ref: "#/components/schemas/TopicName" } }
     get:
       summary: Topic details with partition assignments and offsets
       operationId: getTopic
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "404": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     delete:
       summary: Delete a topic after explicit topic-name confirmation
       operationId: deleteTopic
@@ -319,13 +350,14 @@ paths:
               properties:
                 confirmation: { type: string, description: Exact topic name }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/{topic}/balance:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
-      - { name: topic, in: path, required: true, schema: { type: string } }
+      - { name: topic, in: path, required: true, schema: { $ref: "#/components/schemas/TopicName" } }
     get:
       summary: Topic placement across every broker with skew, replica health and findings
       description: >-
@@ -336,19 +368,21 @@ paths:
         replica of the topic count as zero. A count spread of at most one is reported as GOOD.
       operationId: getTopicBalance
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/{topic}/config:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
-      - { name: topic, in: path, required: true, schema: { type: string } }
+      - { name: topic, in: path, required: true, schema: { $ref: "#/components/schemas/TopicName" } }
     get:
       summary: Read sanitized topic configuration
       operationId: getTopicConfiguration
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     post:
       summary: Change supported topic settings with explicit confirmation
       operationId: updateTopicConfiguration
@@ -366,13 +400,14 @@ paths:
                 config: { type: object, additionalProperties: { type: string } }
                 confirmation: { type: boolean, enum: [true] }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/{topic}/partitions:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
-      - { name: topic, in: path, required: true, schema: { type: string } }
+      - { name: topic, in: path, required: true, schema: { $ref: "#/components/schemas/TopicName" } }
     post:
       summary: Increase topic partition count with explicit confirmation
       operationId: increaseTopicPartitions
@@ -387,16 +422,17 @@ paths:
               additionalProperties: false
               required: [count, confirmation]
               properties:
-                count: { type: integer, minimum: 1 }
+                count: { type: integer, format: int32, minimum: 1, maximum: 2147483647 }
                 confirmation: { type: boolean, enum: [true] }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/{topic}/truncate:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
-      - { name: topic, in: path, required: true, schema: { type: string } }
+      - { name: topic, in: path, required: true, schema: { $ref: "#/components/schemas/TopicName" } }
     post:
       summary: Delete every record in a topic whose cleanup policy includes delete
       description: Requires the delete permission on the topic. Compacted-only topics are rejected with policy_violation.
@@ -414,14 +450,15 @@ paths:
               properties:
                 confirmation: { type: string, description: Exact topic name }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "400": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/{topic}/recreate:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
-      - { name: topic, in: path, required: true, schema: { type: string } }
+      - { name: topic, in: path, required: true, schema: { $ref: "#/components/schemas/TopicName" } }
     post:
       summary: Delete a topic and create it again with the same layout and configuration overrides
       description: >-
@@ -442,15 +479,16 @@ paths:
               properties:
                 confirmation: { type: string, description: Exact topic name }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "400": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
-        "502": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/{topic}/copy:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
-      - { name: topic, in: path, required: true, schema: { type: string } }
+      - { name: topic, in: path, required: true, schema: { $ref: "#/components/schemas/TopicName" } }
     post:
       summary: Create a new topic from a source topic's settings; records are not copied
       description: Requires read on the source and create on the new name. Config keys must be readable settings the broker describes for the source.
@@ -466,15 +504,16 @@ paths:
               additionalProperties: false
               required: [name, partitions, replicationFactor]
               properties:
-                name: { type: string }
-                partitions: { type: integer, minimum: 1 }
-                replicationFactor: { type: integer, minimum: 1 }
+                name: { $ref: "#/components/schemas/TopicName" }
+                partitions: { type: integer, format: int32, minimum: 1, maximum: 2147483647 }
+                replicationFactor: { type: integer, format: int32, minimum: 1, maximum: 32767 }
                 config: { type: object, additionalProperties: { type: string } }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "400": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/brokers:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -482,8 +521,9 @@ paths:
       summary: Broker inventory and replica/leader distribution
       operationId: listBrokers
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/consumer-groups:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -491,7 +531,8 @@ paths:
       summary: Consumer group state, membership, topics and nullable lag
       operationId: listConsumerGroups
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/consumer-groups/{group}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -500,8 +541,9 @@ paths:
       summary: Consumer group detail with committed offsets, bounds and nullable lag
       operationId: getConsumerGroup
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "404": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/consumer-groups/{group}/reset-offsets:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -526,15 +568,16 @@ paths:
                 mode: { type: string, enum: [earliest, latest, timestamp, absolute, shift] }
                 topics: { type: array, items: { type: string } }
                 timestamp: { type: string, format: date-time }
-                offset: { type: integer, format: int64 }
-                shift: { type: integer, format: int64 }
+                offset: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
+                shift: { type: integer, format: int64, minimum: -9223372036854775808, maximum: 9223372036854775807 }
                 preview: { type: boolean }
                 confirmation: { type: string }
                 previewHash: { type: string }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/acls:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -548,9 +591,10 @@ paths:
         - { name: operation, in: query, schema: { type: string } }
         - { name: permission, in: query, schema: { type: string } }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { description: Kafka authorizer is not configured; error code acl_unsupported }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Kafka authorizer is not configured; error code acl_unsupported", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     post:
       summary: Create one confirmed Kafka ACL binding with manage-acls authorization and audit
       operationId: createKafkaACL
@@ -558,9 +602,10 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/ACLMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     delete:
       summary: Delete one exact confirmed Kafka ACL binding without broad deletion filters
       operationId: deleteKafkaACL
@@ -568,9 +613,10 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/ACLMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -578,10 +624,11 @@ paths:
       summary: List configured Schema Registry integration IDs
       operationId: listSchemaIntegrations
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas/{integration}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -590,23 +637,25 @@ paths:
       summary: List subjects filtered by schema-read authorization
       operationId: listSchemaSubjects
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas/{integration}/{subject}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: subject, in: path, required: true, schema: { type: string } }
+      - { name: subject, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     get:
       summary: Read latest subject version
       operationId: getLatestSchema
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     post:
       summary: Register a schema version with confirmation and audit
       operationId: registerSchema
@@ -614,10 +663,11 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     delete:
       summary: Delete a confirmed subject with schema-update authorization
       operationId: deleteSchemaSubject
@@ -625,37 +675,40 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas/{integration}/{subject}/versions:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: subject, in: path, required: true, schema: { type: string } }
+      - { name: subject, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     get:
       summary: List subject versions
       operationId: listSchemaVersions
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas/{integration}/{subject}/versions/{version}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: subject, in: path, required: true, schema: { type: string } }
+      - { name: subject, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
       - { name: version, in: path, required: true, schema: { type: string } }
     get:
       summary: Read one schema version
       operationId: getSchemaVersion
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     delete:
       summary: Delete one confirmed schema version
       operationId: deleteSchemaVersion
@@ -663,23 +716,25 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas/{integration}/{subject}/configuration:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: subject, in: path, required: true, schema: { type: string } }
+      - { name: subject, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     get:
       summary: Read subject compatibility configuration
       operationId: getSchemaCompatibility
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     put:
       summary: Set confirmed compatibility configuration
       operationId: setSchemaCompatibility
@@ -687,15 +742,16 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas/{integration}/{subject}/compatibility:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: subject, in: path, required: true, schema: { type: string } }
+      - { name: subject, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     post:
       summary: Check a submitted schema against the latest version
       operationId: checkSchemaCompatibility
@@ -703,10 +759,11 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -714,10 +771,11 @@ paths:
       summary: List configured Kafka Connect integration IDs
       operationId: listConnectIntegrations
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors/{integration}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -726,23 +784,25 @@ paths:
       summary: List connector names filtered by connector-read authorization
       operationId: listConnectors
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors/{integration}/{connector}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: connector, in: path, required: true, schema: { type: string } }
+      - { name: connector, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     get:
       summary: Read a connector with secret redaction
       operationId: getConnector
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     put:
       summary: Create or update a confirmed connector configuration
       operationId: putConnector
@@ -750,10 +810,11 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     delete:
       summary: Delete a confirmed connector with audit
       operationId: deleteConnector
@@ -761,23 +822,25 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors/{integration}/{connector}/config:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: connector, in: path, required: true, schema: { type: string } }
+      - { name: connector, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     get:
       summary: Read a connector configuration with secret redaction
       operationId: getConnectorConfig
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     put:
       summary: Create or update a confirmed connector configuration
       operationId: putConnectorConfig
@@ -785,28 +848,30 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors/{integration}/{connector}/status:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: connector, in: path, required: true, schema: { type: string } }
+      - { name: connector, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     get:
       summary: Read connector and task status
       operationId: getConnectorStatus
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors/{integration}/{connector}/pause:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: connector, in: path, required: true, schema: { type: string } }
+      - { name: connector, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     post:
       summary: Pause a confirmed connector with audit
       operationId: pauseConnector
@@ -814,15 +879,16 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors/{integration}/{connector}/resume:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: connector, in: path, required: true, schema: { type: string } }
+      - { name: connector, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     post:
       summary: Resume a confirmed connector with audit
       operationId: resumeConnector
@@ -830,15 +896,16 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors/{integration}/{connector}/restart:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: connector, in: path, required: true, schema: { type: string } }
+      - { name: connector, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
     post:
       summary: Restart a confirmed connector with audit
       operationId: restartConnector
@@ -846,15 +913,16 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/connectors/{integration}/{connector}/tasks/{task}/restart:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
       - { name: integration, in: path, required: true, schema: { type: string } }
-      - { name: connector, in: path, required: true, schema: { type: string } }
+      - { name: connector, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 249 } }
       - { name: task, in: path, required: true, schema: { type: string } }
     post:
       summary: Restart one confirmed connector task
@@ -863,10 +931,11 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/IntegrationMutation" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/test:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -886,9 +955,10 @@ paths:
               properties:
                 confirmation: { type: boolean, enum: [true] }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/name:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -912,11 +982,12 @@ paths:
               properties:
                 name: { type: string, maxLength: 64 }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "400": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/audit:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -924,8 +995,9 @@ paths:
       summary: Read cluster-scoped audit events with affected-resource authorization
       operationId: getClusterAudit
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/messages:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -933,18 +1005,18 @@ paths:
       summary: Bounded read from one topic partition, or from several through one consumer
       operationId: consumeMessages
       parameters:
-        - { name: topic, in: query, required: true, schema: { type: string } }
+        - { name: topic, in: query, required: true, schema: { $ref: "#/components/schemas/TopicName" } }
         - {
             name: partition,
             in: query,
             description: "Partition to read; required with offset unless offsets is set",
-            schema: { type: integer, minimum: 0 },
+            schema: { type: integer, format: int32, minimum: 0, maximum: 2147483647 },
           }
         - {
             name: offset,
             in: query,
             description: "Starting offset; required with partition unless offsets is set",
-            schema: { type: integer, format: int64, minimum: 0 },
+            schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 },
           }
         - {
             name: offsets,
@@ -966,7 +1038,7 @@ paths:
         - {
             name: limit,
             in: query,
-            schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
+            schema: { type: integer, format: int32, minimum: 1, maximum: 100, default: 50 },
           }
         - {
             name: decoder,
@@ -990,10 +1062,11 @@ paths:
             schema: { type: string },
           }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     post:
       summary: Produce one bounded record with separate authorization and audit
       operationId: produceMessage
@@ -1005,9 +1078,10 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/Message" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/messages/search:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1032,11 +1106,11 @@ paths:
               required: [topic, match]
               additionalProperties: false
               properties:
-                topic: { type: string }
+                topic: { $ref: "#/components/schemas/TopicName" }
                 partitions:
                   type: array
                   description: "Partitions to scan; all when omitted. Not allowed with from.offsets"
-                  items: { type: integer, minimum: 0 }
+                  items: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
                   maxItems: 4096
                 from:
                   type: object
@@ -1049,7 +1123,7 @@ paths:
                       description:
                         "Per-partition start offsets, usually a previous response's resume. Limits
                         the search to these partitions"
-                      additionalProperties: { type: integer, format: int64, minimum: 0 }
+                      additionalProperties: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
                 to:
                   type: object
                   additionalProperties: false
@@ -1071,7 +1145,7 @@ paths:
                     "Producer key partitioner (murmur2 for Java clients, crc32 for librdkafka's
                     default). With a case-sensitive key equals match, only that key's partition is
                     scanned"
-                maxMatches: { type: integer, minimum: 1, maximum: 500, default: 50 }
+                maxMatches: { type: integer, format: int32, minimum: 1, maximum: 500, default: 50 }
       responses:
         "200":
           description: Matches found within the budget
@@ -1084,23 +1158,24 @@ paths:
                     type: object
                     required: [matches, scanned, resume, done, stoppedBy]
                     properties:
-                      matches: { type: array, items: { $ref: "#/components/schemas/Message" } }
+                      matches: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/Message" } }
                       scanned:
                         type: object
                         properties:
-                          records: { type: integer, format: int64 }
-                          bytes: { type: integer, format: int64 }
+                          records: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
+                          bytes: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
                       resume:
                         type: object
                         description: "Next offset per partition not yet scanned to its end; post as from.offsets to continue"
-                        additionalProperties: { type: integer, format: int64 }
+                        additionalProperties: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
                       done: { type: boolean }
                       stoppedBy: { type: string, enum: [end, matches, records, bytes, time] }
-        "400": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/balance:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1108,7 +1183,8 @@ paths:
       summary: Replica/leader distribution with explicit capacity evidence flag
       operationId: getBalance
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1116,7 +1192,8 @@ paths:
       summary: List persisted plans and execution jobs
       operationId: listRebalances
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     post:
       summary: Generate deterministic dry-run plan; no Kafka mutation
       operationId: generateRebalance
@@ -1130,13 +1207,14 @@ paths:
               type: object
               additionalProperties: false
               properties:
-                topics: { type: array, items: { type: string } }
-                brokers: { type: array, items: { type: integer } }
+                topics: { type: array, items: { $ref: "#/components/schemas/TopicName" } }
+                brokers: { type: array, items: { type: integer, format: int32, minimum: 0, maximum: 2147483647 } }
                 rackAware: { type: boolean }
-                throttleBytesPerSec: { type: integer, format: int64, minimum: 0 }
+                throttleBytesPerSec: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
       responses:
-        "200": { $ref: "#/components/responses/Plan" }
-        "422": { $ref: "#/components/responses/Error" }
+        "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1145,8 +1223,9 @@ paths:
       summary: Observe job state, progress and broker reconciliation outcome
       operationId: getRebalance
       responses:
-        "200": { $ref: "#/components/responses/Plan" }
-        "404": { $ref: "#/components/responses/Error" }
+        "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/execute:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1162,9 +1241,10 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        "200": { $ref: "#/components/responses/Plan" }
-        "409": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
+        "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/rollback:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1176,15 +1256,17 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        "200": { $ref: "#/components/responses/Plan" }
-        "409": { $ref: "#/components/responses/Error" }
+        "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /audit:
     get:
       summary: Read authorized persisted audit events
       operationId: listAudit
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/dry-run:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1200,11 +1282,12 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "403": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
-        "422": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/cancel:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1219,16 +1302,18 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        "200": { $ref: "#/components/responses/Plan" }
-        "403": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /metrics/catalog:
     get:
       summary: Normalized native metric panel catalog
       operationId: getMetricCatalog
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/metrics/catalog:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1236,7 +1321,8 @@ paths:
       summary: Authorized cluster metric panel catalog
       operationId: getClusterMetricCatalog
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/metrics/query:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1253,8 +1339,9 @@ paths:
               Server-bounded lookback duration; timestamps and step are server controlled,
           }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/pause:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1270,9 +1357,10 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        "200": { $ref: "#/components/responses/Plan" }
-        "403": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
+        "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/resume:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1294,12 +1382,13 @@ paths:
               required: [confirmation, planHash]
               properties:
                 confirmation: { type: boolean, enum: [true] }
-                planHash: { type: string }
+                planHash: { $ref: "#/components/schemas/PlanHash" }
                 skip: { type: boolean, default: false }
       responses:
-        "200": { $ref: "#/components/responses/Plan" }
-        "403": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
+        "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/cancel-rollback:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1315,9 +1404,10 @@ paths:
         - { $ref: "#/components/parameters/CSRF" }
       requestBody: { $ref: "#/components/requestBodies/Approval" }
       responses:
-        "200": { $ref: "#/components/responses/Plan" }
-        "403": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
+        "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/events:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1326,11 +1416,24 @@ paths:
       summary: Activity log lines after a sequence number, oldest first (at most 500)
       operationId: listRebalanceEvents
       parameters:
-        - { name: after, in: query, schema: { type: integer, format: int64, default: 0 } }
+        - { name: after, in: query, schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807, default: 0 } }
       responses:
         "200":
-          description: "{data: {events: [{seq, at, level (info|warn|error), message}], last}}"
-        "403": { $ref: "#/components/responses/Error" }
+          description: Activity log lines and the sequence number of the last one returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [events, last]
+                    properties:
+                      events: { type: array, maxItems: 500, items: { $ref: "#/components/schemas/JobEvent" } }
+                      last: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/events.txt:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1339,7 +1442,8 @@ paths:
       summary: Download the full activity log as text
       operationId: downloadRebalanceLog
       responses:
-        "200": { description: "Plain-text log, one line per event" }
+        "200": { description: "Plain-text log, one line per event", content: { text/plain: { schema: { type: string } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/backup.json:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1349,7 +1453,26 @@ paths:
       description: "{version: 1, partitions: [{topic, partition, replicas}]}, usable with kafka-reassign-partitions.sh --execute."
       operationId: downloadRebalanceBackup
       responses:
-        "200": { description: Reassignment JSON of the original replicas }
+        "200":
+          description: Reassignment JSON of the original replicas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, partitions]
+                properties:
+                  version: { type: integer, format: int32, minimum: 1, maximum: 1 }
+                  partitions:
+                    type: array
+                    maxItems: 5000
+                    items:
+                      type: object
+                      required: [topic, partition, replicas]
+                      properties:
+                        topic: { $ref: "#/components/schemas/TopicName" }
+                        partition: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+                        replicas: { type: array, items: { type: integer, format: int32, minimum: 0, maximum: 2147483647 } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/report.csv:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1359,7 +1482,8 @@ paths:
       description: Columns topic, partition, before, after, topicState, finishedAt.
       operationId: downloadRebalanceReport
       responses:
-        "200": { description: CSV report }
+        "200": { description: CSV report, content: { text/csv: { schema: { type: string } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/throttle:
     parameters:
       - $ref: "#/components/parameters/Cluster"
@@ -1383,22 +1507,27 @@ paths:
               required: [confirmation, planHash, bytesPerSec]
               properties:
                 confirmation: { type: boolean, enum: [true] }
-                planHash: { type: string }
+                planHash: { $ref: "#/components/schemas/PlanHash" }
                 bytesPerSec: { type: integer, format: int64, minimum: 1, maximum: 1000000000000 }
       responses:
         "200":
           description:
             Updated plan with a pending throttleRequest; throttleBytesPerSec remains the last
             verified job rate until the worker acknowledges the request
-        "403": { description: Authorization or CSRF denied }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanEnvelope" }
+        "403": { description: Authorization or CSRF denied, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "409":
-          {
-            description:
-              "Invalid job state, stale approval, pending request, cancellation, or MSK capability
-              denial",
-          }
-        "422": { description: Invalid rate or unsupported provider }
-        "503": { description: Audit or durable storage unavailable }
+          description:
+            Invalid job state, stale approval, pending request, cancellation, or MSK capability
+            denial
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { description: Invalid rate or unsupported provider, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: Audit or durable storage unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 components:
   securitySchemes:
     sessionCookie:
@@ -1407,8 +1536,8 @@ components:
       name: kaflux_session
   parameters:
     Cluster: { name: cluster, in: path, required: true, schema: { type: string } }
-    Job: { name: job, in: path, required: true, schema: { type: string } }
-    CSRF: { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+    Job: { name: job, in: path, required: true, schema: { $ref: "#/components/schemas/JobId" } }
+    CSRF: { name: X-CSRF-Token, in: header, required: true, schema: { type: string, minLength: 64, maxLength: 64, pattern: "^[0-9a-f]{64}$" } }
   requestBodies:
     IntegrationMutation:
       required: true
@@ -1440,21 +1569,21 @@ components:
                 required:
                   [resourceType, resourceName, patternType, principal, host, operation, permission]
                 properties:
-                  resourceType: { type: string }
-                  resourceName: { type: string }
-                  patternType: { type: string }
-                  principal: { type: string }
-                  host: { type: string }
-                  operation: { type: string }
-                  permission: { type: string }
+                  resourceType: { type: string, enum: [TOPIC, GROUP, CLUSTER, TRANSACTIONAL_ID, DELEGATION_TOKEN] }
+                  resourceName: { type: string, minLength: 1, maxLength: 249, description: "Must be kafka-cluster for a CLUSTER resource; no control characters" }
+                  patternType: { type: string, enum: [LITERAL, PREFIXED] }
+                  principal: { type: string, minLength: 6, maxLength: 256, pattern: "^User:[^\\r\\n\\u0000]+$" }
+                  host: { type: string, maxLength: 45, description: "* or an IP address" }
+                  operation: { type: string, enum: [ALL, READ, WRITE, CREATE, DELETE, ALTER, DESCRIBE, CLUSTER_ACTION, DESCRIBE_CONFIGS, ALTER_CONFIGS, IDEMPOTENT_WRITE] }
+                  permission: { type: string, enum: [DENY, ALLOW] }
                   raw:
                     type: object
                     description: Optional matching Kafka enum IDs; human fields remain required
                     properties:
-                      resourceType: { type: integer, format: int32 }
-                      patternType: { type: integer, format: int32 }
-                      operation: { type: integer, format: int32 }
-                      permission: { type: integer, format: int32 }
+                      resourceType: { type: integer, format: int32, minimum: 0, maximum: 127 }
+                      patternType: { type: integer, format: int32, minimum: 0, maximum: 127 }
+                      operation: { type: integer, format: int32, minimum: 0, maximum: 127 }
+                      permission: { type: integer, format: int32, minimum: 0, maximum: 127 }
               confirmation: { type: boolean, enum: [true] }
     Approval:
       required: true
@@ -1466,65 +1595,7 @@ components:
             required: [confirmation, planHash]
             properties:
               confirmation: { type: boolean, enum: [true] }
-              planHash: { type: string }
-  responses:
-    Envelope:
-      description: Data envelope; nullable telemetry retains unknown values
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [data]
-            properties:
-              data: {}
-              meta: { type: object, additionalProperties: true }
-    Error:
-      description: Sanitized error with machine code
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              error:
-                type: object
-                required: [code, message]
-                properties:
-                  code: { type: string }
-                  message: { type: string }
-    Session:
-      description: Authenticated user and CSRF token
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              data:
-                type: object
-                properties:
-                  user: { $ref: "#/components/schemas/User" }
-                  csrfToken: { type: string }
-                  demo: { type: boolean }
-                  canManageSessions:
-                    {
-                      type: boolean,
-                      description:
-                        Effective global session inventory permission; returned by GET /auth/session,
-                    }
-                  permissions:
-                    type: object
-                    description: >-
-                      Actions the user may perform on at least one resource, keyed by cluster ID;
-                      "*" holds global actions such as audit and manage-sessions. Advisory for the
-                      UI; every request is still authorized.
-                    additionalProperties: { type: array, items: { type: string } }
-    Plan:
-      description: Persisted plan or execution job
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              data: { $ref: "#/components/schemas/Plan" }
+              planHash: { $ref: "#/components/schemas/PlanHash" }
   schemas:
     User:
       type: object
@@ -1539,35 +1610,39 @@ components:
         id: { type: string }
         name: { type: string }
         environment: { type: string }
-        kind: { type: string }
-        mode: { type: string }
+        kind: { type: string, enum: [Kafka] }
+        mode: { type: string, enum: [live, demo] }
         state: { type: string }
-        brokerCount: { type: integer }
-        topicCount: { type: integer }
-        partitionCount: { type: integer }
+        brokerCount: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+        topicCount: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+        partitionCount: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
     TopicRow:
       type: object
       properties:
-        name: { type: string }
-        partitions: { type: integer }
-        replicationFactor: { type: integer }
-        sizeBytes: { type: integer, format: int64, nullable: true }
-        urp: { type: integer }
+        name: { $ref: "#/components/schemas/TopicName" }
+        partitions: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+        replicationFactor: { type: integer, format: int32, minimum: 0, maximum: 32767 }
+        sizeBytes: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807, nullable: true }
+        urp: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
         cleanupPolicy: { type: string, description: "Empty when the topic configuration could not be read" }
-        retentionMs: { type: integer, format: int64, nullable: true, description: "Null when unknown; -1 means unlimited" }
+        retentionMs: { type: integer, format: int64, minimum: -1, maximum: 9223372036854775807, nullable: true, description: "Null when unknown; -1 means unlimited" }
         observedAt: { type: string, format: date-time }
         internal: { type: boolean, description: "Reported internal by the broker, or name starts with an underscore" }
         messages:
           type: integer
           format: int64
+          minimum: 0
+          maximum: 9223372036854775807
           nullable: true
           description: "End minus start offset summed over partitions; an upper bound for compacted or transactional topics. Null when offsets could not be read"
+    # The scanner reads the headers property below as an OpenAPI Header Object and flags its schema
+    # keywords, so that property carries an ignore directive.
     Message:
       type: object
       properties:
-        topic: { type: string }
-        partition: { type: integer, minimum: 0 }
-        offset: { type: integer, format: int64 }
+        topic: { $ref: "#/components/schemas/TopicName" }
+        partition: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+        offset: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
         key: { type: string, maxLength: 65536 }
         value: { type: string, maxLength: 524288 }
         valueBase64: { type: string, description: Original bytes encoded as Base64 }
@@ -1577,14 +1652,14 @@ components:
         decodedFormat: { type: string, enum: [avro, protobuf], readOnly: true }
         decodedKey: { readOnly: true, description: JSON preview of an opt-in decoded message key }
         keyDecodedFormat: { type: string, enum: [avro, protobuf], readOnly: true }
-        keySchemaId: { type: integer, minimum: 1, readOnly: true }
+        keySchemaId: { type: integer, format: int32, minimum: 1, maximum: 2147483647, readOnly: true }
         keyDecodeError:
           {
             type: string,
             readOnly: true,
             description: Key-specific decoding failure; original key bytes remain available,
           }
-        schemaId: { type: integer, minimum: 1, readOnly: true }
+        schemaId: { type: integer, format: int32, minimum: 1, maximum: 2147483647, readOnly: true }
         decodeError:
           {
             type: string,
@@ -1592,6 +1667,7 @@ components:
             description: Per-record decoding failure; raw bytes remain available,
           }
         timestamp: { type: string, format: date-time }
+        # kics-scan ignore-block
         headers:
           type: array
           maxItems: 32
@@ -1603,59 +1679,129 @@ components:
     Plan:
       type: object
       properties:
-        id: { type: string }
+        id: { $ref: "#/components/schemas/JobId" }
         clusterId: { type: string }
         state: { type: string }
-        planHash: { type: string }
-        fingerprint: { type: string }
+        planHash: { $ref: "#/components/schemas/PlanHash" }
+        fingerprint: { $ref: "#/components/schemas/PlanHash" }
         actor: { type: string }
         approvedBy: { type: string }
         progress:
           type: integer
+          format: int32
           minimum: 0
           maximum: 100
           description: Byte-based when partition sizes are known, otherwise partition-based
         steps:
           type: array
+          maxItems: 5000
           description: One step per topic, in run order
           items:
             type: object
             properties:
-              topic: { type: string }
+              topic: { $ref: "#/components/schemas/TopicName" }
               state: { type: string, enum: [pending, moving, electing, done, skipped, failed] }
-              partitions: { type: integer }
-              partitionsDone: { type: integer }
-              bytes: { type: integer, format: int64 }
-              bytesDone: { type: integer, format: int64 }
+              partitions: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+              partitionsDone: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+              bytes: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
+              bytesDone: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
               startedAt: { type: string, format: date-time }
               finishedAt: { type: string, format: date-time }
               error: { type: string }
-        currentStep: { type: integer }
+        currentStep: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
         pauseRequested: { type: boolean }
         pauseReason: { type: string }
         rollbackRequested: { type: boolean }
-        rollbackOf: { type: string }
-        rollbackJob: { type: string }
+        rollbackOf: { $ref: "#/components/schemas/JobId" }
+        rollbackJob: { $ref: "#/components/schemas/JobId" }
         warnings: { type: array, items: { type: string } }
-        partitionsDone: { type: integer }
-        partitionsTotal: { type: integer }
-        bytesDone: { type: integer, format: int64 }
-        bytesTotal: { type: integer, format: int64 }
-        rateBytesPerSec: { type: integer, format: int64 }
-        etaSeconds: { type: integer, format: int64 }
+        partitionsDone: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+        partitionsTotal: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+        bytesDone: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
+        bytesTotal: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
+        rateBytesPerSec: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
+        etaSeconds: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
         etaBasis: { type: string, enum: [bytes, topics] }
         finishedAt: { type: string, format: date-time }
         capacityKnown: { type: boolean }
-        estimatedBytes: { type: integer, format: int64, nullable: true }
-        throttleBytesPerSec: { type: integer, format: int64 }
+        estimatedBytes: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807, nullable: true }
+        throttleBytesPerSec: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807 }
         createdAt: { type: string, format: date-time }
-        topics: { type: array, items: { type: string } }
+        topics: { type: array, items: { $ref: "#/components/schemas/TopicName" } }
         changes:
           type: array
+          maxItems: 5000
           items:
             type: object
             properties:
-              topic: { type: string }
-              partition: { type: integer }
-              before: { type: array, items: { type: integer } }
-              after: { type: array, items: { type: integer } }
+              topic: { $ref: "#/components/schemas/TopicName" }
+              partition: { type: integer, format: int32, minimum: 0, maximum: 2147483647 }
+              before: { type: array, items: { type: integer, format: int32, minimum: 0, maximum: 2147483647 } }
+              after: { type: array, items: { type: integer, format: int32, minimum: 0, maximum: 2147483647 } }
+    Envelope:
+      type: object
+      required: [data]
+      properties:
+        data: {}
+        meta: { type: object, additionalProperties: true }
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+    SessionEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            user: { $ref: "#/components/schemas/User" }
+            csrfToken: { type: string, minLength: 64, maxLength: 64, pattern: "^[0-9a-f]{64}$" }
+            demo: { type: boolean }
+            canManageSessions:
+              {
+                type: boolean,
+                description:
+                  Effective global session inventory permission; returned by GET /auth/session,
+              }
+            permissions:
+              type: object
+              description: >-
+                Actions the user may perform on at least one resource, keyed by cluster ID;
+                "*" holds global actions such as audit and manage-sessions. Advisory for the
+                UI; every request is still authorized.
+              additionalProperties: { type: array, items: { type: string } }
+    TopicName:
+      type: string
+      minLength: 1
+      maxLength: 249
+      pattern: "^[a-zA-Z0-9._-]{1,249}$"
+      description: Kafka topic name; the legal characters and length limit are enforced by Kafka
+    JobId:
+      type: string
+      minLength: 64
+      maxLength: 64
+      pattern: "^[0-9a-f]{64}$"
+      description: Opaque identifier of a plan or job, 32 random bytes as lowercase hexadecimal
+    PlanHash:
+      type: string
+      minLength: 64
+      maxLength: 64
+      pattern: "^[0-9a-f]{64}$"
+      description: SHA-256 of the plan content as lowercase hexadecimal
+    JobEvent:
+      type: object
+      required: [seq, at, level, message]
+      properties:
+        seq: { type: integer, format: int64, minimum: 1, maximum: 9223372036854775807 }
+        at: { type: string, format: date-time }
+        level: { type: string, enum: [info, warn, error] }
+        message: { type: string }
+    PlanEnvelope:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/Plan" }
