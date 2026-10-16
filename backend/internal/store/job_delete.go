@@ -2,14 +2,18 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"strings"
 
 	"github.com/hawxxx/kaflux/backend/internal/model"
 )
 
-// activeStatesSQL is model.ActiveJobStates as a SQL list.
-var activeStatesSQL = "('" + strings.Join(model.ActiveJobStates, "','") + "')"
+// The active states are bound as one parameter so the statements stay constant:
+// a JSON array read through json_each on SQLite, a text[] on PostgreSQL.
+const (
+	deleteIdleJobSQLite   = "DELETE FROM kaflux_jobs WHERE id=? AND state NOT IN (SELECT value FROM json_each(?))"
+	deleteIdleJobPostgres = "DELETE FROM kaflux_jobs WHERE id=$1 AND state <> ALL($2::text[])"
+)
 
 var ErrJobActive = errors.New("active reassignments cannot be deleted")
 
@@ -17,12 +21,16 @@ var ErrJobActive = errors.New("active reassignments cannot be deleted")
 // the state check and delete are atomic.
 func (s *Store) DeleteJob(ctx context.Context, id string) error {
 	if s.sqlite != nil {
+		active, e := json.Marshal(model.ActiveJobStates)
+		if e != nil {
+			return e
+		}
 		tx, e := s.sqlite.db.BeginTx(ctx, nil)
 		if e != nil {
 			return e
 		}
 		defer tx.Rollback()
-		r, e := tx.ExecContext(ctx, "DELETE FROM kaflux_jobs WHERE id=? AND state NOT IN "+activeStatesSQL, id)
+		r, e := tx.ExecContext(ctx, deleteIdleJobSQLite, id, string(active))
 		if e != nil {
 			return e
 		}
@@ -40,7 +48,7 @@ func (s *Store) DeleteJob(ctx context.Context, id string) error {
 			return e
 		}
 		defer tx.Rollback(ctx)
-		r, e := tx.Exec(ctx, "DELETE FROM kaflux_jobs WHERE id=$1 AND state NOT IN "+activeStatesSQL, id)
+		r, e := tx.Exec(ctx, deleteIdleJobPostgres, id, model.ActiveJobStates)
 		if e != nil {
 			return e
 		}
