@@ -20,7 +20,7 @@ export function tokenize(message:string,topics:string[]):Token[]{
     '(?<lit>\\bPREFERRED\\b)',
   ].filter(Boolean);
   // Topic names are escaped above and the other alternatives are literals.
-  // nosemgrep: javascript_dos_rule-non-literal-regexp
+  // nosemgrep: eslint.detect-non-literal-regexp
   const re=new RegExp(parts.join('|'),'g');
   const out:Token[]=[];let last=0;
   for(const m of message.matchAll(re)){
