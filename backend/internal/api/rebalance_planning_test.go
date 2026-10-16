@@ -19,11 +19,12 @@ import (
 type capsProvider struct {
 	*kafka.Demo
 	caps      msk.Capabilities
+	capsErr   error
 	reassigns int
 }
 
 func (p *capsProvider) Capabilities(context.Context, bool) (msk.Capabilities, error) {
-	return p.caps, nil
+	return p.caps, p.capsErr
 }
 
 func (p *capsProvider) Reassign(ctx context.Context, changes []model.Change) error {

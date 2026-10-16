@@ -98,3 +98,70 @@ func TestNativeSearchScansTheTopicOnTheServer(t *testing.T) {
 		t.Fatalf("resumed search found %d of 256", len(seen))
 	}
 }
+
+// A committed transaction leaves a marker after its last record. The consumer does not return
+// markers by default, so a search of a topic that ends in one must still reach its end promptly.
+func TestNativeSearchFinishesATopicEndingInTransactionMarkers(t *testing.T) {
+	seed := os.Getenv("KAFLUX_TEST_KAFKA_SEED")
+	if seed == "" {
+		t.Skip("set KAFLUX_TEST_KAFKA_SEED for real Kafka integration")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	topic := fmt.Sprintf("kaflux-search-tx-%d", time.Now().UnixNano())
+	admin, e := kgo.NewClient(kgo.SeedBrokers(seed))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer admin.Close()
+	adm := kadm.NewClient(admin)
+	if r, e := adm.CreateTopics(ctx, 2, 1, nil, topic); e != nil || r[topic].Err != nil {
+		t.Fatalf("create %v %v", e, r[topic].Err)
+	}
+	defer adm.DeleteTopics(context.Background(), topic)
+	p, e := NewNative(Config{Seeds: []string{seed}, AllowPlaintext: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer p.Close()
+	awaitNativeTopic(t, ctx, p, topic, 2, 1)
+	producer, e := kgo.NewClient(kgo.SeedBrokers(seed), kgo.TransactionalID(topic), kgo.RecordPartitioner(kgo.ManualPartitioner()))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer producer.Close()
+	for round := 0; round < 3; round++ {
+		if e = producer.BeginTransaction(); e != nil {
+			t.Fatal(e)
+		}
+		for part := int32(0); part < 2; part++ {
+			for i := 0; i < 5; i++ {
+				v := fmt.Sprintf("round-%d-%d", round, i)
+				if round == 2 && part == 1 && i == 4 {
+					v = "needle"
+				}
+				if e = producer.ProduceSync(ctx, &kgo.Record{Topic: topic, Partition: part, Value: []byte(v)}).FirstErr(); e != nil {
+					t.Fatal(e)
+				}
+			}
+		}
+		if e = producer.EndTransaction(ctx, kgo.TryCommit); e != nil {
+			t.Fatal(e)
+		}
+	}
+	m, e := NewMatcher("value", "contains", "needle", true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	start := time.Now()
+	got, e := p.Search(ctx, SearchQuery{Topic: topic, Match: m, MaxMatches: 10})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !got.Done || got.StoppedBy != "end" || len(got.Resume) != 0 || got.Scanned.Records != 30 || len(got.Matches) != 1 {
+		t.Fatalf("topic ending in markers: %+v %+v", got, got.Matches)
+	}
+	if took := time.Since(start); took > 10*time.Second {
+		t.Fatalf("search took %s", took)
+	}
+}

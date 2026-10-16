@@ -137,7 +137,7 @@ func (w *Worker) start(ctx context.Context, p *model.Plan, provider kafka.Provid
 		return false
 	}
 	if cap, e := Capabilities(ctx, provider, true); e != nil || !cap.ManualReassignmentAllowed {
-		w.finish(ctx, *p, provider, "failed", cap.Reason)
+		w.finish(ctx, *p, provider, "failed", blockedReason(cap, e))
 		return false
 	}
 	if e := Validate(snap, p.Changes); e != nil {
@@ -334,6 +334,19 @@ func Approve(ctx context.Context, s *store.Store, p model.Plan, actor, hash stri
 	p.ApprovedBy = actor
 	return s.QueueJob(ctx, p)
 }
+
+// blockedReason explains why a capability check stopped a job. A failed lookup can come back
+// without a reason, and the job must not end with a blank message.
+func blockedReason(caps msk.Capabilities, lookupErr error) string {
+	switch {
+	case caps.Reason != "":
+		return caps.Reason
+	case lookupErr != nil:
+		return "Cluster capability check failed: " + lookupErr.Error()
+	}
+	return "Manual reassignment is not allowed on this cluster"
+}
+
 func Capabilities(ctx context.Context, p kafka.Provider, force bool) (msk.Capabilities, error) {
 	if c, ok := p.(interface {
 		Capabilities(context.Context, bool) (msk.Capabilities, error)

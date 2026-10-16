@@ -165,7 +165,7 @@ func (w *Worker) begin(ctx context.Context, p *model.Plan, step *model.TopicStep
 		}
 	}
 	if cap, e := Capabilities(ctx, provider, true); e != nil || !cap.ManualReassignmentAllowed {
-		w.blocked(ctx, *p, provider, cap.Reason)
+		w.blocked(ctx, *p, provider, blockedReason(cap, e))
 		return false, true
 	}
 	if e := w.throttleTopic(ctx, p, changes, provider); e != nil {

@@ -147,3 +147,71 @@ func TestDemoSearchRangesAndPartitions(t *testing.T) {
 		t.Fatalf("unknown topic: %v", e)
 	}
 }
+
+func TestPartitionCompleteOnlyAtEndOffset(t *testing.T) {
+	for name, c := range map[string]struct {
+		position, end int64
+		want          bool
+	}{
+		"short of the end after empty polls": {position: 40, end: 100, want: false},
+		"one record short":                   {position: 99, end: 100, want: false},
+		"at the end":                         {position: 100, end: 100, want: true},
+		"past the end":                       {position: 101, end: 100, want: true},
+	} {
+		if got := partitionComplete(c.position, c.end); got != c.want {
+			t.Fatalf("%s: got %v", name, got)
+		}
+	}
+}
+
+func planned(t *testing.T, starts, ends map[int32]int64) *scan {
+	t.Helper()
+	s, e := planScan(SearchQuery{Topic: "t", Match: matcher(t, "value", "contains", "needle", false), MaxMatches: 10}, starts, ends, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return s
+}
+
+func TestScanFinishesAPartitionThatEndsInTransactionMarkers(t *testing.T) {
+	s := planned(t, map[int32]int64{0: 0}, map[int32]int64{0: 5})
+	for i := int64(0); i < 3; i++ {
+		if s.offer(&kgo.Record{Partition: 0, Offset: i, Value: []byte("x")}) {
+			t.Fatalf("partition finished at offset %d", i)
+		}
+	}
+	// Offsets 3 and 4 hold a commit marker pair the consumer returns only as control records.
+	if s.skip(0, 3) || !s.skip(0, 4) {
+		t.Fatalf("markers did not carry the partition to its end: %v", s.next)
+	}
+	got := s.finish()
+	if !got.Done || len(got.Resume) != 0 || got.StoppedBy != "end" || got.Scanned.Records != 3 {
+		t.Fatalf("unexpected result: %+v", got)
+	}
+}
+
+func TestScanKeepsAPartitionShortOfItsEndResumable(t *testing.T) {
+	s := planned(t, map[int32]int64{0: 0, 1: 0}, map[int32]int64{0: 2, 1: 5})
+	s.offer(&kgo.Record{Partition: 0, Offset: 0, Value: []byte("x")})
+	s.offer(&kgo.Record{Partition: 0, Offset: 1, Value: []byte("x")})
+	s.offer(&kgo.Record{Partition: 1, Offset: 0, Value: []byte("x")})
+	s.offer(&kgo.Record{Partition: 1, Offset: 1, Value: []byte("needle")})
+	// Partition 1 stopped answering at offset 2 of 5. That must not read as finished.
+	s.stop("time")
+	got := s.finish()
+	if got.Done || got.StoppedBy != "time" || len(got.Resume) != 1 || got.Resume[1] != 2 {
+		t.Fatalf("incomplete partition reported as done: %+v", got)
+	}
+	if len(got.Matches) != 1 || got.Matches[0].Offset != 1 {
+		t.Fatalf("match before the stall lost: %+v", got.Matches)
+	}
+}
+
+func TestScanSkipIgnoresStalePositionsAndOtherPartitions(t *testing.T) {
+	s := planned(t, map[int32]int64{0: 0}, map[int32]int64{0: 5})
+	s.offer(&kgo.Record{Partition: 0, Offset: 0, Value: []byte("x")})
+	s.offer(&kgo.Record{Partition: 0, Offset: 1, Value: []byte("x")})
+	if s.skip(0, 0) || s.skip(7, 4) || s.next[0] != 2 {
+		t.Fatalf("stale or unknown skip moved the scan: %v", s.next)
+	}
+}

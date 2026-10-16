@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -80,3 +81,21 @@ type fixedCaps struct {
 }
 
 func (f fixedCaps) Capabilities(context.Context, bool) (msk.Capabilities, error) { return f.caps, nil }
+
+func TestBlockedReasonNeverComesBackBlank(t *testing.T) {
+	lookup := errors.New("describe cluster: connection reset")
+	for name, c := range map[string]struct {
+		caps msk.Capabilities
+		err  error
+		want string
+	}{
+		"provider reason wins":     {msk.Capabilities{Reason: "rebalancing is ACTIVE"}, lookup, "rebalancing is ACTIVE"},
+		"lookup failed, no reason": {msk.Capabilities{}, lookup, "Cluster capability check failed: describe cluster: connection reset"},
+		"not allowed, no reason":   {msk.Capabilities{}, nil, "Manual reassignment is not allowed on this cluster"},
+		"not allowed, with reason": {msk.Capabilities{Reason: "blocked"}, nil, "blocked"},
+	} {
+		if got := blockedReason(c.caps, c.err); got != c.want {
+			t.Fatalf("%s: got %q", name, got)
+		}
+	}
+}

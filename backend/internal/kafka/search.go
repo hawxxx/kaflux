@@ -257,9 +257,12 @@ func (s *scan) offer(r *kgo.Record) bool {
 	if !ok || s.stoppedBy != "" || r.Offset < next {
 		return false
 	}
-	if r.Offset >= s.to[p] {
+	if partitionComplete(r.Offset, s.to[p]) {
 		delete(s.next, p)
 		return true
+	}
+	if r.Attrs.IsControl() {
+		return s.skip(p, r.Offset)
 	}
 	s.result.Scanned.Records++
 	s.result.Scanned.Bytes += int64(len(r.Key) + len(r.Value))
@@ -278,7 +281,27 @@ func (s *scan) offer(r *kgo.Record) bool {
 	if s.result.Scanned.Bytes >= searchByteBudget {
 		s.stop("bytes")
 	}
-	if s.next[p] >= s.to[p] {
+	if partitionComplete(s.next[p], s.to[p]) {
+		delete(s.next, p)
+		return true
+	}
+	return false
+}
+
+// partitionComplete reports whether a consumer at position, the offset it reads next, has
+// read a partition up to end. Only reaching the end completes a partition: a poll that
+// returns nothing can also mean a slow broker or a leader change, so it proves nothing.
+func partitionComplete(position, end int64) bool { return position >= end }
+
+// skip moves a partition past the record at offset, which carries no data (a transaction
+// marker). The consumer would never return markers, so a partition that ends in them would
+// otherwise stay short of its end offset. It reports whether the partition is now finished.
+func (s *scan) skip(p int32, offset int64) bool {
+	if next, ok := s.next[p]; !ok || offset < next {
+		return false
+	}
+	s.next[p] = offset + 1
+	if partitionComplete(s.next[p], s.to[p]) {
 		delete(s.next, p)
 		return true
 	}
