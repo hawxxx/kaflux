@@ -32,6 +32,10 @@ describe('RebalancingStatus',()=>{
   it('only badges whole words and leaves text without the status untouched',()=>{
     expect(withStatusBadges('Rebalancing is INACTIVE here','ACTIVE')).toBe('Rebalancing is INACTIVE here');
     expect(withStatusBadges('nothing to mark','ACTIVE')).toBe('nothing to mark');
+    expect(withStatusBadges('lower active here','active')).toBe('lower active here');
+    const {container}=render(<p>{withStatusBadges('ACTIVE until ACTIVE_NOW ends; ACTIVE.','ACTIVE')}</p>);
+    expect([...container.querySelectorAll('.rebalancing-status')].map(b=>b.textContent)).toEqual(['Active','Active']);
+    expect(container.textContent).toBe('Active until ACTIVE_NOW ends; Active.');
   });
 });
 

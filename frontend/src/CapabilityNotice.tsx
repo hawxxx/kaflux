@@ -25,12 +25,24 @@ export function RebalancingStatus({value}:{value?:string}){
   return <span className="rebalancing-status" data-tone={tones[status]??'neutral'} title={`Intelligent rebalancing: ${labels[status]??status}`}>{labels[status]??status}</span>;
 }
 
+const isWordChar=(c?:string)=>c!==undefined&&(c==='_'||(c>='0'&&c<='9')||(c>='A'&&c<='Z')||(c>='a'&&c<='z'));
+const isStatusToken=(value:string)=>value.length>0&&[...value].every(c=>c==='_'||(c>='A'&&c<='Z'));
+
 /** Renders text with every whole-word occurrence of the status shown as the same badge. */
 export function withStatusBadges(text:string,status?:string):ReactNode{
-  if(!status||!/^[A-Z_]+$/.test(status))return text;
-  const word=new RegExp(`\\b(${status})\\b`);
-  if(!word.test(text))return text;
-  return text.split(word).map((part,i)=>part===status?<RebalancingStatus key={i} value={status}/>:part);
+  if(!status||!isStatusToken(status))return text;
+  const out:ReactNode[]=[];
+  let last=0;
+  for(let at=text.indexOf(status);at!==-1;at=text.indexOf(status,at+status.length)){
+    const end=at+status.length;
+    if(isWordChar(text[at-1])||isWordChar(text[end]))continue;
+    if(at>last)out.push(text.slice(last,at));
+    out.push(<RebalancingStatus key={at} value={status}/>);
+    last=end;
+  }
+  if(!out.length)return text;
+  if(last<text.length)out.push(text.slice(last));
+  return out;
 }
 
 export function CapabilityNotice({capabilities,error}:{capabilities?:ClusterCapabilities;error?:Error|null}){

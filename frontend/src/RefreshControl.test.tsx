@@ -12,7 +12,7 @@ beforeEach(()=>{
 });
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals()});
 const trigger=()=>screen.getByRole('button',{name:/^Auto refresh:/});
-const pick=(name:string)=>{fireEvent.click(trigger());fireEvent.click(screen.getByRole('option',{name:new RegExp(`^${name}`)}))};
+const pick=(name:string)=>{fireEvent.click(trigger());fireEvent.click(screen.getByRole('option',{name:accessibleName=>accessibleName.startsWith(name)}))};
 const flush=async()=>{await act(async()=>{await Promise.resolve()})};
 const advance=async(ms:number)=>{await act(async()=>{await vi.advanceTimersByTimeAsync(ms)})};
 const mount=(onRefresh=vi.fn(async()=>{}),extra:React.ReactNode=null)=>({onRefresh,...render(<RefreshProvider><RefreshControl onRefresh={onRefresh}/>{extra}</RefreshProvider>)});
