@@ -31,8 +31,7 @@ func (a *API) requestThrottle(w http.ResponseWriter, r *http.Request, user auth.
 		return
 	}
 	capability, e := jobs.Capabilities(r.Context(), provider, true)
-	if e != nil || !capability.ManualReassignmentAllowed {
-		fail(w, 409, "manual_reassignment_blocked", capability.Reason)
+	if capabilityBlocked(w, r, capability, e, capability.ManualReassignmentAllowed) {
 		return
 	}
 	if _, ok := provider.(kafka.ThrottleProvider); !ok {

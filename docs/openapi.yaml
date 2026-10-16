@@ -1214,6 +1214,7 @@ paths:
       responses:
         "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
         "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}:
     parameters:
@@ -1244,6 +1245,7 @@ paths:
         "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
         "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/rollback:
     parameters:
@@ -1258,6 +1260,7 @@ paths:
       responses:
         "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
         "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /audit:
     get:
@@ -1388,6 +1391,7 @@ paths:
         "200": { description: "Persisted plan or execution job", content: { application/json: { schema: { $ref: "#/components/schemas/PlanEnvelope" } } } }
         "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/rebalances/{job}/cancel-rollback:
     parameters:
@@ -1526,7 +1530,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "422": { description: Invalid rate or unsupported provider, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "503": { description: Audit or durable storage unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Audit or durable storage unavailable, or the MSK capability lookup failed", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 components:
   securitySchemes:

@@ -43,8 +43,8 @@ func (a *API) controlJob(w http.ResponseWriter, r *http.Request, u auth.User, cl
 			fail(w, 409, "invalid_state", "Only paused jobs can be resumed")
 			return true
 		}
-		if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || !cap.ManualReassignmentAllowed {
-			fail(w, 409, "manual_reassignment_blocked", cap.Reason)
+		cap, e := jobs.Capabilities(r.Context(), provider, true)
+		if capabilityBlocked(w, r, cap, e, cap.ManualReassignmentAllowed) {
 			return true
 		}
 		run = func() error { _, e := a.o.Store.Resume(r.Context(), p.ID, skip); return e }

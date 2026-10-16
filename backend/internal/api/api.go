@@ -14,6 +14,7 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/jobs"
 	"github.com/hawxxx/kaflux/backend/internal/kafka"
 	"github.com/hawxxx/kaflux/backend/internal/model"
+	"github.com/hawxxx/kaflux/backend/internal/msk"
 	"github.com/hawxxx/kaflux/backend/internal/store"
 	"go.opentelemetry.io/otel/trace"
 	"io"
@@ -99,6 +100,26 @@ func failCause(w http.ResponseWriter, r *http.Request, status int, code, msg str
 	slog.Error("request failed", attrs...)
 	fail(w, status, code, msg)
 }
+
+// capabilityBlocked answers a request the cluster's capabilities do not allow. A failed lookup
+// is a 503 that logs its cause, since the cluster may well allow the action; only a lookup that
+// succeeded and said no is a 409. It reports whether the request was answered.
+func capabilityBlocked(w http.ResponseWriter, r *http.Request, caps msk.Capabilities, lookupErr error, allowed bool) bool {
+	if lookupErr != nil {
+		msg := caps.Reason
+		if msg == "" {
+			msg = "Cluster capabilities unavailable; retry"
+		}
+		failCause(w, r, 503, "capability_unavailable", msg, lookupErr)
+		return true
+	}
+	if !allowed {
+		fail(w, 409, "manual_reassignment_blocked", caps.Reason)
+		return true
+	}
+	return false
+}
+
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	d := json.NewDecoder(r.Body)
@@ -920,8 +941,8 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 			return
 		}
 		// Generating a plan only reads metadata, so it needs planning, not permission to run.
-		if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || !cap.PlanningAllowed {
-			fail(w, 409, "manual_reassignment_blocked", cap.Reason)
+		cap, e := jobs.Capabilities(r.Context(), provider, true)
+		if capabilityBlocked(w, r, cap, e, cap.PlanningAllowed) {
 			return
 		}
 		for _, t := range req.Topics {
@@ -1020,8 +1041,8 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 	// Dry run and rollback only read metadata and write a plan, so planning is enough for them.
 	// Executing a plan changes the cluster and still requires manual reassignment to be allowed
 	// (the worker and the provider check again before anything is altered).
-	if cap, e := jobs.Capabilities(r.Context(), provider, true); e != nil || (parts[6] == "execute" && !cap.ManualReassignmentAllowed) || !cap.PlanningAllowed {
-		fail(w, 409, "manual_reassignment_blocked", cap.Reason)
+	cap, e := jobs.Capabilities(r.Context(), provider, true)
+	if capabilityBlocked(w, r, cap, e, (parts[6] != "execute" || cap.ManualReassignmentAllowed) && cap.PlanningAllowed) {
 		return
 	}
 	snap, e := jobs.FreshSnapshot(r.Context(), provider)

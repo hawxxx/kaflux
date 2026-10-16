@@ -17,7 +17,7 @@ func (w *Worker) applyRequestedThrottle(ctx context.Context, p model.Plan, provi
 	}
 	capability, e := Capabilities(ctx, provider, true)
 	if e != nil || !capability.ManualReassignmentAllowed {
-		return fmt.Errorf("Throttle change blocked: %s", capability.Reason)
+		return fmt.Errorf("Throttle change blocked: %s", blockedReason(capability, e))
 	}
 	if throttle, ok := provider.(kafka.ThrottleProvider); ok {
 		records, e := w.Store.LoadThrottle(ctx, p.ID)
