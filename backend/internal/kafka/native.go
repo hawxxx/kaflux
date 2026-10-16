@@ -492,14 +492,16 @@ func (n *Native) Search(ctx context.Context, q SearchQuery) (SearchResult, error
 		assign[p] = kgo.NewOffset().At(o)
 	}
 	opts := append([]kgo.Opt{}, n.opts...)
-	opts = append(opts, kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{q.Topic: assign}), kgo.FetchMaxWait(500*time.Millisecond))
+	opts = append(opts, kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{q.Topic: assign}), kgo.FetchMaxWait(500*time.Millisecond),
+		// The client does not expose its position, so the scan tracks it from the records it sees.
+		// Transaction markers are returned so that a partition ending in them still reaches its end.
+		kgo.KeepControlRecords())
 	cl, e := kgo.NewClient(opts...)
 	if e != nil {
 		return SearchResult{}, e
 	}
 	defer cl.Close()
 	deadline := time.Now().Add(searchTimeBudget)
-	empty := 0
 	for len(s.next) > 0 && s.stoppedBy == "" {
 		if !time.Now().Before(deadline) {
 			s.stop("time")
@@ -515,14 +517,11 @@ func (n *Native) Search(ctx context.Context, q SearchQuery) (SearchResult, error
 			return SearchResult{}, e
 		}
 		if f.NumRecords() == 0 {
-			// A fetch answers as soon as a partition has data, so two empty polls mean the remaining
-			// partitions end in records the consumer never returns, such as transaction markers.
-			if empty++; empty >= 2 && time.Now().Before(deadline) {
-				clear(s.next)
-			}
+			// An empty poll does not finish a partition: it can come from a slow broker or a leader
+			// change. A partition is finished only when its position reaches its end offset;
+			// otherwise the scan keeps polling until the time budget stops it with a resume point.
 			continue
 		}
-		empty = 0
 		finished := []int32{}
 		f.EachPartition(func(p kgo.FetchTopicPartition) {
 			for _, r := range p.Records {
