@@ -9,11 +9,28 @@ export type Envelope<T> = {data:T;meta?:{total:number;page:number;pageSize:numbe
 export class ApiError extends Error {code:string;status:number;constructor(message:string,code:string,status:number){super(message);this.code=code;this.status=status}}
 let csrf='';
 export function setCsrf(value:string){csrf=value}
+const API_BASE='/api/v1';
+// Only used to parse and validate; the request itself stays a same-origin relative path.
+const API_PARSE_ORIGIN='http://kaflux.invalid';
+/** The only top-level API areas the console talks to. */
+const API_ROOTS=new Set(['admin','audit','auth','clusters','metrics']);
+const invalidPath=()=>new ApiError('Invalid API path','INVALID_PATH',0);
+/** First path segment under the API base. Absolute, protocol-relative, backslash and dot-segment paths are rejected, so a request can never leave /api/v1. */
+export function apiRoot(path:string):string{
+  if(!path.startsWith('/')||path.startsWith('//')||path.includes('\\'))throw invalidPath();
+  const parsed=new URL(API_BASE+path,API_PARSE_ORIGIN);
+  if(parsed.origin!==API_PARSE_ORIGIN||!parsed.pathname.startsWith(`${API_BASE}/`))throw invalidPath();
+  return parsed.pathname.slice(API_BASE.length+1).split('/',1)[0];
+}
 export async function api<T>(path:string,options:RequestInit={}):Promise<Envelope<T>> {
-  const response=await fetch(`/api/v1${path}`,{credentials:'include',...options,headers:{'Content-Type':'application/json',...(options.method&&options.method!=='GET'?{'X-CSRF-Token':csrf}:{}),...options.headers}});
-  const body=await response.json().catch(()=>null);
-  if(!response.ok)throw new ApiError(body?.error?.message??`Request failed (${response.status})`,body?.error?.code??'REQUEST_FAILED',response.status);
-  return body;
+  const root=apiRoot(path);
+  if(API_ROOTS.has(root)){
+    const response=await fetch(`${API_BASE}${path}`,{credentials:'include',...options,headers:{'Content-Type':'application/json',...(options.method&&options.method!=='GET'?{'X-CSRF-Token':csrf}:{}),...options.headers}});
+    const body=await response.json().catch(()=>null);
+    if(!response.ok)throw new ApiError(body?.error?.message??`Request failed (${response.status})`,body?.error?.code??'REQUEST_FAILED',response.status);
+    return body;
+  }
+  throw invalidPath();
 }
 export function pretty(value:unknown){if(typeof value==='string'){try{return JSON.stringify(JSON.parse(value),null,2)}catch{return value}}return JSON.stringify(value,null,2)??'null'}
 export function asJson(value:unknown):unknown{if(typeof value==='string'){try{return JSON.parse(value)}catch{return value}}return value}
