@@ -17,6 +17,8 @@ type Cluster struct {
 	BrokerCount    int    `json:"brokerCount"`
 	TopicCount     int    `json:"topicCount"`
 	PartitionCount int    `json:"partitionCount"`
+	KafkaVersion   string `json:"kafkaVersion,omitempty"`
+	MetadataMode   string `json:"metadataMode,omitempty"`
 	// RequireThrottle rejects rebalance execution without a replication throttle.
 	RequireThrottle bool `json:"requireThrottle"`
 }
@@ -79,6 +81,16 @@ type Snapshot struct {
 	Topics     []Topic   `json:"topics"`
 	ObservedAt time.Time `json:"observedAt"`
 	Controller *int32    `json:"controller"`
+	// Info is best effort and absent until the brokers have answered ApiVersions.
+	Info *ClusterInfo `json:"info,omitempty"`
+}
+
+// ClusterInfo describes the Kafka software behind a cluster.
+type ClusterInfo struct {
+	// KafkaVersion is the release range the brokers' supported APIs match, such as "3.6".
+	KafkaVersion string `json:"kafkaVersion,omitempty"`
+	// MetadataMode is "kraft" or "zookeeper"; empty when the brokers do not say.
+	MetadataMode string `json:"metadataMode,omitempty"`
 }
 type Group struct {
 	ID      string   `json:"id"`

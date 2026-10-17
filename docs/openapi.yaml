@@ -1389,6 +1389,7 @@ components:
                   user: { $ref: "#/components/schemas/User" }
                   csrfToken: { type: string }
                   demo: { type: boolean }
+                  version: { type: string, description: Kaflux build version, or dev for unstamped builds }
                   canManageSessions:
                     {
                       type: boolean,
@@ -1430,6 +1431,10 @@ components:
         brokerCount: { type: integer }
         topicCount: { type: integer }
         partitionCount: { type: integer }
+        kafkaVersion:
+          { type: string, description: "Release the brokers' supported APIs match, such as 3.7. Omitted until brokers answer." }
+        metadataMode:
+          { type: string, enum: [kraft, zookeeper], description: Omitted when the brokers do not say }
     TopicRow:
       type: object
       properties:

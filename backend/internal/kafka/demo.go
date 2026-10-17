@@ -25,6 +25,7 @@ func NewDemo() *Demo {
 	d := &Demo{messages: map[string][]model.Message{}, groupOffsets: map[string]int64{}, topicConfigs: map[string]map[string]string{}}
 	controller := int32(1)
 	d.state.Controller = &controller
+	d.state.Info = &model.ClusterInfo{KafkaVersion: "3.7", MetadataMode: "kraft"}
 	for i := int32(1); i <= 6; i++ {
 		d.state.Brokers = append(d.state.Brokers, model.Broker{ID: i, Host: fmt.Sprintf("demo-broker-%d", i), Port: 9092, Rack: fmt.Sprintf("zone-%d", (i-1)%3)})
 	}
