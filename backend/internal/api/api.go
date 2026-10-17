@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/hawxxx/kaflux/backend/internal/auth"
 	"github.com/hawxxx/kaflux/backend/internal/balance"
+	"github.com/hawxxx/kaflux/backend/internal/buildinfo"
 	"github.com/hawxxx/kaflux/backend/internal/integrations"
 	"github.com/hawxxx/kaflux/backend/internal/jobs"
 	"github.com/hawxxx/kaflux/backend/internal/kafka"
@@ -279,6 +280,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				c.State = "healthy"
+				if snap.Info != nil {
+					c.KafkaVersion, c.MetadataMode = snap.Info.KafkaVersion, snap.Info.MetadataMode
+				}
 				c.BrokerCount = len(snap.Brokers)
 				c.TopicCount = len(snap.Topics)
 				c.PartitionCount = 0
@@ -558,7 +562,7 @@ func (a *API) sessionView(s auth.Session) map[string]any {
 	for _, c := range a.o.Clusters {
 		permissions[c.ID] = authorizer.Permissions(s.User, c.ID)
 	}
-	return map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "canManageSessions": authorizer.Allowed(s.User, "*", "manage-sessions", "*"), "permissions": permissions}
+	return map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "version": buildinfo.Current(), "canManageSessions": authorizer.Allowed(s.User, "*", "manage-sessions", "*"), "permissions": permissions}
 }
 func (a *API) allowed(u auth.User, c, action, resource string, w http.ResponseWriter) bool {
 	if (auth.Authorizer{Grants: a.o.Grants}).Allowed(u, c, action, resource) {

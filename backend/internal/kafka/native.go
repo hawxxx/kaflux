@@ -73,6 +73,9 @@ type Native struct {
 	sizeMu      sync.Mutex
 	sizeCache   *logSizes
 	sizeRetryAt time.Time
+	infoMu      sync.Mutex
+	info        *model.ClusterInfo
+	infoUntil   time.Time
 	groupsMu    sync.Mutex
 	groupsCache []model.Group
 	groupsUntil time.Time
@@ -242,6 +245,7 @@ func (n *Native) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	s := snapshotFromMetadata(m, time.Now().UTC())
 	n.sizes(ctx).apply(&s)
 	n.applyTopicSettings(ctx, &s)
+	n.applyClusterInfo(ctx, &s)
 	n.mu.Lock()
 	n.cached = s
 	n.expires = time.Now().Add(5 * time.Second)

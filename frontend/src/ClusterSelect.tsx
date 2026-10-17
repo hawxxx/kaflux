@@ -1,6 +1,6 @@
 import {Check,ChevronDown,Database} from 'lucide-react';
 import {useEffect,useId,useRef,useState,type KeyboardEvent} from 'react';
-import type {Cluster} from './api';
+import {kafkaSummary,type Cluster} from './api';
 import './ClusterSelect.css';
 
 /**
@@ -42,7 +42,7 @@ export function ClusterSelect({clusters,value,onChange}:{clusters:Cluster[];valu
     <button ref={trigger} type="button" className="cluster-trigger" aria-label={`Select cluster: ${current?.name??value}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={open?`${id}-list`:undefined}
       onClick={()=>open?close(false):show()} onKeyDown={onTriggerKey}>
       <Database size={17} aria-hidden="true"/>
-      <span className="cluster-trigger-text"><strong>{current?.name??value}</strong><small>{current?.environment??'Connecting'} <i/> {current?.mode??'Kafka'}</small></span>
+      <span className="cluster-trigger-text"><strong>{current?.name??value}</strong><small>{current?.environment??'Connecting'} <i/> {kafkaSummary(current)||current?.mode||'Kafka'}</small></span>
       <ChevronDown size={14} aria-hidden="true" className="cluster-chevron"/>
     </button>
     {open&&<div className="refresh-menu cluster-menu">
