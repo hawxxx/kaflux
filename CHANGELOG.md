@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0](https://github.com/hawxxx/kaflux/compare/v0.4.1...v0.5.0) (2026-10-18)
+
+
+### Features
+
+* **cluster:** show Kaflux version, Kafka version and KRaft/ZooKeeper mode ([#54](https://github.com/hawxxx/kaflux/issues/54)) ([464f0bc](https://github.com/hawxxx/kaflux/commit/464f0bce45bdca9503e222e821b8aaaab4727a74))
+* **cmd:** add a healthcheck subcommand for the distroless image ([4d41398](https://github.com/hawxxx/kaflux/commit/4d41398765676e8033814dbd16807f43bd21c8c2))
+* **messages:** search a topic on the server ([#46](https://github.com/hawxxx/kaflux/issues/46)) ([abd91cf](https://github.com/hawxxx/kaflux/commit/abd91cf71ee4dabcf8de1d6aad782671784e27ea))
+
+
+### Bug Fixes
+
+* **api:** report capability lookup failures as 503 instead of a blank 409 ([950bed9](https://github.com/hawxxx/kaflux/commit/950bed9383996ac55745849be91e2ef9364d0fed))
+* **deploy:** harden Compose services and the Helm chart ([4d41398](https://github.com/hawxxx/kaflux/commit/4d41398765676e8033814dbd16807f43bd21c8c2))
+* **frontend:** confine API requests to an allow-listed same-origin base ([4d41398](https://github.com/hawxxx/kaflux/commit/4d41398765676e8033814dbd16807f43bd21c8c2))
+* **frontend:** remove dynamic regular expressions and Math.random ([4d41398](https://github.com/hawxxx/kaflux/commit/4d41398765676e8033814dbd16807f43bd21c8c2))
+* **search:** finish a partition only when its position reaches the end offset ([950bed9](https://github.com/hawxxx/kaflux/commit/950bed9383996ac55745849be91e2ef9364d0fed))
+* **store:** bind active job states as query parameters ([4d41398](https://github.com/hawxxx/kaflux/commit/4d41398765676e8033814dbd16807f43bd21c8c2))
+
 ## [0.4.1](https://github.com/hawxxx/kaflux/compare/v0.4.0...v0.4.1) (2026-10-10)
 
 
