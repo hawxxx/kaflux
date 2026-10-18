@@ -284,6 +284,12 @@ func (g *Gateway) Wait(ctx context.Context, q Query) (Result, error) {
 	g.mu.Lock()
 	e := g.entries[q]
 	if e == nil || !e.pending {
+		if e != nil && !e.pending {
+			// A fast worker may finish after Snapshot but before this lock.
+			cached := r.Cached
+			r = e.result
+			r.Cached = cached
+		}
 		g.mu.Unlock()
 		if r.Status == "unavailable" {
 			return r, errors.New(r.Error)
