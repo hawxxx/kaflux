@@ -1,12 +1,39 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  backend:
+  changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      integration: ${{ steps.filter.outputs.integration }}
+      packaging: ${{ steps.filter.outputs.packaging }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+      - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 .github/scripts/ci_changes.py
+  backend:
+    needs: changes
+    # Missing outputs (including detection failure) run checks conservatively.
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -20,7 +47,10 @@ jobs:
       - run: go vet ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
   frontend:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.frontend != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -38,7 +68,10 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test tests/responsiveness.spec.ts tests/session.spec.ts tests/topic-url.spec.ts
   packaging:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.packaging != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v5.0.1
@@ -48,7 +81,19 @@ jobs:
       - run: helm template kaflux deploy/helm/kaflux > /tmp/kaflux.yaml
       - run: npx --yes @redocly/cli@1.34.5 lint docs/openapi.yaml --extends minimal
       - run: KAFLUX_DB_PASSWORD=configuration-only docker compose -f docker-compose.yaml -f deploy/docker-compose.integration.yaml --profile integration config --quiet
-      - run: docker build -t kaflux:ci .
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+      - name: Build and load smoke-test image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: kaflux:ci
+          cache-from: type=gha,scope=ci-packaging
+          cache-to: type=gha,scope=ci-packaging,mode=max,ignore-error=true
       - name: Start read-only non-root image
         run: docker run -d --name kaflux-smoke --read-only --cap-drop ALL --security-opt no-new-privileges --user 65532:65532 -e KAFLUX_DEMO=true -p 127.0.0.1:18080:8080 kaflux:ci
       - name: Verify image health, static application and simulator session
@@ -75,7 +120,10 @@ jobs:
       - if: always()
         run: docker logs kaflux-smoke && docker rm -f kaflux-smoke
   integration:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.integration != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       KAFLUX_DB_PASSWORD: integration-only
       KAFLUX_TEST_DATABASE_URL: postgres://kaflux:integration-only@127.0.0.1:15432/kaflux?sslmode=disable
