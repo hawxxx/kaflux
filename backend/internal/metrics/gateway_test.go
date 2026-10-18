@@ -7,10 +7,51 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestWaitReturnsCompletedFastQuery(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("failed=%t", failed), func(t *testing.T) {
+			g, err := NewGateway([]SourceConfig{{ID: "fast", Kind: "simulator", Simulate: func(context.Context, Query) (Result, error) {
+				if failed {
+					return Result{}, queryError{"rejected query"}
+				}
+				return Result{Status: "available", Series: []Series{{Points: []Point{{Time: 100, Value: 2}}}}}, nil
+			}}}, Options{Demo: true, MaxEntries: 4096})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer g.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			var workers sync.WaitGroup
+			for worker := 0; worker < 16; worker++ {
+				workers.Add(1)
+				go func(worker int) {
+					defer workers.Done()
+					for i := 0; i < 100; i++ {
+						q := Query{Source: "fast", Expression: fmt.Sprintf("metric_%d_%d", worker, i), Start: 100, End: 200, Step: 10}
+						r, err := g.Wait(ctx, q)
+						if failed {
+							if err == nil || r.Status != "unavailable" {
+								t.Errorf("Wait lost completed error: result=%+v err=%v", r, err)
+								return
+							}
+						} else if err != nil || r.Status != "available" || len(r.Series) != 1 || len(r.Series[0].Points) != 1 || r.Series[0].Points[0].Value != 2 {
+							t.Errorf("Wait lost completed result: result=%+v err=%v", r, err)
+							return
+						}
+					}
+				}(worker)
+			}
+			workers.Wait()
+		})
+	}
+}
 
 func TestGatewayCoalescesAndDoesNotBlockSnapshots(t *testing.T) {
 	var calls atomic.Int32
