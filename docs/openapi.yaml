@@ -1770,7 +1770,7 @@ components:
             user: { $ref: "#/components/schemas/User" }
             csrfToken: { type: string, minLength: 64, maxLength: 64, pattern: "^[0-9a-f]{64}$" }
             demo: { type: boolean }
-            version: { type: string, maxLength: 64, description: Kaflux build version, or dev for unstamped builds }
+            version: { type: string, maxLength: 64, description: "Kaflux build version, or dev for unstamped builds" }
             canManageSessions:
               {
                 type: boolean,
