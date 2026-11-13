@@ -254,3 +254,77 @@
 .error-page{display:flex;flex-direction:column;align-items:center;text-align:center;padding:72px 24px;gap:10px}.error-page-full{min-height:100vh;justify-content:center;background:radial-gradient(ellipse at 50% 20%,#9b83e015,transparent 55%)}.error-code{font-size:56px;font-weight:500;letter-spacing:-2px;color:var(--purple);margin:0}.error-page h1{font-size:22px;margin:0;letter-spacing:-.3px}.error-page p{font-size:12px;color:var(--muted);line-height:1.6;max-width:440px;margin:0}.error-page .error-code{font-size:56px;color:var(--purple)}.error-detail{max-width:min(560px,100%);overflow:auto;text-align:left;font-size:10px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}.error-actions{display:flex;gap:10px;margin-top:18px}
 .balance-bars .broker-bar-row>span>i{display:inline-block;width:8px;height:8px;border-radius:2px}.balance-bars .bar-track{position:relative;overflow:visible}.balance-bars .bar-track>div{transition:width .6s cubic-bezier(.22,1,.36,1)}.balance-bars .bar-track:after{content:'';position:absolute;left:var(--mean);top:-3px;bottom:-3px;border-left:1px dashed var(--text);opacity:.55}.mean-mark{display:inline-block;height:10px;border-left:1px dashed var(--text);opacity:.55}.balance-bars .broker-bar-row>strong{width:auto;min-width:58px}.balance-bars .broker-bar-row>strong>small{display:inline;margin-left:6px}
 .balance-summary .skew-badge{display:inline-flex;margin-bottom:9px}
+
+/* Glass belongs to the shell and summary surfaces; data panels stay opaque. */
+:root {
+  --glass: color-mix(in srgb, var(--panel) 76%, transparent);
+  --glass-strong: color-mix(in srgb, var(--panel) 94%, transparent);
+  --glass-border: color-mix(in srgb, var(--border) 80%, var(--purple));
+  --glass-edge: inset 0 1px 0 #ffffff09;
+  --glass-shadow: 0 16px 38px -26px #000b;
+  --glass-blur: blur(18px) saturate(130%);
+}
+:root[data-theme=light] {
+  --glass: #ffffffc7;
+  --glass-strong: #fffffff5;
+  --glass-border: color-mix(in srgb, var(--border) 85%, var(--purple));
+  --glass-edge: inset 0 1px 0 #fff;
+  --glass-shadow: 0 16px 38px -26px #37296140;
+}
+.app {
+  background:
+    radial-gradient(ellipse 75vw 55vh at 20% 0%, color-mix(in srgb, var(--purple) 12%, transparent), transparent),
+    radial-gradient(ellipse 55vw 70vh at 100% 30%, color-mix(in srgb, var(--blue) 7%, transparent), transparent),
+    var(--bg);
+}
+.sidebar, .topbar, .stat-card, .dialog, .login-card {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-border);
+}
+.sidebar {
+  background: color-mix(in srgb, var(--sidebar) 86%, transparent);
+}
+.topbar {
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+}
+.stat-card, .login-card {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--purple) 4%, transparent), transparent 65%), var(--glass);
+  border-radius: 12px;
+  box-shadow: var(--glass-edge), var(--glass-shadow);
+}
+.stat-card {
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+@media (hover:hover) {
+  .stat-card:hover {
+    border-color: color-mix(in srgb, var(--purple) 55%, var(--border));
+    box-shadow: var(--glass-edge), 0 18px 40px -26px #0008;
+  }
+}
+.dialog {
+  background: var(--glass-strong);
+  border-radius: 14px;
+  box-shadow: var(--glass-edge), var(--shadow);
+}
+/* A phone drawer overlays content, so it needs stronger coverage. */
+@media (max-width:700px) {
+  .sidebar { background: var(--glass-strong); }
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
+  .sidebar { background: var(--sidebar); }
+  .topbar { background: var(--bg); }
+  .stat-card, .dialog, .login-card { background: var(--panel); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .stat-card { transition: none; }
+}
+@media (prefers-reduced-transparency:reduce) {
+  .sidebar { background: var(--sidebar); }
+  .topbar { background: var(--bg); }
+  .stat-card, .dialog, .login-card { background: var(--panel); }
+  .sidebar, .topbar, .stat-card, .dialog, .login-card {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
