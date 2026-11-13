@@ -65,7 +65,7 @@ export function RebalanceProgress({clusterId,job,canAct,onChange}:{clusterId:str
   }
 
   const disabled=!canAct||busy||!!job.cancellationRequested;
-  return <section className="panel rebalance-progress" aria-label="Rebalance progress">
+  return <section className="panel rebalance-progress" data-active={active||undefined} aria-label="Rebalance progress">
     <div className="rp-head">
       <JobState state={job.state} warnings={job.warnings} rollbackOf={job.rollbackOf}/>
       <div className="rp-title">

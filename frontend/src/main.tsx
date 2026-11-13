@@ -19,6 +19,7 @@ import {Empty,ErrorBox,Loading} from './Feedback';
 import {CapabilityNotice,reassignmentAccess,type ClusterCapabilities} from './CapabilityNotice';
 import {ThrottleControl,type ThrottlePlan} from './ThrottleControl';
 import {RebalanceProgress} from './RebalanceProgress';
+import './glass.css';
 import {JobConsole} from './JobConsole';
 import {JobState} from './JobState';
 import {activeJob,ago,jobNote,jobSummary,type RebalanceJob} from './rebalance';
