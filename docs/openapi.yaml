@@ -1563,10 +1563,10 @@ paths:
         - { name: includeInternal, in: query, schema: { type: boolean, default: false } }
         - { name: exclude, in: query, description: Regular expression of topic names to skip, schema: { type: string, maxLength: 200 } }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "400": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/bulk-delete:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1590,11 +1590,25 @@ paths:
       operationId: bulkDeleteTopics
       parameters:
         - { $ref: "#/components/parameters/CSRF" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [topics, minAgeDays, confirmation, fingerprints]
+              properties:
+                topics: { type: array, minItems: 1, maxItems: 100, items: { type: string } }
+                minAgeDays: { type: integer, minimum: 1, maximum: 3650 }
+                confirmation: { type: string, description: 'Exactly "delete <N> topics" for the number of distinct topics' }
+                fingerprints: { type: object, additionalProperties: { type: string }, description: Topic to fingerprint from the unused-topics report }
+                includeEmptyUnknownAge: { type: boolean, default: false }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "400": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 components:
   securitySchemes:
     sessionCookie:
