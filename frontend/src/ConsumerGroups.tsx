@@ -9,9 +9,9 @@ import {api,can,type Session} from './api';
 import {SortTh,useSortedRows} from './table-sort';
 
 type Offset={topic:string;partition:number;committedOffset:number|null;startOffset:number;endOffset:number;lag:number|null};
-const groupStateTone:Record<string,string>={stable:'good',preparingrebalance:'warn',completingrebalance:'warn',empty:'empty',dead:'bad'};
+const groupStateTone:Record<string,string>={stable:'good',preparingrebalance:'warn',completingrebalance:'warn',empty:'idle',dead:'bad'};
 // Kafka reports states as PascalCase (PreparingRebalance); show them as words and color by meaning.
-function GroupState({state}:{state:string}){const label=state.replace(/([a-z])([A-Z])/g,'$1 $2').toLowerCase().replace(/^./,c=>c.toUpperCase());return <span className={`tag group-state ${groupStateTone[state.toLowerCase()]??'neutral'}`}>{label}</span>}
+export function GroupState({state}:{state:string}){const label=state.replace(/([a-z])([A-Z])/g,'$1 $2').toLowerCase().replace(/^./,c=>c.toUpperCase());return <span className={`tag group-state ${groupStateTone[state.toLowerCase()]??'neutral'}`}>{label}</span>}
 type Group={id:string;state:string;members:number;lag:number|null;offsets?:Offset[]};
 type Reset={groupId:string;changes:{topic:string;partition:number;before:number|null;after:number}[];previewHash:string;applied:boolean};
 type Mode='earliest'|'latest'|'timestamp'|'absolute'|'shift';
