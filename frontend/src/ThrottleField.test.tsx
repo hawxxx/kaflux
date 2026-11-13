@@ -22,3 +22,19 @@ it('locks the throttle on when the cluster requires it',()=>{
   expect(screen.getByText('Required on this cluster')).toBeVisible();
   expect(throttleRate(false,true,'5')).toBe(5);
 });
+
+it('steps the rate by 1 MiB/s with the stepper buttons',()=>{
+  const onValue=vi.fn();
+  render(<ThrottleField enabled required={false} value="10485760" onEnabled={()=>{}} onValue={onValue}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Increase throttle by 1 MiB/s'}));
+  expect(onValue).toHaveBeenLastCalledWith('11534336');
+  fireEvent.click(screen.getByRole('button',{name:'Decrease throttle by 1 MiB/s'}));
+  expect(onValue).toHaveBeenLastCalledWith('9437184');
+});
+
+it('never steps below 1 and locks the stepper when throttling is off',()=>{
+  const {rerender}=render(<ThrottleField enabled required={false} value="1" onEnabled={()=>{}} onValue={()=>{}}/>);
+  expect(screen.getByRole('button',{name:'Decrease throttle by 1 MiB/s'})).toBeDisabled();
+  rerender(<ThrottleField enabled={false} required={false} value="10485760" onEnabled={()=>{}} onValue={()=>{}}/>);
+  expect(screen.getByRole('button',{name:'Increase throttle by 1 MiB/s'})).toBeDisabled();
+});

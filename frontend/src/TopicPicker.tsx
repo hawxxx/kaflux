@@ -7,7 +7,7 @@ const pageSize=50;
 
 /** Searchable topic combobox: results come from the server so clusters with thousands of topics stay reachable.
  * With `selected`, it picks many topics: each choice toggles membership and the list stays open. */
-export function TopicPicker({clusterId,value='',onChange,selected,label='Topic'}:{clusterId:string;value?:string;onChange:(topic:string)=>void;selected?:string[];label?:string}){
+export function TopicPicker({clusterId,value='',onChange,selected,label='Topic',onSearch}:{clusterId:string;value?:string;onChange:(topic:string)=>void;selected?:string[];label?:string;onSearch?:(q:string)=>void}){
   const [text,setText]=useState(value);const [search,setSearch]=useState(value);const [open,setOpen]=useState(false);const [active,setActive]=useState(0);const id=useId();
   useEffect(()=>setText(value),[value]);
   useEffect(()=>{const t=setTimeout(()=>setSearch(text===value?'':text),200);return()=>clearTimeout(t)},[text,value]);
@@ -15,6 +15,7 @@ export function TopicPicker({clusterId,value='',onChange,selected,label='Topic'}
   const query=useQuery({queryKey:[path],queryFn:()=>api<Topic[]>(path),enabled:open,placeholderData:previous=>previous});
   const names=query.data?.data.map(x=>x.name)??[];const total=query.data?.meta?.total??names.length;
   useEffect(()=>setActive(0),[search]);
+  useEffect(()=>onSearch?.(search),[search]);
   const choose=(name:string)=>{if(selected){setText('');onChange(name);return}setText(name);setOpen(false);if(name!==value)onChange(name)};
   const close=()=>{setOpen(false);setText(value)};
   function key(e:React.KeyboardEvent<HTMLInputElement>){
