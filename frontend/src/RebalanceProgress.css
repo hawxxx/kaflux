@@ -167,4 +167,5 @@ details[open] .be-peek{visibility:hidden}
 .topic-bulk-confirm>span{flex:1 1 100%}
 .topic-summary{font-size:11px;border:1px solid var(--border);border-radius:7px;background:var(--bg)}
 .topic-summary>summary{cursor:pointer;padding:9px 12px;color:var(--text)}
+.topic-summary li button{margin-left:6px;border:0;background:none;color:var(--muted);cursor:pointer;padding:0 2px;vertical-align:middle}.topic-summary li button:hover{color:var(--text)}
 .topic-summary>ol{margin:0;padding:6px 12px 10px 32px;max-height:220px;overflow:auto;font:10px/1.9 'IBM Plex Mono',monospace;color:var(--muted);border-top:1px solid var(--border)}

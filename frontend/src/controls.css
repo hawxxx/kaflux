@@ -1,4 +1,4 @@
-/* Checkboxes and switches (role=switch). Use a switch for settings that apply immediately; keep checkboxes for selection and acknowledgement. */
+/* Checkboxes and switches (role=switch). Use a switch for an on/off setting (it applies at once, or is a plan option like rack awareness and the throttle); keep checkboxes for selection and acknowledgement. */
 input[type=checkbox]:not([role=switch]) {
   --ck: 15px;
   -webkit-appearance: none; appearance: none; flex: none; position: relative; cursor: pointer;

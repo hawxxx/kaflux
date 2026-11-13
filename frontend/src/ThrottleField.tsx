@@ -2,6 +2,8 @@ import {Minus,Plus} from 'lucide-react';
 import {bytes} from './api';
 
 const step=1024*1024;
+/** The stepper never goes below one step: a few bytes per second would stall every move. */
+const floor=step;
 
 /** The plan form's replication throttle: a switch plus a rate, locked on when the cluster requires one. */
 export function ThrottleField({enabled,required,value,onEnabled,onValue}:{enabled:boolean;required:boolean;value:string;onEnabled:(on:boolean)=>void;onValue:(v:string)=>void}){
@@ -9,7 +11,7 @@ export function ThrottleField({enabled,required,value,onEnabled,onValue}:{enable
   return <div className="throttle-field">
     <label className="switch-label"><input type="checkbox" role="switch" checked={on} disabled={required} onChange={e=>onEnabled(e.target.checked)}/>Replication throttle</label>
     <div className="throttle-stepper">
-      <button type="button" aria-label="Decrease throttle by 1 MiB/s" disabled={!on||Number(value)<=1} onClick={()=>onValue(String(Math.max(1,(Number(value)||0)-step)))}><Minus size={13} aria-hidden/></button>
+      <button type="button" aria-label="Decrease throttle by 1 MiB/s" disabled={!on||Number(value)<=floor} onClick={()=>onValue(String(Math.max(floor,(Number(value)||0)-step)))}><Minus size={13} aria-hidden/></button>
       <input type="number" min="1" aria-label="Throttle bytes per second" value={value} disabled={!on} onChange={e=>onValue(e.target.value)}/>
       <button type="button" aria-label="Increase throttle by 1 MiB/s" disabled={!on} onClick={()=>onValue(String((Number(value)||0)+step))}><Plus size={13} aria-hidden/></button>
     </div>

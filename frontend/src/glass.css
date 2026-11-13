@@ -1,7 +1,7 @@
 /* Signal glass: hairline edges and one beam for live work. */
 @property --beam-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 
-/* Hairline light along the top edge of the navigation glass. */
+/* Hairline light along the lower edge of the topbar and the right edge of the sidebar. */
 .topbar { box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--purple) 22%, transparent), 0 10px 30px -28px #000; }
 .sidebar { box-shadow: inset -1px 0 0 color-mix(in srgb, var(--purple) 16%, transparent); }
 
@@ -17,5 +17,5 @@
 @keyframes beam-spin { to { --beam-angle: 360deg; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .rebalance-progress[data-active]::after { animation: none; }
+  .rebalance-progress[data-active]::after { animation: none; background: color-mix(in srgb, var(--purple) 55%, var(--blue)); opacity: .55; }
 }

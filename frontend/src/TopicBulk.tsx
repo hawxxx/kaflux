@@ -1,4 +1,5 @@
-import {useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
+import {X} from 'lucide-react';
 import {api,type Topic} from './api';
 
 const pageSize=200;
@@ -25,13 +26,17 @@ export function TopicBulk({clusterId,selected,onChange,search=''}:{clusterId:str
   const [pending,setPending]=useState<string[]|null>(null);
   const [error,setError]=useState('');
   const abort=useRef<AbortController|null>(null);
-  const merge=(names:string[])=>onChange([...selected,...names.filter(n=>!selected.includes(n))]);
+  // Merge against the live selection, not the one captured when the click started a slow load.
+  const latest=useRef(selected);latest.current=selected;
+  const merge=(names:string[])=>{const cur=latest.current;onChange([...cur,...names.filter(n=>!cur.includes(n))])};
+  // A different cluster or search invalidates any load or confirmation in flight.
+  useEffect(()=>{setPending(null);setError('');return()=>abort.current?.abort()},[clusterId,search]);
   async function addAll(){
     setError('');setPending(null);
     const controller=new AbortController();abort.current=controller;setProgress({loaded:0,total:0});
     try{
       const names=await allTopicNames(clusterId,search,{signal:controller.signal,onProgress:(loaded,total)=>setProgress({loaded,total})});
-      const fresh=names.filter(n=>!selected.includes(n));
+      const fresh=names.filter(n=>!latest.current.includes(n));
       if(!fresh.length)setError(search?`No more topics match “${search}”.`:'No more topics to add.');
       else if(fresh.length>confirmAbove)setPending(fresh);
       else merge(fresh);
@@ -56,9 +61,9 @@ export function TopicBulk({clusterId,selected,onChange,search=''}:{clusterId:str
 }
 
 /** A compact stand-in for the chip row when many topics are selected. */
-export function TopicSummary({topics}:{topics:string[]}){
+export function TopicSummary({topics,onRemove}:{topics:string[];onRemove?:(topic:string)=>void}){
   return <details className="topic-summary">
     <summary>{topics.length.toLocaleString()} topics selected · run in listed order</summary>
-    <ol aria-label="Run order">{topics.map(t=><li key={t}>{t}</li>)}</ol>
+    <ol aria-label="Run order">{topics.map(t=><li key={t}>{t}{onRemove&&<button type="button" aria-label={`Remove ${t}`} onClick={()=>onRemove(t)}><X size={11}/></button>}</li>)}</ol>
   </details>;
 }

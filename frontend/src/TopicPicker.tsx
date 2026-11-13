@@ -15,7 +15,7 @@ export function TopicPicker({clusterId,value='',onChange,selected,label='Topic',
   const query=useQuery({queryKey:[path],queryFn:()=>api<Topic[]>(path),enabled:open,placeholderData:previous=>previous});
   const names=query.data?.data.map(x=>x.name)??[];const total=query.data?.meta?.total??names.length;
   useEffect(()=>setActive(0),[search]);
-  useEffect(()=>onSearch?.(search),[search]);
+  useEffect(()=>{onSearch?.(text)},[text]);
   const choose=(name:string)=>{if(selected){setText('');onChange(name);return}setText(name);setOpen(false);if(name!==value)onChange(name)};
   const close=()=>{setOpen(false);setText(value)};
   function key(e:React.KeyboardEvent<HTMLInputElement>){
