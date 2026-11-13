@@ -1,7 +1,7 @@
 import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {ConsumerGroups} from './ConsumerGroups';
+import {ConsumerGroups,GroupState} from './ConsumerGroups';
 import {allPermissions} from './test-permissions';
 const session={user:{username:'admin',role:'administrator'},permissions:allPermissions('demo'),csrfToken:'test',demo:true};
 function mount(){render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><ConsumerGroups clusterId="demo" session={session}/></QueryClientProvider>)}
@@ -51,5 +51,14 @@ describe('consumer offset administration',()=>{
     expect(await screen.findByRole('progressbar',{name:'Loading committed offsets'})).toBeInTheDocument();
     release(null);
     await waitFor(()=>expect(screen.queryByRole('progressbar')).toBeNull());
+  });
+});
+
+describe('group state badge',()=>{
+  it('does not reuse the global empty-state class for an Empty group',()=>{
+    render(<GroupState state="Empty"/>);
+    const badge=screen.getByText('Empty');
+    expect(badge).toHaveClass('group-state','idle');
+    expect(badge).not.toHaveClass('empty');
   });
 });
