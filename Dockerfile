@@ -11,7 +11,7 @@ RUN --mount=type=bind,source=frontend/package.json,target=package.json \
 COPY frontend/ ./
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS backend
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS backend
 ARG TARGETOS TARGETARCH
 ARG VERSION=dev
 WORKDIR /src/backend
