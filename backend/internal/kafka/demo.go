@@ -17,6 +17,7 @@ type Demo struct {
 	messages     map[string][]model.Message
 	groupOffsets map[string]int64
 	acls         map[string]model.ACL
+	extraGroups  []model.Group
 	// topicConfigs holds per-topic overrides beyond the cleanup policy and
 	// retention already modelled on model.Topic.
 	topicConfigs map[string]map[string]string
@@ -53,6 +54,7 @@ func NewDemo() *Demo {
 		t.RetentionMs = &retention
 		d.state.Topics = append(d.state.Topics, t)
 	}
+	d.seedCleanupFixtures()
 	return d
 }
 func (d *Demo) Snapshot(ctx context.Context) (model.Snapshot, error) {
@@ -88,7 +90,17 @@ func (d *Demo) Snapshot(ctx context.Context) (model.Snapshot, error) {
 }
 func (d *Demo) Groups(context.Context) ([]model.Group, error) {
 	l := int64(17)
-	return []model.Group{{ID: "demo-order-service", State: "Stable", Members: 3, Topics: []string{"orders.created"}, Lag: &l}, {ID: "demo-analytics", State: "Stable", Members: 2, Topics: []string{"payments.authorized", "events.audit"}, Lag: &l}, {ID: "demo-inactive", State: "Empty", Members: 0, Topics: []string{"orders.created"}, Lag: &l}}, nil
+	all := []model.Group{{ID: "demo-order-service", State: "Stable", Members: 3, Topics: []string{"orders.created"}, Lag: &l}, {ID: "demo-analytics", State: "Stable", Members: 2, Topics: []string{"payments.authorized", "events.audit"}, Lag: &l}, {ID: "demo-inactive", State: "Empty", Members: 0, Topics: []string{"orders.created"}, Lag: &l}}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append(all, d.extraGroups...), nil
+}
+
+// AddGroup registers an extra demo consumer group, used to model a consumer appearing.
+func (d *Demo) AddGroup(g model.Group) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.extraGroups = append(d.extraGroups, g)
 }
 func (d *Demo) Messages(ctx context.Context, t string, p int32, o int64, l int) ([]model.Message, error) {
 	d.mu.Lock()

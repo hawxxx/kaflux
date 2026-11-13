@@ -1532,6 +1532,69 @@ paths:
         "422": { description: Invalid rate or unsupported provider, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: "Audit or durable storage unavailable, or the MSK capability lookup failed", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /clusters/{cluster}/unused-topics:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+    get:
+      summary: Find unused topics
+      description: >-
+        Classifies deletion candidates and returns topics, evaluatedAt, partial and partialReason.
+        Everything fails closed: a topic is reported only with positive, fresh evidence. unused means
+        zero records and no consumer group with committed offsets (ageKnown is false: an empty topic
+        may be brand new). likely-unused means no group has committed offsets and the last data
+        record is older than minAgeDays. idle means every group with committed offsets has no
+        members and the last data record is older than minAgeDays. A non-empty topic whose last
+        record time cannot be read (trailing transaction markers beyond a 32-record look-back, read
+        error, deadline, or a timestamp that is zero, before 2000 or more than a day in the future,
+        since producers can set any timestamp) is never reported. A live group whose members cannot be
+        parsed as consumer protocol makes group state unavailable (503). Any group with members assigned to or subscribed to the
+        topic, even without commits, keeps it out. Group state is read fresh from the brokers; any
+        failure returns 503 usage_unavailable. Each topic carries fingerprint, a string of
+        "partition:start:end" entries from an uncached offsets read, that bulk delete must send back.
+        Internal topics are omitted unless includeInternal=true, and are then flagged internal and
+        never deletable. records is -1 when unknown. emptyPartitions lists partitions without records
+        on an otherwise non-empty topic (Kafka cannot delete partitions). partial is true, with
+        partialReason, when topics were capped at 500, more than 500 groups exist, evidence for some
+        topics could not be read (they are left out) or the 10 second deadline stopped evaluation.
+        Requires read; topics are filtered by read permission.
+      operationId: unusedTopics
+      parameters:
+        - { name: minAgeDays, in: query, schema: { type: integer, minimum: 1, maximum: 3650, default: 30 } }
+        - { name: includeInternal, in: query, schema: { type: boolean, default: false } }
+        - { name: exclude, in: query, description: Regular expression of topic names to skip, schema: { type: string, maxLength: 200 } }
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/topics/bulk-delete:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+    post:
+      summary: Delete unused topics in bulk
+      description: >-
+        Body topics (1 to 100 names), minAgeDays (1 to 3650), confirmation ("delete <N> topics" for
+        the number of distinct topics), fingerprints (map of topic to the fingerprint from the
+        report, required for every topic) and includeEmptyUnknownAge (default false). Requires delete
+        on every named topic; a missing permission returns 403 before anything is deleted. Each topic
+        is re-evaluated at delete time from fresh, uncached offsets and group state, and skipped with
+        a reason when it is internal, unknown, changed since the report, cannot be verified fresh,
+        has consumer state that cannot be read, has an active consumer, has an unreadable last write,
+        was written within minAgeDays, or is empty with unknown age while includeEmptyUnknownAge is
+        false. Each deletion writes an audited intent and result entry; if the intent cannot be
+        stored the request returns 503 audit_unavailable and nothing further is deleted. The request
+        has a 60 second deadline: topics not started by then are skipped with reason "request deadline
+        reached" (a deletion already started finishes). Group usage is read once before the loop and
+        again before a delete only when more than 5 seconds old; a failed read skips the topic. Returns 200
+        with deleted and skipped ({topic, reason}) even when some topics were skipped.
+      operationId: bulkDeleteTopics
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     sessionCookie:

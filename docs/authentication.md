@@ -53,7 +53,7 @@ topic, consumer group, subject or connector name.
 | `consume` | Reading message payloads |
 | `produce` | Producing messages |
 | `create` | Creating and copying topics |
-| `delete` | Deleting, clearing and recreating topics |
+| `delete` | Deleting, clearing and recreating topics; deleting unused topics in bulk from topic cleanup (checked per topic) |
 | `alter-config` | Topic configuration and partition count |
 | `reset-offsets` | Consumer group offset resets |
 | `rename` | Cluster display name |

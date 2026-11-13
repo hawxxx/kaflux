@@ -55,13 +55,19 @@ type API struct {
 	mu                 sync.Mutex
 	attempts           map[string][]time.Time
 	lastAttemptCleanup time.Time
+	// now is the clock for unused-topic ageing; tests replace it.
+	now func() time.Time
+	// unusedDeadline overrides the unused finder's evaluation deadline; tests shorten it.
+	unusedDeadline time.Duration
+	// bulkDeadline overrides the 60 s cap on one bulk topic delete request.
+	bulkDeadline time.Duration
 }
 
 func New(o Options) *API {
 	if len(o.Grants) == 0 {
 		o.Grants = []auth.Grant{{Role: "administrator", Cluster: "*", Action: "*", Pattern: "*"}}
 	}
-	return &API{o: o, demo: auth.NewSession(auth.User{ID: "demo-admin", Username: "Demo operator", Roles: []string{"administrator"}, Provider: "development-simulator"}), attempts: map[string][]time.Time{}}
+	return &API{o: o, demo: auth.NewSession(auth.User{ID: "demo-admin", Username: "Demo operator", Roles: []string{"administrator"}, Provider: "development-simulator"}), attempts: map[string][]time.Time{}, now: time.Now}
 }
 func respond(w http.ResponseWriter, data any, meta ...any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -323,6 +329,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.integrationRoutes(w, r, s.User, id, parts) {
+		return
+	}
+	if a.unusedTopics(w, r, s.User, id, provider, parts) {
 		return
 	}
 	if a.aclAdministration(w, r, s.User, id, provider, parts) {
