@@ -50,6 +50,23 @@ describe('topic bulk actions',()=>{
     render(<TopicBulk clusterId="demo" selected={[]} onChange={vi.fn()}/>);fireEvent.click(screen.getByRole('button',{name:'Add all topics'}));
     expect(await screen.findByRole('alert')).toBeVisible();
   });
+  it('merges into the selection as it is when the load finishes',async()=>{
+    stub(['a','b','c']);const onChange=vi.fn();
+    const {rerender}=render(<TopicBulk clusterId="demo" selected={[]} onChange={onChange}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Add all topics'}));
+    rerender(<TopicBulk clusterId="demo" selected={['z']} onChange={onChange}/>);
+    await waitFor(()=>expect(onChange).toHaveBeenCalledWith(['z','a','b','c']));
+  });
+  it('drops a pending confirmation when the cluster changes',async()=>{
+    stub();const onChange=vi.fn();const {rerender}=render(<TopicBulk clusterId="a" selected={[]} onChange={onChange}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Add all topics'}));await screen.findByRole('alertdialog');
+    rerender(<TopicBulk clusterId="b" selected={[]} onChange={onChange}/>);
+    expect(screen.queryByRole('alertdialog')).toBeNull();expect(onChange).not.toHaveBeenCalled();
+  });
+  it('removes one topic from the summary',()=>{
+    const onRemove=vi.fn();render(<TopicSummary topics={['a','b']} onRemove={onRemove}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Remove b'}));expect(onRemove).toHaveBeenCalledWith('b');
+  });
   it('summarises a large selection in run order',()=>{
     render(<TopicSummary topics={all}/>);expect(screen.getByText('230 topics selected · run in listed order')).toBeVisible();
     expect(screen.getAllByRole('listitem')).toHaveLength(230);

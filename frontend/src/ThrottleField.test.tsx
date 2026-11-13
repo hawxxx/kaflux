@@ -38,3 +38,12 @@ it('never steps below 1 and locks the stepper when throttling is off',()=>{
   rerender(<ThrottleField enabled={false} required={false} value="10485760" onEnabled={()=>{}} onValue={()=>{}}/>);
   expect(screen.getByRole('button',{name:'Increase throttle by 1 MiB/s'})).toBeDisabled();
 });
+
+it('never steps below 1 MiB/s and disables decrease there',()=>{
+  const onValue=vi.fn();
+  const {rerender}=render(<ThrottleField enabled required={false} value="1572864" onEnabled={()=>{}} onValue={onValue}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Decrease throttle by 1 MiB/s'}));
+  expect(onValue).toHaveBeenLastCalledWith('1048576');
+  rerender(<ThrottleField enabled required={false} value="1048576" onEnabled={()=>{}} onValue={onValue}/>);
+  expect(screen.getByRole('button',{name:'Decrease throttle by 1 MiB/s'})).toBeDisabled();
+});
