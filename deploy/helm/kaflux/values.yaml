@@ -5,7 +5,11 @@ storage:
     path: /var/lib/kaflux/kaflux.db
     existingClaim: ""
     size: 1Gi
+    # Block-storage class such as an EBS gp3 class. Use one with volumeBindingMode
+    # WaitForFirstConsumer so the volume is created in the zone where the pod lands.
     storageClass: ""
+    # PVC annotations, e.g. helm.sh/resource-policy: keep to retain data on uninstall.
+    annotations: {}
 image:
   repository: ghcr.io/hawxxx/kaflux
   tag: ""
@@ -56,6 +60,8 @@ autoscaling:
   maxReplicas: 5
   targetCPUUtilizationPercentage: 75
 podDisruptionBudget:
+  # With a single replica, minAvailable: 1 blocks node drains and spot/consolidation
+  # replacements. Use replicaCount >= 2 before enabling it.
   enabled: false
   minAvailable: 1
 networkPolicy:
@@ -63,7 +69,17 @@ networkPolicy:
   # Replace permissive outbound defaults with known DB, Kafka and metrics peers.
   egress:
     - {}
+# Scheduling. Kaflux is stateless with the postgres backend (e.g. RDS: put the
+# full URL, with sslmode, in the secret's database-url key), so it tolerates
+# spot or preemptible nodes. SQLite is pinned to one pod and one volume zone;
+# prefer on-demand nodes for it.
 nodeSelector: {}
 tolerations: []
 affinity: {}
 topologySpreadConstraints: []
+priorityClassName: ""
+# Seconds allowed for graceful shutdown. Leave 0 for the Kubernetes default (30);
+# keep it above the cloud's spot interruption notice handling if you set it.
+terminationGracePeriodSeconds: 0
+podAnnotations: {}
+podLabels: {}
