@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {keepPreviousData,useQuery,useQueryClient} from '@tanstack/react-query';
-import {ArrowDownToLine,ArrowRight,Minus,Plus,RefreshCw,Shield,Trash2} from 'lucide-react';
+import {ArrowDownToLine,ArrowRight,ChevronDown,RefreshCw,Shield,Trash2} from 'lucide-react';
 import {api,bytes,can,type Session} from './api';
 import {Modal} from './Administration';
 
@@ -18,13 +18,21 @@ export function unusedCsv(rows:Unused[]){
   return [head,...rows.map(r=>[r.name,r.classification,r.reasons.join('; '),r.partitions,r.emptyPartitions.join(' '),r.records<0?'':r.records,r.sizeBytes??'',r.lastRecordAt??'',r.consumerGroups.join(' ')])].map(l=>l.map(csvCell).join(',')).join('\n')+'\n';
 }
 function downloadCsv(rows:Unused[]){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([unusedCsv(rows)],{type:'text/csv'}));a.download='unused-topics.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),100)}
-/** Whole-number field with the console's −/+ stepper (the throttle stepper style); no native spinner. */
-function DaysStepper({value,onChange}:{value:string;onChange:(v:string)=>void}){
-  const bump=(by:number)=>onChange(String(Math.min(3650,Math.max(1,(Number(value)||0)+by))));
-  return <div className="throttle-stepper">
-    <button type="button" aria-label="Decrease days" disabled={Number(value)<=1} onClick={()=>bump(-1)}><Minus size={13} aria-hidden/></button>
-    <input inputMode="numeric" aria-label="Unused for at least (days)" value={value} onChange={e=>onChange(e.target.value.replace(/[^0-9]/g,''))}/>
-    <button type="button" aria-label="Increase days" disabled={Number(value)>=3650} onClick={()=>bump(1)}><Plus size={13} aria-hidden/></button>
+const DAY_PRESETS=['1','7','14','30','60','90','180','365'];
+/** Editable combobox: type any whole number of days or pick a preset from the list. */
+function DaysCombo({value,onChange}:{value:string;onChange:(v:string)=>void}){
+  const [open,setOpen]=useState(false);const [active,setActive]=useState(-1);const root=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!open)return;const close=(e:MouseEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false)};document.addEventListener('mousedown',close);return()=>document.removeEventListener('mousedown',close)},[open]);
+  const pick=(v:string)=>{onChange(v);setOpen(false);setActive(-1)};
+  function key(e:React.KeyboardEvent){
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!open){setOpen(true);setActive(Math.max(0,DAY_PRESETS.indexOf(value)));return}
+      setActive(i=>(i+(e.key==='ArrowDown'?1:-1)+DAY_PRESETS.length)%DAY_PRESETS.length)}
+    else if(e.key==='Enter'&&open&&active>=0){e.preventDefault();pick(DAY_PRESETS[active])}
+    else if(e.key==='Escape'&&open){e.preventDefault();setOpen(false)}}
+  return <div className="days-combo" ref={root}>
+    <input role="combobox" aria-expanded={open} aria-controls="days-presets" aria-autocomplete="none" aria-activedescendant={open&&active>=0?`days-opt-${DAY_PRESETS[active]}`:undefined} inputMode="numeric" aria-label="Unused for at least (days)" value={value} onChange={e=>onChange(e.target.value.replace(/[^0-9]/g,''))} onKeyDown={key}/>
+    <button type="button" tabIndex={-1} aria-label="Show day presets" onClick={()=>{setOpen(o=>!o);setActive(-1)}}><ChevronDown size={14} aria-hidden/></button>
+    {open&&<ul id="days-presets" role="listbox" aria-label="Day presets">{DAY_PRESETS.map((d,i)=><li key={d} id={`days-opt-${d}`} role="option" aria-selected={d===value} className={i===active?'active':undefined} onMouseDown={e=>e.preventDefault()} onClick={()=>pick(d)}>{d} {d==='1'?'day':'days'}</li>)}</ul>}
   </div>;
 }
 /** Finds topics nobody reads or writes and deletes the chosen ones safely: the server re-checks each at delete time. */
@@ -67,9 +75,9 @@ export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Sess
   return <section className="panel">
     <div className="panel-title"><div><h2>Topic cleanup</h2><p>Topics with no consumers and no recent writes. Review the reasons, then delete in bulk.</p></div></div>
     <div className="panel-body unused-controls">
-      <div className="field"><span>Unused for at least (days)</span><DaysStepper value={days} onChange={setDays}/></div>
+      <div className="field"><span>Unused for at least (days)</span><DaysCombo value={days} onChange={setDays}/></div>
       <label>Exclude names matching (regex)<input value={exclude} onChange={e=>setExclude(e.target.value)} maxLength={200} autoComplete="off" placeholder="^(tmp|test)\." aria-invalid={!excludeValid} aria-describedby={excludeValid?undefined:'exclude-error'}/>{!excludeValid&&<small id="exclude-error" className="bad-text" role="alert">Not a valid regular expression; the last valid filter is still applied.</small>}</label>
-      <label className="check-row"><input type="checkbox" checked={internal} onChange={e=>setInternal(e.target.checked)}/> Show internal topics (listed for review only, never deletable)</label>
+      <label className="check-row"><input type="checkbox" checked={internal} onChange={e=>setInternal(e.target.checked)}/> Show internal topics</label>
     </div>
     <div className="unused-status" role="status" aria-live="polite"><span className="muted">{query.isFetching?'Evaluating topics…':query.data?`Evaluated ${new Date(query.data.evaluatedAt).toLocaleTimeString()} · ${rows.length} candidate${rows.length===1?'':'s'}`:''}{selected.length>0&&<span> · {selected.length} selected, {bytes(selectedBytes)} reclaimable</span>}</span><button type="button" className="button" onClick={()=>query.refetch()} disabled={!validDays||query.isFetching}><RefreshCw size={14} className={query.isFetching?'spin':undefined}/>Refresh</button></div>
     {!validDays&&<div className="inline-error" role="alert">Days must be a whole number between 1 and 3650.</div>}
@@ -78,7 +86,7 @@ export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Sess
     {dropped>0&&<div className="inline-notice" role="status">{dropped} selected topic{dropped===1?' was':'s were'} removed from the selection: {dropped===1?'it no longer qualifies':'they no longer qualify'} as unused.</div>}
     {selected.length>=MAX_BULK&&<div className="inline-notice" role="status">Selection limit reached: at most {MAX_BULK} topics can be deleted at once.</div>}
     {query.data?.partial&&<div className="inline-notice" role="status">Partial result: {query.data.partialReason||'some topics could not be evaluated'}. Topics without complete evidence are left out and cannot be deleted.</div>}
-    <div className="table-toolbar"><div className="segmented" role="group" aria-label="Classification">{kinds.map(([k,label])=><button key={k} type="button" aria-pressed={kind===k} className={kind===k?'active':''} onClick={()=>setKind(k)}>{label} ({count(k)})</button>)}</div>
+    <div className="table-toolbar"><div className="segmented" role="group" aria-label="Classification">{kinds.map(([k,label])=><button key={k} type="button" aria-pressed={kind===k} className={`seg-${k}${kind===k?' active':''}`} onClick={()=>setKind(k)}>{label} ({count(k)})</button>)}</div>
       <div className="toolbar-right">
         <input type="search" className="unused-search" aria-label="Filter topics by name" placeholder="Filter by name…" value={filter} onChange={e=>setFilter(e.target.value)} maxLength={200}/>
         <select aria-label="Sort topics" value={sort} onChange={e=>setSort(e.target.value as typeof sort)}>{sorts.map(([k,label])=><option key={k} value={k}>{label}</option>)}</select>
@@ -90,7 +98,7 @@ export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Sess
     {query.isLoading?<p className="muted" role="status">Evaluating topics…</p>:<div className="table-scroll" aria-busy={query.isFetching}><table aria-label="Unused topics"><thead><tr><th><input ref={headRef} type="checkbox" aria-label="Select all shown" disabled={shownDeletable.length===0} checked={shownDeletable.length>0&&shownSelected===shownDeletable.length} onChange={e=>toggleShown(e.target.checked)}/></th><th>Topic</th><th>Reasons</th><th>Records</th><th>Size</th><th>Last write</th><th>Groups</th></tr></thead>
       <tbody>{shown.map(r=><tr key={r.name}>
         <td><input type="checkbox" aria-label={`Select ${r.name}`} disabled={!deletable(r)||(!selected.includes(r.name)&&selected.length>=MAX_BULK)} checked={selected.includes(r.name)} onChange={()=>toggle(r.name)}/></td>
-        <td><span className="mono">{r.name}</span> <span className="tag">{r.classification}</span>{r.internal&&<span className="tag tag-internal">INTERNAL</span>}{!r.ageKnown&&<span className="tag" title="The topic has no records, so nothing shows how old it is.">age unknown — may be brand new</span>}{r.emptyPartitions.length>0&&<span className="tag" title={`Partitions ${r.emptyPartitions.join(', ')} hold no records. Kafka cannot delete partitions: recreate the topic with fewer partitions instead.`}>{r.emptyPartitions.length} empty partition{r.emptyPartitions.length===1?'':'s'}</span>}</td>
+        <td><span className="mono">{r.name}</span> <span className={`tag tag-${r.classification}`}>{r.classification}</span>{r.internal&&<span className="tag tag-internal">INTERNAL</span>}{!r.ageKnown&&<span className="tag" title="The topic has no records, so nothing shows how old it is.">age unknown — may be brand new</span>}{r.emptyPartitions.length>0&&<span className="tag" title={`Partitions ${r.emptyPartitions.join(', ')} hold no records. Kafka cannot delete partitions: recreate the topic with fewer partitions instead.`}>{r.emptyPartitions.length} empty partition{r.emptyPartitions.length===1?'':'s'}</span>}</td>
         <td>{r.reasons.join('; ')}</td><td>{r.records<0?'Unknown':r.records.toLocaleString()}</td><td>{bytes(r.sizeBytes)}</td><td>{r.lastRecordAt?<>{new Date(r.lastRecordAt).toLocaleString()}<br/><small className="muted">{ageLabel(r.lastRecordAt)}</small></>:'Unknown'}</td><td>{r.consumerGroups.length?r.consumerGroups.join(', '):'None'}</td></tr>)}
         {shown.length===0&&!query.error&&<tr><td colSpan={7} className="muted">{rows.length===0?'No unused topics found for these settings.':'No topics match the current filters.'}</td></tr>}</tbody></table></div>}
     <Modal open={open} onClose={()=>{if(!busy)setOpen(false)}} title={`Delete ${selected.length} topics`} description="Each topic is re-checked on the server just before deletion; topics now in use are skipped." wide><form onSubmit={submit}>
