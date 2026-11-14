@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/hawxxx/kaflux/compare/v0.5.0...v0.6.0) (2026-11-14)
+
+
+### Features
+
+* **helm:** add scheduling and storage options for spot and EBS deployments ([#71](https://github.com/hawxxx/kaflux/issues/71)) ([21b92c0](https://github.com/hawxxx/kaflux/commit/21b92c00f4a4418d23eeb68a50b02debdf0593bb))
+* **reassign:** bulk topic selection, switch and stepper controls ([#67](https://github.com/hawxxx/kaflux/issues/67)) ([7484c91](https://github.com/hawxxx/kaflux/commit/7484c917e7bd4b72ced4344137665ed8d9c1785d))
+* **topics:** topic cleanup for unused topics ([#72](https://github.com/hawxxx/kaflux/issues/72)) ([ab2a2e0](https://github.com/hawxxx/kaflux/commit/ab2a2e08acaf146e8091a78723c65927e46ea2ea))
+* **ui:** add restrained glass surfaces to console ([#65](https://github.com/hawxxx/kaflux/issues/65)) ([f69ef2d](https://github.com/hawxxx/kaflux/commit/f69ef2dc1d2f8d886960bf5a7d5305d9e819d0da))
+
+
+### Bug Fixes
+
+* **ui:** harden bulk topic add, throttle stepper and glass polish ([#70](https://github.com/hawxxx/kaflux/issues/70)) ([69c7efa](https://github.com/hawxxx/kaflux/commit/69c7efadd30c8dcbf20789c2aa940e9f90dbafcf))
+* **ui:** stop Empty consumer group badge rendering as an empty-state panel ([#66](https://github.com/hawxxx/kaflux/issues/66)) ([325c447](https://github.com/hawxxx/kaflux/commit/325c447a7718a0f3e865638575c271eff09af679))
+
 ## [0.5.0](https://github.com/hawxxx/kaflux/compare/v0.4.1...v0.5.0) (2026-10-18)
 
 
