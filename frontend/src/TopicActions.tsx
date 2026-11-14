@@ -4,6 +4,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {ArrowRight,Copy,Eraser,MessageSquare,MoreHorizontal,Plus,RefreshCw,Shield,Trash2,X} from 'lucide-react';
 import {api,can,type Session,type Topic} from './api';
 import {Modal} from './Administration';
+import {Picker} from './Picker';
 import {useTopicConfig} from './TopicConfiguration';
 
 type Action=''|'copy'|'clear'|'recreate'|'delete';
@@ -47,7 +48,7 @@ function ConfirmByName({clusterId,topic,kind,onClose,onDone}:{clusterId:string;t
     await api(topicPath(clusterId,topic)+c.path,{method:c.method,body:JSON.stringify({confirmation})});
     await queryClient.invalidateQueries();onDone();
   }catch(err){setError((err as Error).message)}finally{setBusy(false)}}
-  return <Modal open onClose={onClose} title={c.title} description="Review the exact change. Backend authorization and audit logging apply to every request."><form onSubmit={submit}><div className="review-destination">Resource<strong>{topic}</strong></div><div className="mutation-warning">{kind==='recreate'?<RefreshCw size={16}/>:<Trash2 size={16}/>}<p>{c.warning}</p></div><label>Type the topic name to confirm<input autoFocus value={confirmation} onChange={e=>setConfirmation(e.target.value)} required autoComplete="off"/></label>{error&&<div className="inline-error" role="alert">{error}</div>}<button className="button danger-button" disabled={busy||confirmation!==topic}>{busy?'Submitting…':c.button}<ArrowRight size={14}/></button></form></Modal>
+  return <Modal open onClose={onClose} title={c.title} description="Review the exact change. Backend authorization and audit logging apply to every request."><form onSubmit={submit}><div className="review-destination">Resource<strong>{topic}</strong></div><div className={`mutation-warning${kind==='delete'?' danger':''}`}>{kind==='recreate'?<RefreshCw size={16}/>:<Trash2 size={16}/>}<p>{c.warning}</p></div><label>Type the topic name to confirm<input autoFocus value={confirmation} onChange={e=>setConfirmation(e.target.value)} required autoComplete="off"/></label>{error&&<div className="inline-error" role="alert">{error}</div>}<button className="button danger-button" disabled={busy||confirmation!==topic}>{busy?'Submitting…':c.button}<ArrowRight size={14}/></button></form></Modal>
 }
 
 /** Creates a new topic from a source topic's layout and overrides; records are not copied. */
@@ -73,7 +74,7 @@ function CopyTopic({clusterId,source,onClose,onCreated}:{clusterId:string;source
       {config.isLoading?<p className="muted">Loading source configuration…</p>:config.error?<div className="inline-error" role="alert">{config.error.message}</div>:<>
         {Object.keys(current).length===0&&<p className="muted">The source uses cluster defaults only. Add settings to override them on the copy.</p>}
         {Object.entries(current).sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=><div className="copy-setting" key={key}><label>{key}<input value={value} onChange={e=>update({...current,[key]:e.target.value})} aria-label={key}/></label><button type="button" className="icon-button" aria-label={`Remove ${key}`} onClick={()=>{const next={...current};delete next[key];update(next)}}><X size={14}/></button></div>)}
-        {available.length>0&&<div className="copy-setting"><select value={adding} onChange={e=>setAdding(e.target.value)} aria-label="Setting to add"><option value="">Add a setting…</option>{available.map(e=><option key={e.name} value={e.name}>{e.name}</option>)}</select><button type="button" className="button" disabled={!adding} onClick={()=>{update({...current,[adding]:entries.find(e=>e.name===adding)?.value??''});setAdding('')}}><Plus size={14}/>Add</button></div>}
+        {available.length>0&&<div className="copy-setting"><Picker value={adding} onChange={setAdding} label="Setting to add" placeholder="Add a setting…" options={available.map(e=>({value:e.name}))}/><button type="button" className="button" disabled={!adding} onClick={()=>{update({...current,[adding]:entries.find(e=>e.name===adding)?.value??''});setAdding('')}}><Plus size={14}/>Add</button></div>}
       </>}
     </fieldset>
     {error&&<div className="inline-error" role="alert">{error}</div>}
@@ -97,7 +98,7 @@ export function DeleteTopics({clusterId,topics,internal,session,onDone}:{cluster
   return <><button className="button danger-button" disabled={!can(session,clusterId,'delete')} onClick={show}><Trash2 size={14}/>Delete selected</button>
     <Modal open={open} onClose={()=>{if(!busy)setOpen(false)}} title={`Delete ${topics.length} topic${topics.length===1?'':'s'}`} description="Each topic is deleted separately with its own authorization check and audit entry."><form onSubmit={submit}>
       <ul className="bulk-topic-list">{topics.map(t=>{const r=results.find(x=>x.topic===t);return <li key={t}><span className="mono">{t}</span>{internal.includes(t)&&<span className="tag tag-internal">INTERNAL</span>}{r&&(r.error?<span className="bad-text" title={r.error}>Failed</span>:<span className="good-text">Deleted</span>)}</li>})}</ul>
-      <div className="mutation-warning"><Trash2 size={16}/><p>Deletion removes these topics and their records. This cannot be rolled back through Kaflux.</p></div>
+      <div className="mutation-warning danger"><Trash2 size={16}/><p>Deletion removes these topics and their records. This cannot be rolled back through Kaflux.</p></div>
       {internal.length>0&&<div className="mutation-warning"><Shield size={16}/><p>The selection includes {internal.length} internal topic{internal.length===1?'':'s'}. Deleting them can break consumer groups, transactions or connected services, and Kafka may refuse.</p></div>}
       {failed.length>0&&<div className="inline-error" role="alert">{failed.length} deletion{failed.length===1?'':'s'} failed: {failed.map(f=>`${f.topic}: ${f.error}`).join('; ')}</div>}
       <label>Type <strong className="mono">{phrase}</strong> to confirm<input autoFocus value={confirmation} onChange={e=>setConfirmation(e.target.value)} required autoComplete="off"/></label>

@@ -1,0 +1,20 @@
+.picker{position:relative;flex:1;min-width:0}
+.picker-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:8px 10px;text-align:left;font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:7px;transition:border-color .16s ease,box-shadow .16s ease}
+.picker-trigger>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-trigger>svg{flex:none;color:var(--muted);transition:transform .15s ease}
+.picker-trigger[aria-expanded=true]>svg{transform:rotate(180deg)}
+.picker-placeholder{color:var(--muted)}
+.picker-trigger:hover,.picker-trigger[aria-expanded=true]{border-color:color-mix(in srgb,var(--purple) 45%,var(--border))}
+.picker-trigger:focus-visible{outline:0;border-color:var(--purple);box-shadow:0 0 0 3px color-mix(in srgb,var(--purple) 18%,transparent)}
+.picker-pop{position:absolute;z-index:30;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);overflow:hidden}
+.picker-search{display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--border);color:var(--muted)}
+.picker-search>svg{flex:none}
+.picker-search>input{flex:1;min-width:0;padding:9px 0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:0;font-size:12px;color:var(--text)}
+.picker-pop>ul{max-height:240px;overflow-y:auto;margin:0;padding:4px;list-style:none}
+.picker-empty{padding:8px 10px;font-size:12px;color:var(--muted)}
+.picker-pop>ul>li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-radius:5px;font-size:12px;color:var(--text);cursor:pointer}
+.picker-pop>ul>li>span{min-width:0;overflow-wrap:anywhere}
+.picker-pop>ul>li[aria-selected=true]{color:var(--purple)}
+.picker-pop>ul>li.active{background:color-mix(in srgb,var(--purple) 16%,var(--raised))}
+@media (prefers-reduced-motion:reduce){.picker-trigger,.picker-trigger>svg{transition:none}}
+.picker-pop>ul>li.picker-empty{cursor:default;color:var(--muted);display:block}

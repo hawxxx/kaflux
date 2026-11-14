@@ -65,7 +65,8 @@ it('copies a topic with its overrides and lets the operator customise them',asyn
   expect(screen.getByLabelText('New topic name')).toHaveValue('orders-copy');
   expect(screen.getByLabelText('Partitions')).toHaveValue(6);
   fireEvent.change(screen.getByLabelText('Partitions'),{target:{value:'2'}});
-  fireEvent.change(screen.getByLabelText('Setting to add'),{target:{value:'compression.type'}});
+  fireEvent.click(screen.getByRole('combobox',{name:'Setting to add'}));
+  fireEvent.click(screen.getByRole('option',{name:'compression.type'}));
   fireEvent.click(screen.getByRole('button',{name:'Add'}));
   fireEvent.change(screen.getByLabelText('compression.type'),{target:{value:'zstd'}});
   fireEvent.click(screen.getByRole('button',{name:/Create copy/}));
