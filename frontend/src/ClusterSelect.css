@@ -10,3 +10,8 @@
 .cluster-trigger[aria-expanded=true] .cluster-chevron{transform:rotate(180deg)}
 .cluster-menu{left:0;right:0;min-width:0;transform-origin:top left}
 @media(prefers-reduced-motion:reduce){.cluster-chevron{transition:none}}
+.cluster-trigger-text small>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.cluster-trigger-text small .cluster-env{flex:0 1 auto}.cluster-trigger-text small .cluster-kafka{flex:1 1 0}.cluster-trigger-text small i{flex:none}
+.cluster-trigger-text small{flex-direction:column;align-items:flex-start;gap:2px}
+.cluster-trigger-text small i{display:none}
+.cluster-trigger-text small>span{max-width:100%}
+.cluster-trigger-text small .cluster-kafka{flex:none}
