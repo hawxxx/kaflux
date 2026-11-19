@@ -21,6 +21,11 @@ work shared by others.
 
 Adapters must disclose compatibility limits.
 
+A cluster can carry its own PromQL API with `prometheusURL` in its configuration entry. It serves
+only that cluster, so one console can show clusters whose Prometheus servers differ. The global
+`prometheusURL` and `KAFLUX_METRICS_CLUSTER_ID` remain for a single shared source. A cluster-specific URL takes precedence over global
+Prometheus or AMP for that cluster.
+
 Definitions whose legend splits the result by a label that grows with the workload, such as
 `{{topic}}`, `{{groupId}}` or `{{listener}}`, are bounded in PromQL to the top 50 series by average
 over the selected range, so clusters with thousands of topics stay within series and point limits.
