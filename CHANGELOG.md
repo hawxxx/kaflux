@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/hawxxx/kaflux/compare/v0.6.1...v0.6.2) (2026-11-19)
+
+
+### Bug Fixes
+
+* **deps:** bump golang.org/x/net to 0.62.0 ([#76](https://github.com/hawxxx/kaflux/issues/76)) ([60c776a](https://github.com/hawxxx/kaflux/commit/60c776a073b80eeb0a99421b1ac21659b2eb9536))
+
 ## [0.6.1](https://github.com/hawxxx/kaflux/compare/v0.6.0...v0.6.1) (2026-11-19)
 
 
