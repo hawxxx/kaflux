@@ -50,6 +50,11 @@ type Options struct {
 	OIDC                 map[string]*auth.OIDC
 	LDAP                 []auth.LDAPConfig
 	Integrations         map[string]*integrations.Client
+	// MCP serves /mcp ahead of the cookie session check; it authenticates
+	// its own callers. Nil leaves /mcp an ordinary unauthenticated path.
+	MCP http.Handler
+	// ExtraMetrics appends Prometheus text-format series to /metrics.
+	ExtraMetrics func(io.Writer)
 }
 type API struct {
 	o                  Options
@@ -71,6 +76,11 @@ func New(o Options) *API {
 	}
 	return &API{o: o, demo: auth.NewSession(auth.User{ID: "demo-admin", Username: "Demo operator", Roles: []string{"administrator"}, Provider: "development-simulator"}), attempts: map[string][]time.Time{}, now: time.Now}
 }
+
+// SetMCP installs the /mcp handler after construction, for a handler that
+// itself dispatches into this API. Call it before serving requests.
+func (a *API) SetMCP(h http.Handler) { a.o.MCP = h }
+
 func respond(w http.ResponseWriter, data any, meta ...any) {
 	w.Header().Set("Content-Type", "application/json")
 	v := map[string]any{"data": data}
@@ -160,6 +170,10 @@ func (a *API) session(r *http.Request) (auth.Session, error) {
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	securityHeaders(w)
 	path := r.URL.Path
+	if path == "/mcp" && a.o.MCP != nil {
+		a.o.MCP.ServeHTTP(w, r)
+		return
+	}
 	if a.identity(w, r) {
 		return
 	}
@@ -190,6 +204,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path == "/metrics" {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		fmt.Fprintf(w, "# HELP kaflux_configured_clusters Configured Kafka clusters.\n# TYPE kaflux_configured_clusters gauge\nkaflux_configured_clusters %d\n", len(a.o.Clusters))
+		if a.o.ExtraMetrics != nil {
+			a.o.ExtraMetrics(w)
+		}
 		return
 	}
 	if path == "/api/v1/auth/login" {
