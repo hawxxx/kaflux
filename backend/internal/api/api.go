@@ -65,6 +65,8 @@ type API struct {
 	unusedDeadline time.Duration
 	// bulkDeadline overrides the 60 s cap on one bulk topic delete request.
 	bulkDeadline time.Duration
+	// unusedJobs holds background unused-topic evaluations, guarded by mu.
+	unusedJobs map[string]*unusedJob
 }
 
 func New(o Options) *API {

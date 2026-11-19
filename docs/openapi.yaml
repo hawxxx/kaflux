@@ -1577,6 +1577,47 @@ paths:
         "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    post:
+      summary: Start an unused topic evaluation job
+      description: >-
+        Same query and semantics as GET, but evaluated in the background so large clusters are not
+        limited by the 10 second request deadline or the 500 topic cap (3 minute deadline, 10000
+        topics). Topics are read concurrently by a small worker pool. Returns the job (id, status,
+        done, total, evaluatedAt); poll the job for progress. An identical running job of the same user
+        is returned instead of starting another. At most 8 jobs run at once (429 too_many_jobs).
+        Requires read.
+      operationId: startUnusedTopicsJob
+      parameters:
+        - { name: minAgeDays, in: query, schema: { type: integer, minimum: 1, maximum: 3650, default: 30 } }
+        - { name: includeInternal, in: query, schema: { type: boolean, default: false } }
+        - { name: exclude, in: query, description: Regular expression of topic names to skip, schema: { type: string, maxLength: 200 } }
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /clusters/{cluster}/unused-topics/jobs/{job}:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { name: job, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Read an unused topic evaluation job
+      description: >-
+        Returns id, status (running, done, failed or canceled), done and total topics evaluated, and
+        evaluatedAt. When done it also carries topics, partial and partialReason as GET
+        unused-topics does, filtered by read permission; when failed, error.code and error.message.
+        Only the user who started a job can read it; jobs expire 10 minutes after they finish (404).
+      operationId: unusedTopicsJob
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Cancel an unused topic evaluation job
+      description: Stops a running job and returns it with status canceled. A finished job is returned unchanged.
+      operationId: cancelUnusedTopicsJob
+      responses:
+        "200": { $ref: "#/components/responses/Envelope" }
+        "404": { $ref: "#/components/responses/Error" }
   /clusters/{cluster}/topics/bulk-delete:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
