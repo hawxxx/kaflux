@@ -70,6 +70,12 @@ func updateProgress(p *model.Plan, partitions map[string]model.Partition, sizes 
 			}
 		}
 		step.PartitionsDone = stepDone
+		// A skipped topic is never copied, so its bytes belong in neither the
+		// total nor the copied figure. Counting them would stop progress short
+		// of 100% and make the ETA wait for data that will never move.
+		if step.State == model.StepSkipped {
+			continue
+		}
 		if step.Bytes == nil {
 			bytesKnown = false
 			continue
