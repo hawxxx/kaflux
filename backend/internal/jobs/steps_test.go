@@ -427,3 +427,42 @@ func TestProgressUsesBytesThenFallsBackToTopicAverage(t *testing.T) {
 		t.Fatalf("fallback progress %d eta %v %s", unknown.Progress, unknown.ETASeconds, unknown.ETABasis)
 	}
 }
+
+func TestProgressLeavesSkippedTopicsOutOfByteTotals(t *testing.T) {
+	skipped, done := int64(4000), int64(1000)
+	now := time.Now()
+	p := model.Plan{
+		StartedAt: now.Add(-10 * time.Minute),
+		Changes: []model.Change{
+			{Topic: "skipped", Partition: 0, Before: []int32{1}, After: []int32{2}},
+			{Topic: "done", Partition: 0, Before: []int32{1}, After: []int32{2}, FinishedAt: &now},
+		},
+		Steps: []model.TopicStep{
+			{Topic: "skipped", State: model.StepSkipped, Partitions: 1, Bytes: &skipped},
+			{Topic: "done", State: model.StepDone, Partitions: 1, Bytes: &done},
+		},
+	}
+	parts := map[string]model.Partition{
+		"skipped/0": {ID: 0, Leader: 1, Replicas: []int32{1}, ISR: []int32{1}},
+		"done/0":    {ID: 0, Leader: 1, Replicas: []int32{1, 2}, ISR: []int32{1, 2}},
+	}
+	sizes := map[string]map[int32]map[int32]int64{"skipped": {0: {1: 4000}}, "done": {0: {1: 1000, 2: 1000}}}
+	updateProgress(&p, parts, sizes, now)
+	if *p.BytesTotal != 1000 || *p.BytesDone != 1000 || p.Progress != 100 {
+		t.Fatalf("bytes %d/%d progress %d", *p.BytesDone, *p.BytesTotal, p.Progress)
+	}
+
+	// A skipped topic without a size estimate must not hide the byte totals of the others.
+	p.Steps[0].Bytes = nil
+	updateProgress(&p, parts, sizes, now)
+	if p.BytesTotal == nil || *p.BytesTotal != 1000 || p.Progress != 100 {
+		t.Fatalf("total %v progress %d", p.BytesTotal, p.Progress)
+	}
+
+	// Skipping every topic leaves nothing to copy: complete, with no ETA to estimate.
+	p.Steps[1].State = model.StepSkipped
+	updateProgress(&p, parts, sizes, now)
+	if *p.BytesTotal != 0 || p.Progress != 100 {
+		t.Fatalf("all skipped: total %d progress %d", *p.BytesTotal, p.Progress)
+	}
+}
