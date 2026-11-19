@@ -15,7 +15,7 @@ func (a *API) adminSessions(w http.ResponseWriter, r *http.Request, s auth.Sessi
 	if r.URL.Path != base && !strings.HasPrefix(r.URL.Path, base+"/") {
 		return false
 	}
-	az := auth.Authorizer{Grants: a.o.Grants}
+	az := auth.Authorizer{Grants: a.grants(r)}
 	if r.URL.Path == base {
 		if r.Method != "GET" {
 			fail(w, 405, "method_not_allowed", "GET required")

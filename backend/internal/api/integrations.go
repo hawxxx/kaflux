@@ -24,7 +24,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 	if kind == "connect" {
 		action = "connector-read"
 	}
-	authorizer := auth.Authorizer{Grants: a.o.Grants}
+	authorizer := auth.Authorizer{Grants: a.grants(r)}
 	if len(parts) == 5 {
 		if r.Method != "GET" {
 			fail(w, 405, "method_not_allowed", "GET required")
@@ -81,7 +81,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 			path = "/connectors"
 		}
 	} else {
-		if !a.allowed(user, cluster, action, resource, w) {
+		if !a.allowed(r, user, cluster, action, resource, w) {
 			return true
 		}
 		name := url.PathEscape(resource)

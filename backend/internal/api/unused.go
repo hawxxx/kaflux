@@ -68,7 +68,7 @@ func (a *API) unusedTimeout() time.Duration {
 }
 
 func (a *API) unusedReport(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) {
-	if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(u, id, "read") {
+	if !(auth.Authorizer{Grants: a.grants(r)}).AnyAllowed(u, id, "read") {
 		fail(w, 403, "forbidden", "Permission denied")
 		return
 	}
@@ -106,7 +106,7 @@ func (a *API) unusedReport(w http.ResponseWriter, r *http.Request, u auth.User, 
 	}
 	visible := topics[:0]
 	for _, t := range topics {
-		if (auth.Authorizer{Grants: a.o.Grants}).Allowed(u, id, "read", t.Name) {
+		if (auth.Authorizer{Grants: a.grants(r)}).Allowed(u, id, "read", t.Name) {
 			visible = append(visible, t)
 		}
 	}
@@ -281,7 +281,7 @@ type bulkSkip struct {
 }
 
 func (a *API) bulkDelete(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) {
-	if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(u, id, "delete") {
+	if !(auth.Authorizer{Grants: a.grants(r)}).AnyAllowed(u, id, "delete") {
 		fail(w, 403, "forbidden", "Permission denied")
 		return
 	}
@@ -331,7 +331,7 @@ func (a *API) bulkDelete(w http.ResponseWriter, r *http.Request, u auth.User, id
 		return
 	}
 	for _, name := range names {
-		if !a.allowed(u, id, "delete", name, w) {
+		if !a.allowed(r, u, id, "delete", name, w) {
 			return
 		}
 	}

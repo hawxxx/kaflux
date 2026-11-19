@@ -77,7 +77,7 @@ func (a *API) decodeMessages(ctx context.Context, user auth.User, cluster string
 	}
 	schemas := map[uint32]resolved{}
 	references := protobufReferenceResolver{client: client, authorize: func(subject string) bool {
-		return (auth.Authorizer{Grants: a.o.Grants}).Allowed(user, cluster, "schema-read", subject)
+		return (auth.Authorizer{Grants: a.grantsFrom(ctx)}).Allowed(user, cluster, "schema-read", subject)
 	}, cache: map[protobufReferenceKey]registryDecodeSchema{}}
 	budget := 2 * 1024 * 1024
 	for i := range messages {
@@ -109,7 +109,7 @@ func (a *API) decodeMessages(ctx context.Context, user auth.User, cluster string
 			allowed := false
 			if e == nil && json.Unmarshal(subjectsRaw, &subjects) == nil {
 				for _, subject := range subjects {
-					if (auth.Authorizer{Grants: a.o.Grants}).Allowed(user, cluster, "schema-read", subject) {
+					if (auth.Authorizer{Grants: a.grantsFrom(ctx)}).Allowed(user, cluster, "schema-read", subject) {
 						allowed = true
 						break
 					}

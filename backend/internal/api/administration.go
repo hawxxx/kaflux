@@ -171,7 +171,7 @@ func (a *API) renameCluster(w http.ResponseWriter, r *http.Request, u auth.User,
 		fail(w, 405, "method_not_allowed", "PUT required")
 		return
 	}
-	if !a.allowed(u, id, "rename", "*", w) {
+	if !a.allowed(r, u, id, "rename", "*", w) {
 		return
 	}
 	var body struct {
@@ -275,7 +275,7 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 		resource = parts[5]
 	}
 	if endpoint == "test" {
-		if !a.allowed(u, id, "read", "*", w) {
+		if !a.allowed(r, u, id, "read", "*", w) {
 			return true
 		}
 		if r.Method != "POST" || len(parts) != 5 {
@@ -322,11 +322,11 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 		action = "reset-offsets"
 	}
 	if action == "create" && len(parts) == 5 {
-		if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(u, id, action) {
+		if !(auth.Authorizer{Grants: a.grants(r)}).AnyAllowed(u, id, action) {
 			fail(w, 403, "forbidden", "Permission denied")
 			return true
 		}
-	} else if !a.allowed(u, id, action, resource, w) {
+	} else if !a.allowed(r, u, id, action, resource, w) {
 		return true
 	}
 	admin, ok := p.(kafka.AdminProvider)
@@ -348,7 +348,7 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 			adminError(w, e)
 			return true
 		}
-		authorizer := auth.Authorizer{Grants: a.o.Grants}
+		authorizer := auth.Authorizer{Grants: a.grants(r)}
 		out := []model.GroupDetail{}
 		for _, g := range groups {
 			if authorizer.Allowed(u, id, "read", g.ID) {
@@ -367,7 +367,7 @@ func (a *API) administration(w http.ResponseWriter, r *http.Request, u auth.User
 			fail(w, 400, "invalid_request", "Invalid topic name, partition count, replication factor or configuration")
 			return true
 		}
-		if !a.allowed(u, id, "create", in.Name, w) {
+		if !a.allowed(r, u, id, "create", in.Name, w) {
 			return true
 		}
 		if a.adminMutation(w, r, u, id, "create", in.Name, nil, in, func() error { return admin.CreateTopic(r.Context(), in) }) {
@@ -497,7 +497,7 @@ func (a *API) topicLifecycle(w http.ResponseWriter, r *http.Request, u auth.User
 			fail(w, 400, "invalid_request", "Configuration keys must be readable settings of the source topic")
 			return
 		}
-		if !a.allowed(u, id, "create", in.Name, w) {
+		if !a.allowed(r, u, id, "create", in.Name, w) {
 			return
 		}
 		if a.adminMutation(w, r, u, id, "create", in.Name, map[string]string{"copiedFrom": topic}, in, func() error { return admin.CreateTopic(r.Context(), in) }) {
@@ -530,7 +530,7 @@ func (a *API) topicLifecycle(w http.ResponseWriter, r *http.Request, u auth.User
 		}
 		return
 	}
-	if !a.allowed(u, id, "create", topic, w) {
+	if !a.allowed(r, u, id, "create", topic, w) {
 		return
 	}
 	snap, e := p.Snapshot(r.Context())
@@ -577,7 +577,7 @@ func (a *API) groupAdministration(w http.ResponseWriter, r *http.Request, u auth
 			return
 		}
 		for _, topic := range out.Topics {
-			if !a.allowed(u, id, "read", topic, w) {
+			if !a.allowed(r, u, id, "read", topic, w) {
 				return
 			}
 		}
@@ -602,7 +602,7 @@ func (a *API) groupAdministration(w http.ResponseWriter, r *http.Request, u auth
 		return
 	}
 	for _, change := range out.Changes {
-		if !a.allowed(u, id, "reset-offsets", change.Topic, w) {
+		if !a.allowed(r, u, id, "reset-offsets", change.Topic, w) {
 			return
 		}
 	}
