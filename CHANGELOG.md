@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/hawxxx/kaflux/compare/v0.6.2...v0.7.0) (2026-11-19)
+
+
+### Features
+
+* **login:** Drift sign-in page with running version and provider logos ([#78](https://github.com/hawxxx/kaflux/issues/78)) ([098ff66](https://github.com/hawxxx/kaflux/commit/098ff66899d5514384ad904661c12224a0e3a4a1))
+
 ## [0.6.2](https://github.com/hawxxx/kaflux/compare/v0.6.1...v0.6.2) (2026-11-19)
 
 
