@@ -461,11 +461,16 @@ func rateLimited(wait time.Duration) *ToolError {
 	return &ToolError{Code: "rate_limited", Message: "Rate limit exceeded for this token", Hint: fmt.Sprintf("Too many calls; retry after %ds.", secs), Status: 429}
 }
 
-// mayAttempt reports whether p holds any grant on cluster for an action of
-// t's scope, the same coarse check the REST handlers apply before acting.
+// mayAttempt reports whether p holds any grant on cluster for an action that
+// authorizes t (Tool.Actions, else t's scope actions), the same coarse check
+// the REST handlers apply before acting.
 func mayAttempt(p Principal, t Tool, cluster string) bool {
 	az, u := auth.Authorizer{Grants: p.Grants}, mcpSession(p).User
-	for _, a := range ScopeActions[t.Scope] {
+	actions := t.Actions
+	if len(actions) == 0 {
+		actions = ScopeActions[t.Scope]
+	}
+	for _, a := range actions {
 		if az.AnyAllowed(u, cluster, a) {
 			return true
 		}

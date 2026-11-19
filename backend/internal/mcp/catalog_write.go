@@ -28,7 +28,7 @@ var writeTools = []Tool{
 	// ACLs.
 	{Name: "kaflux_acl_create", Method: "POST", Path: "/clusters/{cluster}/acls", Scope: "write",
 		Description: "Create an ACL binding. Args: cluster, body={acl:{resourceType:\"TOPIC\", resourceName:\"orders\", patternType:\"LITERAL\", principal:\"User:alice\", host:\"*\", operation:\"READ\", permission:\"ALLOW\"}, confirmation:true}. Returns the binding."},
-	{Name: "kaflux_acl_delete", Method: "DELETE", Path: "/clusters/{cluster}/acls", Scope: "destructive",
+	{Name: "kaflux_acl_delete", Method: "DELETE", Path: "/clusters/{cluster}/acls", Scope: "destructive", Actions: []string{"manage-acls"},
 		Description: "Delete an exact ACL binding. Args: cluster, body={acl:{resourceType:\"TOPIC\", resourceName:\"orders\", patternType:\"LITERAL\", principal:\"User:alice\", host:\"*\", operation:\"READ\", permission:\"ALLOW\"}, confirmation:true}. Returns the deleted bindings."},
 
 	// Schema registry.
@@ -36,9 +36,9 @@ var writeTools = []Tool{
 		Description: "Register a new schema version under a subject. Args: cluster, integration, subject=\"orders-value\", body={confirmation:true, payload:{schemaType:\"AVRO\", schema:\"...\"}}. Returns the schema id."},
 	{Name: "kaflux_schema_config_update", Method: "PUT", Path: "/clusters/{cluster}/schemas/{integration}/{subject}/configuration", Scope: "write",
 		Description: "Set a subject's compatibility level. Args: cluster, integration, subject, body={confirmation:true, payload:{compatibility:\"BACKWARD\"}}. Returns the new level."},
-	{Name: "kaflux_schema_subject_delete", Method: "DELETE", Path: "/clusters/{cluster}/schemas/{integration}/{subject}", Scope: "destructive",
+	{Name: "kaflux_schema_subject_delete", Method: "DELETE", Path: "/clusters/{cluster}/schemas/{integration}/{subject}", Scope: "destructive", Actions: []string{"schema-update"},
 		Description: "Delete a subject and all its versions. Args: cluster, integration, subject=\"orders-value\", body={confirmation:true}. Returns the deleted version numbers."},
-	{Name: "kaflux_schema_version_delete", Method: "DELETE", Path: "/clusters/{cluster}/schemas/{integration}/{subject}/versions/{version}", Scope: "destructive",
+	{Name: "kaflux_schema_version_delete", Method: "DELETE", Path: "/clusters/{cluster}/schemas/{integration}/{subject}/versions/{version}", Scope: "destructive", Actions: []string{"schema-update"},
 		Description: "Delete one schema version. Args: cluster, integration, subject, version=\"3\", body={confirmation:true}. Returns the deleted version number."},
 
 	// Kafka Connect.
@@ -54,7 +54,7 @@ var writeTools = []Tool{
 		Description: "Restart a connector. Args: cluster, integration, connector=\"orders-sink\", body={confirmation:true}. Returns the request outcome."},
 	{Name: "kaflux_connector_task_restart", Method: "POST", Path: "/clusters/{cluster}/connectors/{integration}/{connector}/tasks/{task}/restart", Scope: "write",
 		Description: "Restart one connector task. Args: cluster, integration, connector, task=\"0\", body={confirmation:true}. Returns the request outcome."},
-	{Name: "kaflux_connector_delete", Method: "DELETE", Path: "/clusters/{cluster}/connectors/{integration}/{connector}", Scope: "destructive",
+	{Name: "kaflux_connector_delete", Method: "DELETE", Path: "/clusters/{cluster}/connectors/{integration}/{connector}", Scope: "destructive", Actions: []string{"connector-update"},
 		Description: "Delete a connector. Args: cluster, integration, connector=\"orders-sink\", body={confirmation:true}. Returns the request outcome."},
 
 	// Cluster.
@@ -70,18 +70,18 @@ var writeTools = []Tool{
 		Description: "Generate a deterministic rebalance plan without touching Kafka. Args: cluster, body={topics:[\"orders\"], brokers:[1,2,3], rackAware:true, throttleBytesPerSec:10485760}. Returns the job id, planHash and proposed moves."},
 	{Name: "kaflux_rebalance_dry_run", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/dry-run", Scope: "write",
 		Description: "Validate a rebalance plan against the live cluster without executing it. Args: cluster, job, body={confirmation:true, planHash:\"<from kaflux_rebalance_get>\"}. Returns the plan with warnings; nothing is mutated."},
-	{Name: "kaflux_rebalance_pause", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/pause", Scope: "destructive",
+	{Name: "kaflux_rebalance_pause", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/pause", Scope: "destructive", Actions: []string{"execute"},
 		Description: "Pause a running rebalance after the topic it is moving. Args: cluster, job, body={confirmation:true, planHash:\"...\"}. Returns the job."},
-	{Name: "kaflux_rebalance_resume", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/resume", Scope: "destructive",
+	{Name: "kaflux_rebalance_resume", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/resume", Scope: "destructive", Actions: []string{"execute"},
 		Description: "Resume a paused rebalance. Args: cluster, job, body={confirmation:true, planHash:\"...\", skip:false} (skip true leaves the current topic). Returns the job."},
-	{Name: "kaflux_rebalance_cancel", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/cancel", Scope: "destructive",
+	{Name: "kaflux_rebalance_cancel", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/cancel", Scope: "destructive", Actions: []string{"execute"},
 		Description: "Request durable cancellation of a rebalance; moved partitions stay where they are. Args: cluster, job, body={confirmation:true, planHash:\"...\"}. Returns the job."},
-	{Name: "kaflux_rebalance_cancel_rollback", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/cancel-rollback", Scope: "destructive",
+	{Name: "kaflux_rebalance_cancel_rollback", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/cancel-rollback", Scope: "destructive", Actions: []string{"execute"},
 		Description: "Cancel a running or paused rebalance and queue a rollback of the partitions it moved. Args: cluster, job, body={confirmation:true, planHash:\"...\"}. Returns the job."},
-	{Name: "kaflux_rebalance_throttle", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/throttle", Scope: "destructive",
+	{Name: "kaflux_rebalance_throttle", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/throttle", Scope: "destructive", Actions: []string{"execute"},
 		Description: "Change the replication throttle of a rebalance. Args: cluster, job, body={confirmation:true, planHash:\"...\", bytesPerSec:20971520}. Returns the job with a pending throttle request."},
-	{Name: "kaflux_rebalance_execute", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/execute", Scope: "destructive",
+	{Name: "kaflux_rebalance_execute", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/execute", Scope: "destructive", Actions: []string{"execute"},
 		Description: "Approve a plan by its hash and enqueue execution; topics move one at a time. Args: cluster, job, body={confirmation:true, planHash:\"<from kaflux_rebalance_get>\"}. Returns the running job."},
-	{Name: "kaflux_rebalance_rollback", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/rollback", Scope: "destructive",
+	{Name: "kaflux_rebalance_rollback", Method: "POST", Path: "/clusters/{cluster}/rebalances/{job}/rollback", Scope: "destructive", Actions: []string{"rollback"},
 		Description: "Create a validated reverse plan from the replica assignments saved before a rebalance. Args: cluster, job, body={confirmation:true, planHash:\"...\"}. Returns the rollback plan."},
 }

@@ -18,10 +18,14 @@ type Tool struct {
 	Name, Domain, Description string
 	Method, Path              string // OpenAPI path template, e.g. /clusters/{cluster}/topics
 	Scope                     string // read|messages|write|destructive: the MCP-side ceiling
-	ReadOnly, Destructive     bool
-	Idempotent                bool
-	Paginated                 bool // dispatch adds limit/cursor handling
-	Search                    bool // dispatch adds a substring name filter; only where it maps onto the route
+	// Actions overrides the RBAC actions a prepare pre-checks, for routes the
+	// REST API authorizes with an action outside Scope's (for example ACL
+	// deletion needs manage-acls). Empty means ScopeActions[Scope].
+	Actions               []string
+	ReadOnly, Destructive bool
+	Idempotent            bool
+	Paginated             bool // dispatch adds limit/cursor handling
+	Search                bool // dispatch adds a substring name filter; only where it maps onto the route
 	// Preview optionally computes what a write would do before confirmation.
 	Preview func(ctx context.Context, d *Dispatcher, c Call) (any, error)
 }

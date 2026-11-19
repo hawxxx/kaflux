@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/hawxxx/kaflux/backend/internal/auth"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"gopkg.in/yaml.v3"
 )
@@ -368,4 +369,20 @@ func unixLines(b []byte) []byte { return []byte(strings.ReplaceAll(string(b), "\
 
 func normalizeSpec(b []byte) string {
 	return string(releaseVersionLine.ReplaceAll(unixLines(b), nil))
+}
+
+// Tool.Actions name real RBAC actions a token scope can carry, and only
+// write tools override the scope's actions.
+func TestToolActionsAreKnown(t *testing.T) {
+	mutating := append(slices.Clone(ScopeActions["write"]), ScopeActions["destructive"]...)
+	for _, tool := range Catalog() {
+		if len(tool.Actions) > 0 && !tool.IsWrite() {
+			t.Errorf("%s: read tool overrides actions", tool.Name)
+		}
+		for _, a := range tool.Actions {
+			if !slices.Contains(auth.Actions, a) || !slices.Contains(mutating, a) {
+				t.Errorf("%s: action %q is not a mutating RBAC action", tool.Name, a)
+			}
+		}
+	}
 }
