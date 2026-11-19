@@ -218,11 +218,21 @@ func (v *listView) fitItems(items []json.RawMessage, max int, extra func(kept in
 		size += add
 		n++
 	}
-	// The cursor in extra grows with n; re-check and back off when needed.
-	for n > 0 && len(v.rebuild(items[:n], extra(n))) > max {
-		n--
+	// The cursor in extra grows with n; when the estimate overshoots, binary
+	// search the largest count that fits (size is monotonic in n).
+	if n == 0 || len(v.rebuild(items[:n], extra(n))) <= max {
+		return n
 	}
-	return n
+	lo, hi := 0, n-1 // lo always fits (or is 0)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if len(v.rebuild(items[:mid], extra(mid))) <= max {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return lo
 }
 
 // preview replaces an oversized non-list response with a valid JSON object

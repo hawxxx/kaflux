@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -63,6 +64,10 @@ func (e *ToolError) Error() string { return e.Code + ": " + e.Message }
 func invalid(format string, a ...any) *ToolError {
 	return &ToolError{Code: "invalid_argument", Message: fmt.Sprintf(format, a...), Hint: "Check the arguments against the tool's input schema.", Status: 400}
 }
+
+// writeUncertainHint is the guidance after a write timed out or hit an
+// unavailable dependency: it may have been applied, so blind retry is unsafe.
+const writeUncertainHint = "The write may have been applied. Read the current state with the matching get or list tool before retrying; do not retry blindly."
 
 var errNotDispatchable = &ToolError{Code: "internal", Message: "Tool is not dispatchable", Hint: "This is a Kaflux defect; report it.", Status: 500}
 
@@ -223,7 +228,7 @@ func (d *Dispatcher) buildRequest(ctx context.Context, p Principal, t Tool, c Ca
 	if op == nil {
 		return nil, errNotDispatchable
 	}
-	raw, decoded := t.Path, t.Path
+	var rawPairs, decodedPairs []string
 	query := url.Values{}
 	for _, prm := range params {
 		name, _ := prm["name"].(string)
@@ -243,11 +248,11 @@ func (d *Dispatcher) buildRequest(ctx context.Context, p Principal, t Tool, c Ca
 			if err != nil {
 				return nil, err
 			}
-			if s == "" || s == "." || s == ".." || strings.Contains(s, "/") {
+			if s == "" || s == "." || s == ".." || strings.ContainsAny(s, "/{}") {
 				return nil, invalid("argument %q is not a valid name", name)
 			}
-			raw = strings.ReplaceAll(raw, "{"+name+"}", url.PathEscape(s))
-			decoded = strings.ReplaceAll(decoded, "{"+name+"}", s)
+			rawPairs = append(rawPairs, "{"+name+"}", url.PathEscape(s))
+			decodedPairs = append(decodedPairs, "{"+name+"}", s)
 		case "query":
 			if pg != nil && (pg.native && (name == "page" || name == "pageSize") || pg.nativeSearch && name == "q") {
 				continue // set from the generic paging arguments below
@@ -269,7 +274,10 @@ func (d *Dispatcher) buildRequest(ctx context.Context, p Principal, t Tool, c Ca
 			}
 		}
 	}
-	if strings.Contains(raw, "{") {
+	// One pass each, so a value can never be re-substituted as a placeholder.
+	raw := strings.NewReplacer(rawPairs...).Replace(t.Path)
+	decoded := strings.NewReplacer(decodedPairs...).Replace(t.Path)
+	if strings.ContainsAny(raw, "{}") {
 		return nil, errNotDispatchable
 	}
 	if pg != nil {
@@ -370,11 +378,17 @@ func (d *Dispatcher) Do(ctx context.Context, p Principal, t Tool, c Call) (Resul
 		pg = &resolved
 	}
 	key := p.TokenID
-	if wait, ok := d.limiter.allow(key, d.limits.PerMinute, d.now()); !ok {
-		return Result{}, &ToolError{Code: "rate_limited", Message: "Rate limit exceeded for this token", Hint: fmt.Sprintf("Too many calls; retry after %ds.", int(wait.Seconds())), Status: 429}
+	if key == "" {
+		return Result{}, &ToolError{Code: "internal", Message: "Call has no token identity", Hint: "This is a Kaflux defect; report it.", Status: 500}
 	}
+	// Concurrency first, so a refused call does not spend a rate token.
 	if !d.limiter.acquire(key, d.limits.Concurrency) {
 		return Result{}, &ToolError{Code: "rate_limited", Message: "Too many concurrent calls for this token", Hint: fmt.Sprintf("At most %d concurrent calls per token; wait for running calls to finish, then retry.", d.limits.Concurrency), Status: 429}
+	}
+	if wait, ok := d.limiter.allow(key, d.limits.PerMinute, d.now()); !ok {
+		d.limiter.release(key, d.limits.Concurrency)
+		secs := max(1, int(math.Ceil(wait.Seconds())))
+		return Result{}, &ToolError{Code: "rate_limited", Message: "Rate limit exceeded for this token", Hint: fmt.Sprintf("Too many calls; retry after %ds.", secs), Status: 429}
 	}
 	callCtx, cancel := context.WithTimeout(ctx, d.limits.Timeout)
 	defer cancel()
@@ -403,6 +417,9 @@ func (d *Dispatcher) Do(ctx context.Context, p Principal, t Tool, c Call) (Resul
 		w.mu.Unlock()
 		if ctx.Err() != nil {
 			return Result{}, &ToolError{Code: "cancelled", Message: "Call cancelled", Hint: "The client cancelled the call.", Status: 499}
+		}
+		if t.IsWrite() {
+			return Result{}, &ToolError{Code: "timeout", Message: fmt.Sprintf("Call exceeded %s; the write may have been applied", d.limits.Timeout), Hint: writeUncertainHint, Status: 504}
 		}
 		return Result{}, &ToolError{Code: "timeout", Message: fmt.Sprintf("Call exceeded %s", d.limits.Timeout), Hint: "Kafka did not answer in time; retry, or narrow the query.", Status: 504}
 	}
@@ -539,7 +556,7 @@ func mapError(t Tool, c Call, status int, body []byte) *ToolError {
 		code, msg = "internal", "Internal error"
 	}
 	if len(msg) > 512 {
-		msg = msg[:512]
+		msg = strings.ToValidUTF8(msg[:512], "")
 	}
 	cluster := c.Cluster
 	if cluster == "" {
@@ -557,6 +574,8 @@ func mapError(t Tool, c Call, status int, body []byte) *ToolError {
 		e.Hint = "The resource changed or already exists; read its current state and retry."
 	case status == 429:
 		e.Hint = "Rate limited; retry after a short delay."
+	case (status == 502 || status == 503 || status == 504) && t.IsWrite():
+		e.Hint = writeUncertainHint
 	case status == 502 || status == 503 || status == 504:
 		e.Hint = "Kafka or a dependency is temporarily unavailable; retry after a few seconds."
 	case status >= 500:

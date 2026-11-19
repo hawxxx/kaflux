@@ -316,6 +316,28 @@ func TestDoSetsAuditIdentity(t *testing.T) {
 		t.Fatalf("no audit recorded: %+v", audits)
 	}
 
+	// Admin writes audit through api.adminAudit, which must also attribute MCP.
+	acl := map[string]any{
+		"acl":          map[string]any{"resourceType": "TOPIC", "resourceName": "orders.", "patternType": "PREFIXED", "principal": "User:test-operator", "host": "*", "operation": "READ", "permission": "ALLOW"},
+		"confirmation": true,
+	}
+	if _, e := d.Do(context.Background(), testPrincipal(), mustTool(t, "kaflux_acl_create"), Call{Cluster: "demo", Args: map[string]any{"body": acl}}); e != nil {
+		t.Fatalf("acl create: %+v", e)
+	}
+	audits, _ = s.Audits(context.Background())
+	found = false
+	for _, x := range audits {
+		if x.Action == "create-acl" {
+			found = true
+			if x.Actor != "owner-1/ci-bot" || x.Provider != "mcp" || x.SourceIP != "203.0.113.9" {
+				t.Fatalf("admin audit identity %+v", x)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no admin audit recorded")
+	}
+
 	// The derived session never carries the owner's console session handle or CSRF.
 	seen := mcpSession(testPrincipal())
 	if seen.User.ID != "owner-1/ci-bot" || seen.User.Provider != "mcp" || seen.User.Username != "Owner" || seen.ID == "owner-session" || seen.CSRF != "" {

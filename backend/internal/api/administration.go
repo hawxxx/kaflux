@@ -8,6 +8,7 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/hawxxx/kaflux/backend/internal/store"
 	"github.com/twmb/franz-go/pkg/kerr"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -161,7 +162,13 @@ func (a *API) adminAudit(r *http.Request, u auth.User, id, action, resource, res
 	if a.o.Demo {
 		provider = "development-simulator"
 	}
-	return a.o.Store.Audit(r.Context(), store.Audit{Actor: u.ID, ClusterID: id, Provider: provider, Action: action, Resource: resource, Result: result, RequestID: requestID(r), AdminBefore: before, AdminAfter: after})
+	// MCP calls are attributed to the token, like a.audit does for the
+	// session provider; console sessions keep the cluster kind.
+	if u.Provider == "mcp" {
+		provider = "mcp"
+	}
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	return a.o.Store.Audit(r.Context(), store.Audit{Actor: u.ID, ClusterID: id, Provider: provider, Action: action, Resource: resource, Result: result, RequestID: requestID(r), SourceIP: ip, AdminBefore: before, AdminAfter: after})
 }
 
 // renameCluster sets the cluster's display-name override; an empty name or the
