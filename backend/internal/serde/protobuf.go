@@ -49,6 +49,14 @@ func NewProtobufDecoderWithSources(ctx context.Context, schema string, sources m
 	if err != nil || len(files) != 1 {
 		return nil, errors.New("invalid Protobuf schema or unsupported import")
 	}
+	if err := checkProtobufSchema(files[0]); err != nil {
+		return nil, err
+	}
+	return &ProtobufDecoder{file: files[0]}, nil
+}
+
+// checkProtobufSchema bounds nesting, imports and message count before a schema is used.
+func checkProtobufSchema(root protoreflect.FileDescriptor) error {
 	nodes := 0
 	var check func(protoreflect.MessageDescriptors, int) error
 	check = func(messages protoreflect.MessageDescriptors, depth int) error {
@@ -87,10 +95,7 @@ func NewProtobufDecoderWithSources(ctx context.Context, schema string, sources m
 		}
 		return nil
 	}
-	if err := checkFile(files[0], 0); err != nil {
-		return nil, err
-	}
-	return &ProtobufDecoder{file: files[0]}, nil
+	return checkFile(root, 0)
 }
 
 func (d *ProtobufDecoder) Decode(wire []byte) (json.RawMessage, error) {

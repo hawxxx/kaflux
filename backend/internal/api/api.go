@@ -50,6 +50,8 @@ type Options struct {
 	OIDC                 map[string]*auth.OIDC
 	LDAP                 []auth.LDAPConfig
 	Integrations         map[string]*integrations.Client
+	// RawDecoders are the configured unframed Protobuf decoders, in display order.
+	RawDecoders []RawDecoder
 }
 type API struct {
 	o                  Options
@@ -409,6 +411,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if !a.allowed(s.User, id, action, resource, w) {
+		return
+	}
+	if endpoint == "decoders" {
+		a.rawDecoders(w)
 		return
 	}
 	if endpoint == "metrics" && a.o.ClusterMetrics != nil {
@@ -791,7 +797,14 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		return
 	}
 	var registry *integrations.Client
-	if decoder != "" {
+	var rawDec *RawDecoder
+	if decoder == "protobuf-raw" {
+		if rawDec = a.rawDecoder(q.Get("rawDecoder")); rawDec == nil {
+			fail(w, 422, "decoder_unavailable", "Choose a configured Protobuf decoder")
+			return
+		}
+	}
+	if decoder != "" && rawDec == nil {
 		if decoder != "avro" && decoder != "protobuf" {
 			fail(w, 422, "unsupported_decoder", "Choose Avro or Protobuf decoding")
 			return
@@ -803,7 +816,7 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		}
 	}
 	if raw := q.Get("offsets"); raw != "" {
-		a.messagesAcross(w, r, u, id, p, raw, registry, decoder, target)
+		a.messagesAcross(w, r, u, id, p, raw, registry, rawDec, decoder, target)
 		return
 	}
 	part, e := strconv.ParseInt(q.Get("partition"), 10, 32)
@@ -841,7 +854,9 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		failCause(w, r, 503, "consume_failed", "Unable to read messages", e)
 		return
 	}
-	if registry != nil {
+	if rawDec != nil {
+		decodeRawFields(m, rawDec, target)
+	} else if registry != nil {
 		a.decodeMessageFields(r.Context(), u, id, registry, m, decoder, target)
 	}
 	respond(w, m)
@@ -857,7 +872,7 @@ func readLimit(q url.Values) int {
 // messagesAcross reads several partitions of one topic in a single request. offsets lists
 // "partition:offset" pairs; with a timestamp the offsets are ignored and each listed partition
 // starts at the first record at or after that time.
-func (a *API) messagesAcross(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider, raw string, registry *integrations.Client, decoder, target string) {
+func (a *API) messagesAcross(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider, raw string, registry *integrations.Client, rawDec *RawDecoder, decoder, target string) {
 	reader, ok := p.(kafka.MultiReader)
 	if !ok {
 		fail(w, 422, "unsupported", "Reading several partitions is unavailable")
@@ -910,7 +925,9 @@ func (a *API) messagesAcross(w http.ResponseWriter, r *http.Request, u auth.User
 		failCause(w, r, 503, "consume_failed", "Unable to read messages", e)
 		return
 	}
-	if registry != nil {
+	if rawDec != nil {
+		decodeRawFields(m, rawDec, target)
+	} else if registry != nil {
 		a.decodeMessageFields(r.Context(), u, id, registry, m, decoder, target)
 	}
 	respond(w, m)
