@@ -5,10 +5,10 @@ import {Login,formatVersion} from './Login';
 
 const respond=(data:unknown,status=200)=>new Response(JSON.stringify(status<400?{data}:{error:{code:'not_found',message:'Not found'}}),{status,headers:{'Content-Type':'application/json'}});
 
-function mount(providers:unknown[],version:{version:string}|null){
+function mount(providers:unknown[]|null,version:{version:string}|null){
   vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>{
     const url=String(input);
-    if(url.endsWith('/auth/providers'))return respond(providers);
+    if(url.endsWith('/auth/providers'))return providers?respond(providers):respond(null,503);
     if(url.endsWith('/version'))return version?respond(version):respond(null,404);
     return respond(null,404);
   }));
@@ -55,5 +55,14 @@ describe('Login',()=>{
     expect(screen.getByRole('link',{name:'Authentication guide'})).toHaveAttribute('href','https://github.com/hawxxx/kaflux/blob/main/docs/authentication.md');
     expect(screen.queryByLabelText('Username')).toBeNull();
     expect(screen.queryByRole('button',{name:'Sign in'})).toBeNull();
+  });
+
+  it('keeps the form when sign-in options cannot load and never flashes it while they load',async()=>{
+    mount(null,null);
+    expect(screen.queryByLabelText('Username')).toBeNull();
+    expect(screen.getByLabelText('Loading sign-in options')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in options could not be loaded');
+    expect(screen.getByLabelText('Username')).toBeVisible();
+    expect(screen.getByRole('button',{name:'Sign in'})).toBeVisible();
   });
 });

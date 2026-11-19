@@ -31,7 +31,7 @@ function SsoButton({provider}:{provider:Provider}){
 }
 
 export function Login({onSuccess}:{onSuccess:()=>void}){
-  const providers=useQuery({queryKey:['/auth/providers'],queryFn:()=>api<Provider[]>('/auth/providers')});
+  const providers=useQuery({queryKey:['/auth/providers'],queryFn:()=>api<Provider[]>('/auth/providers'),retry:1});
   // Absent when the operator sets hideVersion; the footer then simply omits it.
   const version=useQuery({queryKey:['/version'],queryFn:()=>api<{version:string}>('/version'),retry:false,staleTime:Infinity});
   const [username,setUsername]=useState('');
@@ -41,7 +41,9 @@ export function Login({onSuccess}:{onSuccess:()=>void}){
   const [busy,setBusy]=useState(false);
   const card=useRef<HTMLDivElement>(null);
   const list=providers.data?.data??[];
-  const passwordLogin=!providers.data||list.some(p=>p.type!=='oidc');
+  // Wait for the provider list so a form never flashes before switching to single sign-on.
+  // If the list cannot load, fall back to the form: the backend still decides whether credentials are accepted.
+  const passwordLogin=providers.isError||(providers.isSuccess&&list.some(p=>p.type!=='oidc'));
   const sso=list.filter(p=>p.type==='oidc');
   // A loaded but empty list means no account or provider exists, so a form could never succeed.
   const unconfigured=providers.isSuccess&&list.length===0;
@@ -58,6 +60,8 @@ export function Login({onSuccess}:{onSuccess:()=>void}){
           <p>Sign in to continue.</p>
         </div>
         {error&&<div className="login-error" role="alert"><CircleAlert size={15} aria-hidden="true"/>{error}</div>}
+        {providers.isPending&&<div className="login-pending" aria-busy="true" aria-label="Loading sign-in options"/>}
+        {providers.isError&&<div className="login-error" role="alert"><CircleAlert size={15} aria-hidden="true"/>Sign-in options could not be loaded. You can still try your account, or reload the page.</div>}
         {unconfigured&&<div className="login-notice" role="status"><strong>No sign-in method is configured.</strong><span>Set a local administrator with <code>KAFLUX_ADMIN_USER</code> and <code>KAFLUX_ADMIN_PASSWORD_HASH</code>, or configure an identity provider, then reload this page.</span><a href="https://github.com/hawxxx/kaflux/blob/main/docs/authentication.md" target="_blank" rel="noreferrer noopener">Authentication guide</a></div>}
         {passwordLogin&&!unconfigured&&<form onInput={()=>signalBackdrop('input')} onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');signalBackdrop('submit');try{await api('/auth/login',{method:'POST',body:JSON.stringify({username,password})});onSuccess()}catch(e){setError((e as Error).message);signalBackdrop('error')}finally{setBusy(false)}}}>
           <label className="login-field">Username<input autoComplete="username" spellCheck={false} value={username} onChange={e=>setUsername(e.target.value)} required/></label>
