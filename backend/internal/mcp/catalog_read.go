@@ -7,7 +7,7 @@ var readTools = []Tool{
 	{Name: "kaflux_version_get", Method: "GET", Path: "/version", Scope: "read",
 		Description: "Get the running Kaflux build version. No arguments. Returns the version string."},
 	{Name: "kaflux_cluster_list", Method: "GET", Path: "/clusters", Scope: "read", Paginated: true,
-		Description: "List the Kafka clusters Kaflux manages. Optional search, e.g. search=\"prod\". Returns each cluster's id (the cluster argument of other tools), name, environment, state, broker/topic/partition counts, Kafka version and metadata mode."},
+		Description: "List the Kafka clusters Kaflux manages. No arguments. Returns each cluster's id (the cluster argument of other tools), name, environment, state, broker/topic/partition counts, Kafka version and metadata mode."},
 	{Name: "kaflux_audit_global", Method: "GET", Path: "/audit", Scope: "read", Paginated: true,
 		Description: "List audit events across all clusters, newest first. Optional limit, e.g. limit=20. Returns actor, action, target, outcome and time for each event."},
 	{Name: "kaflux_metrics_catalog_global", Method: "GET", Path: "/metrics/catalog", Scope: "read",
@@ -24,7 +24,7 @@ var readTools = []Tool{
 		Description: "Assess replica and leader distribution across brokers. Args: cluster, e.g. \"local\". Returns per-broker replica, leader and byte figures plus a flag saying whether broker capacity is known."},
 
 	// Topics.
-	{Name: "kaflux_topic_list", Method: "GET", Path: "/clusters/{cluster}/topics", Scope: "read", Paginated: true,
+	{Name: "kaflux_topic_list", Method: "GET", Path: "/clusters/{cluster}/topics", Scope: "read", Paginated: true, Search: true,
 		Description: "List topics with paging and filters. Args: cluster, e.g. \"local\"; optional q=\"orders\", internal=false, sort=\"urp\". Returns topic rows (name, partitions, replication factor, under-replicated count) and paging totals."},
 	{Name: "kaflux_topic_get", Method: "GET", Path: "/clusters/{cluster}/topics/{topic}", Scope: "read",
 		Description: "Describe one topic. Args: cluster, topic, e.g. topic=\"orders\". Returns partitions with leaders, replicas, ISR and offsets, plus key configuration."},
@@ -38,7 +38,7 @@ var readTools = []Tool{
 	// Brokers and consumer groups.
 	{Name: "kaflux_broker_list", Method: "GET", Path: "/clusters/{cluster}/brokers", Scope: "read", Paginated: true,
 		Description: "List brokers. Args: cluster, e.g. \"local\". Returns each broker with host, rack, controller flag and its replica and leader counts."},
-	{Name: "kaflux_group_list", Method: "GET", Path: "/clusters/{cluster}/consumer-groups", Scope: "read", Paginated: true,
+	{Name: "kaflux_group_list", Method: "GET", Path: "/clusters/{cluster}/consumer-groups", Scope: "read", Paginated: true, Search: true,
 		Description: "List consumer groups. Args: cluster; optional search=\"billing\". Returns group id, state, members, topics and nullable lag."},
 	{Name: "kaflux_group_get", Method: "GET", Path: "/clusters/{cluster}/consumer-groups/{group}", Scope: "read",
 		Description: "Describe a consumer group. Args: cluster, group, e.g. group=\"billing-service\". Returns state, members, and per-partition committed offset, log bounds and nullable lag."},

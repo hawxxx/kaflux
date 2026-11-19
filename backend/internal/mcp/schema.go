@@ -96,8 +96,9 @@ func jsonContentSchema(m map[string]any) map[string]any {
 
 // InputSchema derives the tool's JSON Schema (2020-12) arguments: path and
 // query parameters at the top level, the JSON request body under "body",
-// limit/cursor/search for paginated tools and an optional "confirmation"
-// token for writes. Header parameters (CSRF) are supplied by dispatch.
+// limit/cursor for paginated tools, search where Tool.Search is set, and an
+// optional "confirmation" token for writes. Header parameters (CSRF) are
+// supplied by dispatch.
 func (t Tool) InputSchema() map[string]any {
 	props := map[string]any{}
 	required := []string{}
@@ -141,14 +142,14 @@ func (t Tool) InputSchema() map[string]any {
 		if props["cursor"] == nil {
 			props["cursor"] = map[string]any{"type": "string", "description": "nextCursor from the previous page"}
 		}
-		if props["search"] == nil {
-			props["search"] = map[string]any{"type": "string", "description": "Case-insensitive substring filter on item names"}
-		}
+	}
+	if t.Search && props["search"] == nil {
+		props["search"] = map[string]any{"type": "string", "description": "Case-insensitive substring filter on item names"}
 	}
 	if t.IsWrite() {
 		props["confirmation"] = map[string]any{
 			"type":        "string",
-			"description": "Omit to prepare: the result previews the change and returns a confirmation token. Repeat the identical call with that token to commit.",
+			"description": "Top-level MCP confirmation token (not the REST body.confirmation field). Omit to prepare: the result previews the change and returns a token. Repeat the identical call with that token to commit.",
 		}
 	}
 	out := map[string]any{"type": "object", "properties": props, "additionalProperties": false}

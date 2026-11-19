@@ -162,6 +162,84 @@ func TestReadToolsAreReadOnlyAnnotated(t *testing.T) {
 	}
 }
 
+// readOnlyPosts are the only non-GET operations exposed below write scope;
+// each needs a read-level REST action.
+var readOnlyPosts = map[string]string{
+	"POST /clusters/{cluster}/schemas/{integration}/{subject}/compatibility": "read",
+	"POST /clusters/{cluster}/messages/search":                               "messages",
+}
+
+// mustBeDestructive pins tools whose REST action (execute, rollback, delete,
+// reset-offsets) lives only in the destructive scope.
+var mustBeDestructive = []string{
+	"kaflux_rebalance_pause", "kaflux_rebalance_resume", "kaflux_rebalance_cancel",
+	"kaflux_rebalance_cancel_rollback", "kaflux_rebalance_throttle",
+	"kaflux_rebalance_execute", "kaflux_rebalance_rollback",
+	"kaflux_topic_truncate", "kaflux_topic_recreate", "kaflux_topic_bulk_delete",
+	"kaflux_group_reset_offsets",
+}
+
+func TestScopesMatchOperations(t *testing.T) {
+	for _, tool := range Catalog() {
+		key := tool.Method + " " + tool.Path
+		switch tool.Method {
+		case "DELETE":
+			if tool.Scope != "destructive" {
+				t.Errorf("%s: DELETE operation has scope %q", tool.Name, tool.Scope)
+			}
+		case "POST", "PUT", "PATCH":
+			if want, ok := readOnlyPosts[key]; ok {
+				if tool.Scope != want {
+					t.Errorf("%s: pinned read-only %s has scope %q, want %q", tool.Name, key, tool.Scope, want)
+				}
+			} else if !isWrite(tool) {
+				t.Errorf("%s: %s has non-write scope %q", tool.Name, key, tool.Scope)
+			}
+		}
+	}
+	for key := range readOnlyPosts {
+		found := false
+		for _, tool := range Catalog() {
+			found = found || tool.Method+" "+tool.Path == key
+		}
+		if !found {
+			t.Errorf("pinned read-only operation %s is not in the catalog", key)
+		}
+	}
+	for _, name := range mustBeDestructive {
+		tool, ok := Lookup(name)
+		if !ok || tool.Scope != "destructive" || !tool.Destructive {
+			t.Errorf("%s must exist with scope destructive (got %q)", name, tool.Scope)
+		}
+	}
+}
+
+func TestSearchIsOptIn(t *testing.T) {
+	for _, tool := range Catalog() {
+		props, _ := tool.InputSchema()["properties"].(map[string]any)
+		if _, has := props["search"]; has != tool.Search {
+			t.Errorf("%s: search property %v, Search %v", tool.Name, has, tool.Search)
+		}
+	}
+	for _, name := range []string{"kaflux_topic_list", "kaflux_group_list"} {
+		if tool, _ := Lookup(name); !tool.Search {
+			t.Errorf("%s: search expected", name)
+		}
+	}
+}
+
+func TestLookup(t *testing.T) {
+	for _, tool := range Catalog() {
+		got, ok := Lookup(tool.Name)
+		if !ok || got.Method != tool.Method || got.Path != tool.Path || got.Scope != tool.Scope {
+			t.Errorf("Lookup(%s) = %+v, %v", tool.Name, got, ok)
+		}
+	}
+	if _, ok := Lookup("kaflux_auth_login"); ok {
+		t.Error("Lookup found an unknown tool")
+	}
+}
+
 // strictSchema decodes s with the SDK's JSON Schema implementation, resolves
 // it, and reports any keyword the 2020-12 draft does not define.
 func strictSchema(t *testing.T, name string, s map[string]any) {
@@ -267,21 +345,27 @@ func TestToolDescriptionsShort(t *testing.T) {
 	}
 }
 
-// The embedded copy must match docs/openapi.yaml apart from the version line
-// release-please bumps in the source only (regenerate with go generate).
+// The embedded copy must match docs/openapi.yaml apart from the one version
+// line release-please bumps in the source only (regenerate with go generate).
 func TestEmbeddedOpenAPIInSync(t *testing.T) {
 	source, err := os.ReadFile("../../../docs/openapi.yaml")
 	if err != nil {
 		t.Fatal(err)
+	}
+	for name, b := range map[string][]byte{"docs/openapi.yaml": source, "embedded copy": openapiSpec} {
+		if n := len(releaseVersionLine.FindAllIndex(unixLines(b), -1)); n != 1 {
+			t.Fatalf("%s: %d release-please version lines, want exactly 1", name, n)
+		}
 	}
 	if normalizeSpec(source) != normalizeSpec(openapiSpec) {
 		t.Fatal("backend/internal/mcp/openapi.yaml differs from docs/openapi.yaml; run go generate ./internal/mcp")
 	}
 }
 
-var releaseVersionLine = regexp.MustCompile(`(?m)^.*# x-release-please-version\s*$`)
+var releaseVersionLine = regexp.MustCompile(`(?m)^  version: \S+ # x-release-please-version$`)
+
+func unixLines(b []byte) []byte { return []byte(strings.ReplaceAll(string(b), "\r\n", "\n")) }
 
 func normalizeSpec(b []byte) string {
-	s := strings.ReplaceAll(string(b), "\r\n", "\n")
-	return releaseVersionLine.ReplaceAllString(s, "")
+	return string(releaseVersionLine.ReplaceAll(unixLines(b), nil))
 }

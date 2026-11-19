@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -19,7 +20,8 @@ type Tool struct {
 	Scope                     string // read|messages|write|destructive: the MCP-side ceiling
 	ReadOnly, Destructive     bool
 	Idempotent                bool
-	Paginated                 bool // dispatch adds limit/cursor/search handling
+	Paginated                 bool // dispatch adds limit/cursor handling
+	Search                    bool // dispatch adds a substring name filter; only where it maps onto the route
 	// Preview optionally computes what a write would do before confirmation.
 	Preview func(ctx context.Context, d *Dispatcher, c Call) (any, error)
 }
@@ -66,14 +68,18 @@ func Catalog() []Tool {
 	return tools
 }
 
+var byName = sync.OnceValue(func() map[string]Tool {
+	m := map[string]Tool{}
+	for _, t := range Catalog() {
+		m[t.Name] = t
+	}
+	return m
+})
+
 // Lookup finds a catalog tool by name.
 func Lookup(name string) (Tool, bool) {
-	for _, t := range Catalog() {
-		if t.Name == name {
-			return t, true
-		}
-	}
-	return Tool{}, false
+	t, ok := byName()[name]
+	return t, ok
 }
 
 // domainOf takes the segment after "kaflux_"; the verb is the rest.
