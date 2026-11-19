@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,11 +30,23 @@ const (
 func (a *API) unusedTopics(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider, parts []string) bool {
 	switch {
 	case len(parts) == 5 && parts[4] == "unused-topics":
-		if r.Method != "GET" {
-			fail(w, 405, "method_not_allowed", "GET required")
-			return true
+		switch r.Method {
+		case "GET":
+			a.unusedReport(w, r, u, id, p)
+		case "POST":
+			a.startUnusedJob(w, r, u, id, p)
+		default:
+			fail(w, 405, "method_not_allowed", "GET or POST required")
 		}
-		a.unusedReport(w, r, u, id, p)
+	case len(parts) == 7 && parts[4] == "unused-topics" && parts[5] == "jobs":
+		switch r.Method {
+		case "GET":
+			a.unusedJobStatus(w, u, id, parts[6])
+		case "DELETE":
+			a.cancelUnusedJob(w, u, id, parts[6])
+		default:
+			fail(w, 405, "method_not_allowed", "GET or DELETE required")
+		}
 	case len(parts) == 6 && parts[4] == "topics" && parts[5] == "bulk-delete":
 		if r.Method != "POST" {
 			fail(w, 405, "method_not_allowed", "POST required")
@@ -67,35 +81,54 @@ func (a *API) unusedTimeout() time.Duration {
 	return unusedDeadline
 }
 
-func (a *API) unusedReport(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) {
+// unusedParams validates the shared query of the report and job endpoints.
+func (a *API) unusedParams(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) (days int, exclude *regexp.Regexp, ok bool) {
 	if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(u, id, "read") {
 		fail(w, 403, "forbidden", "Permission denied")
-		return
+		return 0, nil, false
 	}
 	q := r.URL.Query()
-	days, ok := parseMinAgeDays(q.Get("minAgeDays"))
-	if !ok {
+	days, valid := parseMinAgeDays(q.Get("minAgeDays"))
+	if !valid {
 		fail(w, 400, "invalid_request", "minAgeDays must be between 1 and 3650")
-		return
+		return 0, nil, false
 	}
-	var exclude *regexp.Regexp
 	if pattern := q.Get("exclude"); pattern != "" {
 		if len(pattern) > 200 {
 			fail(w, 400, "invalid_request", "exclude must be at most 200 characters")
-			return
+			return 0, nil, false
 		}
 		var e error
 		if exclude, e = regexp.Compile(pattern); e != nil {
 			fail(w, 400, "invalid_request", "exclude is not a valid regular expression")
-			return
+			return 0, nil, false
 		}
 	}
-	if _, ok := p.(kafka.GroupUsageProvider); !ok {
+	if _, supported := p.(kafka.GroupUsageProvider); !supported {
 		fail(w, 422, "unsupported", "Provider cannot report consumer group usage")
+		return 0, nil, false
+	}
+	return days, exclude, true
+}
+
+// visibleUnused keeps the topics the user may read.
+func (a *API) visibleUnused(u auth.User, id string, topics []model.UnusedTopic) []model.UnusedTopic {
+	visible := make([]model.UnusedTopic, 0, len(topics))
+	for _, t := range topics {
+		if (auth.Authorizer{Grants: a.o.Grants}).Allowed(u, id, "read", t.Name) {
+			visible = append(visible, t)
+		}
+	}
+	return visible
+}
+
+func (a *API) unusedReport(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) {
+	days, exclude, ok := a.unusedParams(w, r, u, id, p)
+	if !ok {
 		return
 	}
 	now := a.now()
-	topics, partial, reason, e := a.evaluateUnused(r.Context(), p, now, time.Duration(days)*24*time.Hour, q.Get("includeInternal") == "true", exclude)
+	topics, partial, reason, e := a.evaluateUnused(r.Context(), p, now, time.Duration(days)*24*time.Hour, r.URL.Query().Get("includeInternal") == "true", exclude)
 	if e != nil {
 		if errors.Is(e, errUsageUnavailable) {
 			fail(w, 503, "usage_unavailable", "Consumer group state could not be read; no topic can be judged unused")
@@ -104,13 +137,7 @@ func (a *API) unusedReport(w http.ResponseWriter, r *http.Request, u auth.User, 
 		adminError(w, e)
 		return
 	}
-	visible := topics[:0]
-	for _, t := range topics {
-		if (auth.Authorizer{Grants: a.o.Grants}).Allowed(u, id, "read", t.Name) {
-			visible = append(visible, t)
-		}
-	}
-	respond(w, map[string]any{"topics": visible, "evaluatedAt": now, "partial": partial, "partialReason": reason})
+	respond(w, map[string]any{"topics": a.visibleUnused(u, id, topics), "evaluatedAt": now, "partial": partial, "partialReason": reason})
 }
 
 var errUsageUnavailable = errors.New("consumer state unavailable")
@@ -141,11 +168,42 @@ func freshTopic(ctx context.Context, p kafka.Provider, t model.Topic) (model.Top
 	return out, kafka.OffsetsFingerprint(offsets), nil
 }
 
-// evaluateUnused classifies every topic. Consumer usage is read once and fresh;
-// offsets and the newest record are read per remaining topic, all under one
-// deadline. A topic whose evidence cannot be read is left out, never reported.
+// unusedEval tunes one evaluation run. The synchronous report keeps the short
+// deadline and candidate cap; background jobs get a longer deadline and report
+// progress.
+type unusedEval struct {
+	timeout       time.Duration
+	maxCandidates int
+	progress      func(done, total int)
+}
+
+// unusedWorkers stays below the provider's broker-operation budget so an
+// evaluation cannot starve interactive requests.
+const unusedWorkers = 6
+
+const (
+	outNotReached uint8 = iota
+	outSkipped
+	outUnreadable
+	outDone
+)
+
+type unusedOutcome struct {
+	state uint8
+	row   model.UnusedTopic
+}
+
+// evaluateUnused classifies every topic with the synchronous report limits.
 func (a *API) evaluateUnused(parent context.Context, p kafka.Provider, now time.Time, minAge time.Duration, includeInternal bool, exclude *regexp.Regexp) ([]model.UnusedTopic, bool, string, error) {
-	ctx, cancel := context.WithTimeout(parent, a.unusedTimeout())
+	return a.evaluateUnusedWith(parent, p, now, minAge, includeInternal, exclude, unusedEval{timeout: a.unusedTimeout(), maxCandidates: unusedMaxCandidates})
+}
+
+// evaluateUnusedWith classifies every topic. Consumer usage is read once and
+// fresh; offsets and the newest record are read per remaining topic by a small
+// worker pool, all under one deadline. A topic whose evidence cannot be read is
+// left out, never reported.
+func (a *API) evaluateUnusedWith(parent context.Context, p kafka.Provider, now time.Time, minAge time.Duration, includeInternal bool, exclude *regexp.Regexp, opt unusedEval) ([]model.UnusedTopic, bool, string, error) {
+	ctx, cancel := context.WithTimeout(parent, opt.timeout)
 	defer cancel()
 	snapshot, e := p.Snapshot(ctx)
 	if e != nil {
@@ -166,38 +224,74 @@ func (a *API) evaluateUnused(parent context.Context, p kafka.Provider, now time.
 		candidates = append(candidates, t)
 	}
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Name < candidates[j].Name })
-	if len(candidates) > unusedMaxCandidates {
-		candidates = candidates[:unusedMaxCandidates]
-		reasons = append(reasons, fmt.Sprintf("only the first %d topics were evaluated", unusedMaxCandidates))
+	if len(candidates) > opt.maxCandidates {
+		candidates = candidates[:opt.maxCandidates]
+		reasons = append(reasons, fmt.Sprintf("only the first %d topics were evaluated", opt.maxCandidates))
 	}
-	out := []model.UnusedTopic{}
-	unreadable, notReached := 0, 0
-	for i, t := range candidates {
+	total := len(candidates)
+	if opt.progress != nil {
+		opt.progress(0, total)
+	}
+	results := make([]unusedOutcome, total)
+	var finished atomic.Int64
+	evaluate := func(t model.Topic) unusedOutcome {
 		if ctx.Err() != nil {
-			notReached = len(candidates) - i
-			break
+			return unusedOutcome{}
 		}
 		if hasActiveUse(usage[t.Name]) {
-			continue
+			return unusedOutcome{state: outSkipped}
 		}
 		fresh, fingerprint, e := freshTopic(ctx, p, t)
 		if e != nil {
-			unreadable++
-			continue
+			return unreadableOr(ctx)
 		}
 		last, ok := lastRecordTime(ctx, p, fresh, now)
 		if !ok {
-			unreadable++
-			continue
+			return unreadableOr(ctx)
 		}
-		if row, reported := kafka.ClassifyUnusedListing(fresh, usage[t.Name], last, now, minAge); reported {
-			row.Fingerprint = fingerprint
-			out = append(out, row)
+		row, reported := kafka.ClassifyUnusedListing(fresh, usage[t.Name], last, now, minAge)
+		if !reported {
+			return unusedOutcome{state: outSkipped}
 		}
+		row.Fingerprint = fingerprint
+		return unusedOutcome{state: outDone, row: row}
 	}
-	if ctx.Err() != nil && notReached == 0 {
-		// The deadline hit during the last topic's reads.
-		notReached, unreadable = 1, max(unreadable-1, 0)
+	next := make(chan int)
+	go func() {
+		defer close(next)
+		for i := range candidates {
+			select {
+			case next <- i:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	var wg sync.WaitGroup
+	for w := 0; w < min(unusedWorkers, max(total, 1)); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				results[i] = evaluate(candidates[i])
+				if results[i].state != outNotReached && opt.progress != nil {
+					opt.progress(int(finished.Add(1)), total)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	out := []model.UnusedTopic{}
+	unreadable, notReached := 0, 0
+	for _, r := range results {
+		switch r.state {
+		case outDone:
+			out = append(out, r.row)
+		case outUnreadable:
+			unreadable++
+		case outNotReached:
+			notReached++
+		}
 	}
 	if notReached > 0 {
 		reasons = append(reasons, fmt.Sprintf("evaluation deadline reached: %d topics not evaluated", notReached))
@@ -206,6 +300,15 @@ func (a *API) evaluateUnused(parent context.Context, p kafka.Provider, now time.
 		reasons = append(reasons, fmt.Sprintf("offsets or last write time could not be read for %d topics, which are left out", unreadable))
 	}
 	return out, len(reasons) > 0, strings.Join(reasons, "; "), nil
+}
+
+// unreadableOr reports a read failure, unless the deadline caused it: then the
+// topic simply was not reached.
+func unreadableOr(ctx context.Context) unusedOutcome {
+	if ctx.Err() != nil {
+		return unusedOutcome{}
+	}
+	return unusedOutcome{state: outUnreadable}
 }
 
 func hasActiveUse(usage []model.TopicGroupUse) bool {

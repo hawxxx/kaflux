@@ -9,7 +9,14 @@ afterEach(()=>vi.restoreAllMocks());
 const row=(name:string,classification:string,extra:object={})=>({name,classification,reasons:[`why ${name}`],partitions:3,emptyPartitions:[],records:10,sizeBytes:2048,lastRecordAt:'2026-09-01T00:00:00Z',consumerGroups:[],activeConsumers:0,internal:false,ageKnown:true,fingerprint:`fp-${name}`,...extra});
 const topics=[row('a.empty','unused',{records:0,lastRecordAt:null,ageKnown:false}),row('b.old','likely-unused',{emptyPartitions:[1,2]}),row('c.idle','idle',{consumerGroups:['g1']}),row('_int','unused',{internal:true})];
 type Call={path:string;method?:string;body:any};
-function stub(calls:Call[],handler:(path:string,method?:string)=>{ok?:boolean;data?:unknown;error?:{code:string;message:string}}){vi.stubGlobal('fetch',vi.fn(async(path:string,o?:RequestInit)=>{calls.push({path,method:o?.method,body:o?.body?JSON.parse(String(o.body)):null});const r=handler(path,o?.method);return {ok:r.ok!==false,status:r.ok===false?400:200,json:async()=>r.ok===false?{error:r.error}:{data:r.data}} as Response}))}
+type Reply={ok?:boolean;data?:unknown;error?:{code:string;message:string}};
+// The report is served as a background job: POST starts it, the first poll finishes it.
+function stub(calls:Call[],handler:(path:string,method?:string)=>Reply){vi.stubGlobal('fetch',vi.fn(async(path:string,o?:RequestInit)=>{calls.push({path,method:o?.method,body:o?.body?JSON.parse(String(o.body)):null});
+  const reply=(r:Reply)=>({ok:r.ok!==false,status:r.ok===false?400:200,json:async()=>r.ok===false?{error:r.error}:{data:r.data}} as Response);
+  const isJobStart=o?.method==='POST'&&/\/unused-topics\?/.test(path);const isJobPoll=/\/unused-topics\/jobs\//.test(path);
+  if(isJobStart){const r=handler(path.replace('?','?start&'),'GET');return reply(r.ok===false?r:{data:{id:'job1',status:'running',done:0,total:4,evaluatedAt:'2026-11-13T00:00:00Z'}})}
+  if(isJobPoll){const r=handler(path,'GET');return reply(r.ok===false?r:{data:{id:'job1',status:'done',done:4,total:4,...(r.data as object)}})}
+  return reply(handler(path,o?.method))}))}
 const report=(t=topics)=>({topics:t,evaluatedAt:'2026-11-13T00:00:00Z',partial:false});
 describe('unused topics',()=>{
   it('filters rows with classification chips and shows counts',async()=>{
@@ -51,7 +58,7 @@ describe('unused topics',()=>{
     fireEvent.click(box);
     fireEvent.change(screen.getByLabelText(/to confirm/),{target:{value:'delete 1 topics'}});
     fireEvent.click(screen.getByRole('button',{name:'Confirm deletion'}));
-    await waitFor(()=>expect(calls.some(c=>c.method==='POST'&&c.body.includeEmptyUnknownAge===true&&c.body.fingerprints['a.empty']==='fp-a.empty')).toBe(true));
+    await waitFor(()=>expect(calls.some(c=>c.method==='POST'&&c.path.endsWith('/topics/bulk-delete')&&c.body.includeEmptyUnknownAge===true&&c.body.fingerprints['a.empty']==='fp-a.empty')).toBe(true));
   });
   it('shows the partial reason and a 503 from the report',async()=>{
     stub([],()=>({data:{...report(),partial:true,partialReason:'evaluation deadline reached: 4 topics not evaluated'}}));
@@ -101,5 +108,25 @@ describe('unused topics',()=>{
     const csv=unusedCsv([row('x,y','idle',{reasons:['a; b']}) as any]);
     expect(csv.split('\n')[1]).toContain('"x,y",idle');
     expect(csv.split('\n')[0]).toContain('lastRecordAt');
+  });
+  it('shows real progress while the job runs, then the results',async()=>{
+    let polls=0;
+    vi.stubGlobal('fetch',vi.fn(async(path:string,o?:RequestInit)=>{
+      const job=(extra:object)=>({ok:true,status:200,json:async()=>({data:{id:'j',evaluatedAt:'2026-11-13T00:00:00Z',...extra}})} as Response);
+      if(o?.method==='POST')return job({status:'running',done:0,total:0});
+      polls++;return polls<3?job({status:'running',done:40,total:80}):job({status:'done',done:80,total:80,...report()});
+    }));
+    wrap(<UnusedTopics clusterId="demo" session={session}/>);
+    expect(await screen.findByText(/40 of 80 topics/)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar',{name:'Topic evaluation progress'})).toHaveAttribute('aria-valuenow','50');
+    expect(await screen.findByText('a.empty')).toBeInTheDocument();
+  });
+  it('surfaces a failed job and cancels the job when the view goes away',async()=>{
+    const calls:Call[]=[];
+    vi.stubGlobal('fetch',vi.fn(async(path:string,o?:RequestInit)=>{calls.push({path,method:o?.method,body:null});
+      const job=(extra:object)=>({ok:true,status:200,json:async()=>({data:{id:'j',evaluatedAt:'2026-11-13T00:00:00Z',done:0,total:0,...extra}})} as Response);
+      return o?.method==='POST'?job({status:'running'}):job({status:'failed',error:{code:'usage_unavailable',message:'Consumer group state could not be read'}})}));
+    wrap(<UnusedTopics clusterId="demo" session={session}/>);
+    expect(await screen.findByText(/Consumer group state could not be read/)).toBeInTheDocument();
   });
 });

@@ -359,3 +359,22 @@
 .mutation-warning svg{color:var(--warn)}
 .mutation-warning.danger{border-color:color-mix(in srgb,var(--bad) 50%,var(--border));background:color-mix(in srgb,var(--bad) 9%,transparent)}
 .mutation-warning.danger svg{color:var(--bad)}
+.eval-loader{display:grid;gap:14px;padding:20px;margin:12px 0;border:1px solid var(--border);border-radius:12px;background:linear-gradient(180deg,var(--raised),var(--panel))}
+.eval-head{display:flex;align-items:center;gap:12px}
+.eval-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;color:var(--purple);background:#ac91ff1f;box-shadow:0 0 0 0 #ac91ff66;animation:eval-ping 1.8s ease-out infinite}
+.eval-text{display:grid;flex:1;gap:2px}
+.eval-text .muted{font-size:.85em;animation:rise .3s ease both}
+.eval-meta{display:grid;justify-items:end;gap:2px;font-variant-numeric:tabular-nums;font-size:.85em}
+.eval-meta strong{font-size:1.15em;color:var(--text)}
+.eval-bar{position:relative;height:4px;border-radius:99px;background:var(--border);overflow:hidden}
+.eval-bar span{position:absolute;inset:0 auto 0 0;width:40%;border-radius:inherit;background:linear-gradient(90deg,transparent,var(--purple),var(--blue),transparent);animation:eval-slide 1.4s cubic-bezier(.4,0,.2,1) infinite}
+.eval-skeleton{display:grid;gap:10px;padding-top:4px}
+.eval-row{display:flex;gap:5%;animation:eval-fade 1.6s ease-in-out infinite}
+.eval-row i{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,var(--border),var(--hover),var(--border));background-size:200% 100%;animation:eval-shimmer 1.6s linear infinite}
+.eval-bar.eval-determinate span{position:relative;display:block;height:100%;width:0;overflow:hidden;transition:width .45s cubic-bezier(.4,0,.2,1);background:linear-gradient(90deg,var(--purple),var(--blue));animation:none}
+.eval-bar.eval-determinate span::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,#ffffff55,transparent);animation:eval-slide 1.6s ease-in-out infinite}
+@keyframes eval-slide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+@keyframes eval-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes eval-fade{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes eval-ping{0%{box-shadow:0 0 0 0 #ac91ff66}70%,100%{box-shadow:0 0 0 12px #ac91ff00}}
+@media (prefers-reduced-motion:reduce){.eval-icon,.eval-bar span,.eval-bar span::after,.eval-row,.eval-row i{animation:none}.eval-bar:not(.eval-determinate) span{width:100%;opacity:.5}.eval-bar.eval-determinate span{transition:none}}
