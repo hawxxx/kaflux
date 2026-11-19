@@ -38,6 +38,7 @@ type Store struct {
 	leases   map[string]lease
 	names    map[string]string
 	events   map[string][]model.JobEvent
+	mcp      map[string]mcpEntry
 }
 type lease struct {
 	Owner string
@@ -58,7 +59,7 @@ func New(ctx context.Context, url string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	_, e = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS kaflux_sessions (id text PRIMARY KEY, payload jsonb NOT NULL, expires timestamptz NOT NULL);CREATE INDEX IF NOT EXISTS kaflux_sessions_handle ON kaflux_sessions ((encode(sha256(id::bytea),'hex')));CREATE INDEX IF NOT EXISTS kaflux_sessions_inventory ON kaflux_sessions (expires,(encode(sha256(id::bytea),'hex')));CREATE TABLE IF NOT EXISTS kaflux_jobs (id text PRIMARY KEY, cluster_id text NOT NULL, state text NOT NULL, payload jsonb NOT NULL, lease_until timestamptz, lease_owner text);CREATE TABLE IF NOT EXISTS kaflux_audit (id text PRIMARY KEY, payload jsonb NOT NULL, created_at timestamptz NOT NULL);CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id text primary key,payload jsonb not null);CREATE TABLE IF NOT EXISTS kaflux_cluster_names(cluster_id text PRIMARY KEY, name text NOT NULL);CREATE UNIQUE INDEX IF NOT EXISTS kaflux_one_active_job_v2 ON kaflux_jobs(cluster_id) WHERE state IN ('queued','running','paused','rollback-queued');DROP INDEX IF EXISTS kaflux_one_active_job;CREATE TABLE IF NOT EXISTS kaflux_job_events(job_id text NOT NULL, seq bigint NOT NULL, at timestamptz NOT NULL, level text NOT NULL, message text NOT NULL, PRIMARY KEY(job_id,seq));`)
+	_, e = db.Exec(ctx, `CREATE TABLE IF NOT EXISTS kaflux_sessions (id text PRIMARY KEY, payload jsonb NOT NULL, expires timestamptz NOT NULL);CREATE INDEX IF NOT EXISTS kaflux_sessions_handle ON kaflux_sessions ((encode(sha256(id::bytea),'hex')));CREATE INDEX IF NOT EXISTS kaflux_sessions_inventory ON kaflux_sessions (expires,(encode(sha256(id::bytea),'hex')));CREATE TABLE IF NOT EXISTS kaflux_jobs (id text PRIMARY KEY, cluster_id text NOT NULL, state text NOT NULL, payload jsonb NOT NULL, lease_until timestamptz, lease_owner text);CREATE TABLE IF NOT EXISTS kaflux_audit (id text PRIMARY KEY, payload jsonb NOT NULL, created_at timestamptz NOT NULL);CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id text primary key,payload jsonb not null);CREATE TABLE IF NOT EXISTS kaflux_cluster_names(cluster_id text PRIMARY KEY, name text NOT NULL);CREATE UNIQUE INDEX IF NOT EXISTS kaflux_one_active_job_v2 ON kaflux_jobs(cluster_id) WHERE state IN ('queued','running','paused','rollback-queued');DROP INDEX IF EXISTS kaflux_one_active_job;CREATE TABLE IF NOT EXISTS kaflux_job_events(job_id text NOT NULL, seq bigint NOT NULL, at timestamptz NOT NULL, level text NOT NULL, message text NOT NULL, PRIMARY KEY(job_id,seq));CREATE TABLE IF NOT EXISTS kaflux_mcp_tokens(id text PRIMARY KEY, hash text NOT NULL, owner_id text NOT NULL, payload jsonb NOT NULL, expires timestamptz NOT NULL, created timestamptz NOT NULL, last_used timestamptz, revoked timestamptz);CREATE UNIQUE INDEX IF NOT EXISTS kaflux_mcp_tokens_hash ON kaflux_mcp_tokens(hash);`)
 	if e != nil {
 		db.Close()
 		return nil, e
