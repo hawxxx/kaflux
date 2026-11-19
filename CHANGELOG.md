@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/hawxxx/kaflux/compare/v0.7.0...v0.7.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **console:** wait for the cluster list before loading pages ([#80](https://github.com/hawxxx/kaflux/issues/80)) ([95b2964](https://github.com/hawxxx/kaflux/commit/95b29640311165daa19265fcea4bd77a5ff8484a))
+
 ## [0.7.0](https://github.com/hawxxx/kaflux/compare/v0.6.2...v0.7.0) (2026-11-19)
 
 
