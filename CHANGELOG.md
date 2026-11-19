@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/hawxxx/kaflux/compare/v0.7.1...v0.7.2) (2026-11-19)
+
+
+### Bug Fixes
+
+* **metrics:** bind a Prometheus URL to each cluster ([946695a](https://github.com/hawxxx/kaflux/commit/946695ae9204722b0083247893f68edec295cb56))
+
 ## [0.7.1](https://github.com/hawxxx/kaflux/compare/v0.7.0...v0.7.1) (2026-11-19)
 
 
