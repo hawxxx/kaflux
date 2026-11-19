@@ -18,17 +18,18 @@ import (
 )
 
 type SourceConfig struct {
-	ID            string
-	ClusterID     string
-	URL           string
-	Kind          string
-	Headers       map[string]string
-	Instance      string
-	InstanceRegex string
-	ClusterName   string
-	Dimensions    map[string]string
-	SignRequest   func(context.Context, *http.Request, []byte) error
-	Simulate      func(context.Context, Query) (Result, error)
+	ID               string
+	ClusterID        string
+	PreferForCluster bool
+	URL              string
+	Kind             string
+	Headers          map[string]string
+	Instance         string
+	InstanceRegex    string
+	ClusterName      string
+	Dimensions       map[string]string
+	SignRequest      func(context.Context, *http.Request, []byte) error
+	Simulate         func(context.Context, Query) (Result, error)
 }
 type Options struct {
 	Demo                    bool

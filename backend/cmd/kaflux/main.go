@@ -238,5 +238,5 @@ func clusterMetricSource(c kafka.Config) (metrics.SourceConfig, bool) {
 	if c.PrometheusURL == "" {
 		return metrics.SourceConfig{}, false
 	}
-	return metrics.SourceConfig{ID: "prometheus-" + c.ID, ClusterID: c.ID, URL: c.PrometheusURL, Kind: "prometheus"}, true
+	return metrics.SourceConfig{ID: "prometheus-" + c.ID, ClusterID: c.ID, URL: c.PrometheusURL, Kind: "prometheus", PreferForCluster: true}, true
 }

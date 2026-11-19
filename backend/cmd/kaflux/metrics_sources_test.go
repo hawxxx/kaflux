@@ -19,7 +19,7 @@ func TestClusterMetricSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, ok := clusterMetricSource(c)
-	if !ok || m.ID != "prometheus-perf" || m.ClusterID != "perf" || m.URL != "http://prometheus.perf:9090" || m.Kind != "prometheus" {
+	if !ok || m.ID != "prometheus-perf" || m.ClusterID != "perf" || m.URL != "http://prometheus.perf:9090" || m.Kind != "prometheus" || !m.PreferForCluster {
 		t.Fatalf("unexpected source %+v ok=%v", m, ok)
 	}
 	if _, ok = clusterMetricSource(kafka.Config{ID: "int"}); ok {

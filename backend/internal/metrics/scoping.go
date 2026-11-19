@@ -36,6 +36,12 @@ func (g *Gateway) HandlerForCluster(clusterID string) http.Handler {
 		sort.Strings(candidates)
 		if len(candidates) > 0 {
 			sourceID = candidates[0]
+			for _, id := range candidates {
+				if g.sources[id].config.PreferForCluster {
+					sourceID = id
+					break
+				}
+			}
 		}
 		if sourceID == "" {
 			w.Header().Set("Content-Type", "application/json")
