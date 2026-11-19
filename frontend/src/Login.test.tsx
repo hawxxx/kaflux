@@ -48,4 +48,12 @@ describe('Login',()=>{
     await waitFor(()=>expect(fetch).toHaveBeenCalledWith('/api/v1/version',expect.anything()));
     expect(screen.queryByText(/^Kaflux /)).toBeNull();
   });
+
+  it('explains when no sign-in method is configured instead of offering a form that cannot succeed',async()=>{
+    mount([],{version:'0.6.2'});
+    expect(await screen.findByText('No sign-in method is configured.')).toBeVisible();
+    expect(screen.getByRole('link',{name:'Authentication guide'})).toHaveAttribute('href','https://github.com/hawxxx/kaflux/blob/main/docs/authentication.md');
+    expect(screen.queryByLabelText('Username')).toBeNull();
+    expect(screen.queryByRole('button',{name:'Sign in'})).toBeNull();
+  });
 });

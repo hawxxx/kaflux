@@ -43,6 +43,8 @@ export function Login({onSuccess}:{onSuccess:()=>void}){
   const list=providers.data?.data??[];
   const passwordLogin=!providers.data||list.some(p=>p.type!=='oidc');
   const sso=list.filter(p=>p.type==='oidc');
+  // A loaded but empty list means no account or provider exists, so a form could never succeed.
+  const unconfigured=providers.isSuccess&&list.length===0;
   const shown=formatVersion(version.data?.data.version);
   const spotlight=(e:ReactPointerEvent<HTMLDivElement>)=>{const el=card.current;if(!el)return;const r=el.getBoundingClientRect();el.style.setProperty('--mx',`${e.clientX-r.left}px`);el.style.setProperty('--my',`${e.clientY-r.top}px`)};
   const lean=(e:ReactPointerEvent<HTMLButtonElement>)=>{const el=e.currentTarget,r=el.getBoundingClientRect();el.style.transform=`translate(${((e.clientX-r.left)/r.width-.5)*6}px,${((e.clientY-r.top)/r.height-.5)*4-1}px)`};
@@ -56,7 +58,8 @@ export function Login({onSuccess}:{onSuccess:()=>void}){
           <p>Sign in to continue.</p>
         </div>
         {error&&<div className="login-error" role="alert"><CircleAlert size={15} aria-hidden="true"/>{error}</div>}
-        {passwordLogin&&<form onInput={()=>signalBackdrop('input')} onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');signalBackdrop('submit');try{await api('/auth/login',{method:'POST',body:JSON.stringify({username,password})});onSuccess()}catch(e){setError((e as Error).message);signalBackdrop('error')}finally{setBusy(false)}}}>
+        {unconfigured&&<div className="login-notice" role="status"><strong>No sign-in method is configured.</strong><span>Set a local administrator with <code>KAFLUX_ADMIN_USER</code> and <code>KAFLUX_ADMIN_PASSWORD_HASH</code>, or configure an identity provider, then reload this page.</span><a href="https://github.com/hawxxx/kaflux/blob/main/docs/authentication.md" target="_blank" rel="noreferrer noopener">Authentication guide</a></div>}
+        {passwordLogin&&!unconfigured&&<form onInput={()=>signalBackdrop('input')} onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');signalBackdrop('submit');try{await api('/auth/login',{method:'POST',body:JSON.stringify({username,password})});onSuccess()}catch(e){setError((e as Error).message);signalBackdrop('error')}finally{setBusy(false)}}}>
           <label className="login-field">Username<input autoComplete="username" spellCheck={false} value={username} onChange={e=>setUsername(e.target.value)} required/></label>
           <label className="login-field">Password<span className="login-control"><input type={reveal?'text':'password'} autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/><button type="button" className="login-reveal" aria-label={reveal?'Hide password':'Show password'} aria-pressed={reveal} onClick={()=>setReveal(v=>!v)}>{reveal?<EyeOff size={16}/>:<Eye size={16}/>}</button></span></label>
           <button className="login-submit" disabled={busy} aria-busy={busy} onPointerMove={lean} onPointerLeave={e=>{e.currentTarget.style.transform=''}}>
