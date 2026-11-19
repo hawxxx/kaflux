@@ -46,26 +46,33 @@ type outcome struct {
 
 type replayEntry struct {
 	expires time.Time
+	owner   string        // principalID, for the per-token cap
 	done    chan struct{} // closed when the outcome is recorded or the claim released
-	out     *outcome      // nil while pending, or after a released claim
+	out     *outcome      // nil while pending
 }
 
 // Confirmer mints and verifies the confirmation tokens of the two-phase
-// write flow, and remembers each used token's outcome until it expires so a
-// replayed commit returns the original result instead of writing again.
+// write flow, and remembers each used token's outcome so a replayed commit
+// returns the original result instead of writing again.
+//
+// The signing key and the replay cache live in this process only. Tokens
+// minted by another process, or before a restart, fail verification
+// (closed, never open). A multi-replica deployment therefore needs sticky
+// routing for /mcp, so a prepare and its commit reach the same replica.
 type Confirmer struct {
 	key        []byte
 	ttl        time.Duration
 	now        func() time.Time
 	mu         sync.Mutex
 	used       map[[nonceLen]byte]*replayEntry
+	perOwner   map[string]int
 	maxEntries int
 }
 
-// NewConfirmer returns a Confirmer signing with key. An empty key draws a
-// random per-process key, so tokens do not survive a restart and are not
-// accepted by other replicas. ttl <= 0 takes DefaultConfirmTTL; nil now
-// takes time.Now.
+// NewConfirmer returns a Confirmer. Production passes a nil key, which
+// draws a random per-process key; a fixed key exists for tests only and
+// must not be fed from configuration. ttl <= 0 takes DefaultConfirmTTL;
+// nil now takes time.Now.
 func NewConfirmer(key []byte, ttl time.Duration, now func() time.Time) *Confirmer {
 	if len(key) == 0 {
 		key = make([]byte, 32)
@@ -81,7 +88,7 @@ func NewConfirmer(key []byte, ttl time.Duration, now func() time.Time) *Confirme
 	if now == nil {
 		now = time.Now
 	}
-	return &Confirmer{key: key, ttl: ttl, now: now, used: map[[nonceLen]byte]*replayEntry{}, maxEntries: defaultReplayEntries}
+	return &Confirmer{key: key, ttl: ttl, now: now, used: map[[nonceLen]byte]*replayEntry{}, perOwner: map[string]int{}, maxEntries: defaultReplayEntries}
 }
 
 // principalID identifies the caller a token is bound to: the token and its
@@ -146,6 +153,7 @@ func (c *Confirmer) Mint(p Principal, t Tool, call Call) (token string, expires 
 type claims struct {
 	nonce   [nonceLen]byte
 	expires time.Time
+	owner   string
 }
 
 // check authenticates token and its binding to p, t and call.
@@ -168,43 +176,44 @@ func (c *Confirmer) check(token string, p Principal, t Tool, call Call) (claims,
 	if subtle.ConstantTimeCompare(payload[9+nonceLen:], want[:]) != 1 {
 		return cl, ErrConfirmationMismatch
 	}
+	cl.owner = principalID(p)
 	return cl, nil
 }
 
-// nonceOf extracts the nonce of an authentic token.
-func (c *Confirmer) nonceOf(token string) ([nonceLen]byte, time.Time, bool) {
-	var n [nonceLen]byte
-	raw, err := base64.RawURLEncoding.Strict().DecodeString(token)
-	if err != nil || len(raw) != tokenLen || !hmac.Equal(raw[payloadLen:], c.mac(raw[:payloadLen])) {
-		return n, time.Time{}, false
-	}
-	copy(n[:], raw[9:9+nonceLen])
-	return n, time.Unix(int64(binary.BigEndian.Uint64(raw[1:9])), 0), true
-}
+// perOwnerCap bounds one token's live entries, so a single token cannot
+// fill the cache for everyone.
+func (c *Confirmer) perOwnerCap() int { return max(1, c.maxEntries/16) }
 
 // claim reserves a verified token for one commit. It returns the recorded
 // outcome when the token was already used, waiting for an in-flight commit
-// with the same token to finish first.
+// with the same token to finish first. A nil outcome with a nil error means
+// the caller holds the claim and must finish or release it.
 func (c *Confirmer) claim(ctx context.Context, cl claims) (*outcome, error) {
 	for {
 		c.mu.Lock()
 		e, ok := c.used[cl.nonce]
-		if !ok {
-			if len(c.used) >= c.maxEntries {
-				c.pruneLocked()
-			}
-			if len(c.used) >= c.maxEntries {
-				c.mu.Unlock()
-				return nil, ErrConfirmationBusy
-			}
-			c.used[cl.nonce] = &replayEntry{expires: cl.expires, done: make(chan struct{})}
-			c.mu.Unlock()
-			return nil, nil
-		}
-		if e.out != nil {
+		if ok && e.out != nil {
 			out := e.out
 			c.mu.Unlock()
 			return out, nil
+		}
+		if !ok {
+			// Re-check under the lock: the token may have expired since check.
+			if !c.now().Before(cl.expires) {
+				c.mu.Unlock()
+				return nil, ErrConfirmationExpired
+			}
+			if len(c.used) >= c.maxEntries || c.perOwner[cl.owner] >= c.perOwnerCap() {
+				c.pruneLocked()
+			}
+			if len(c.used) >= c.maxEntries || c.perOwner[cl.owner] >= c.perOwnerCap() {
+				c.mu.Unlock()
+				return nil, ErrConfirmationBusy
+			}
+			c.used[cl.nonce] = &replayEntry{expires: cl.expires, owner: cl.owner, done: make(chan struct{})}
+			c.perOwner[cl.owner]++
+			c.mu.Unlock()
+			return nil, nil
 		}
 		done := e.done
 		c.mu.Unlock()
@@ -217,81 +226,58 @@ func (c *Confirmer) claim(ctx context.Context, cl claims) (*outcome, error) {
 	}
 }
 
-// pruneLocked drops entries whose token has expired; such tokens fail
-// verification anyway, so forgetting them cannot enable a replay.
+func (c *Confirmer) deleteLocked(nonce [nonceLen]byte, e *replayEntry) {
+	delete(c.used, nonce)
+	if c.perOwner[e.owner]--; c.perOwner[e.owner] <= 0 {
+		delete(c.perOwner, e.owner)
+	}
+}
+
+// pruneLocked drops finished entries a full TTL past their expiry. The
+// grace keeps a backward clock step from reviving a forgotten token, since
+// check rejects it as expired as long as the step is shorter than the TTL.
 func (c *Confirmer) pruneLocked() {
 	now := c.now()
 	for k, e := range c.used {
-		if !now.Before(e.expires) && (e.out != nil || isClosed(e.done)) {
-			delete(c.used, k)
+		if e.out != nil && now.After(e.expires.Add(c.ttl)) {
+			c.deleteLocked(k, e)
 		}
 	}
 }
 
-func isClosed(ch chan struct{}) bool {
-	select {
-	case <-ch:
-		return true
-	default:
-		return false
-	}
-}
-
-// finish records the outcome of a claimed token and wakes waiters.
-func (c *Confirmer) finish(nonce [nonceLen]byte, expires time.Time, out outcome) {
+// finish records the outcome of a claimed token and wakes waiters. The
+// first outcome wins.
+func (c *Confirmer) finish(cl claims, out outcome) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	e, ok := c.used[nonce]
+	e, ok := c.used[cl.nonce]
 	if !ok {
-		e = &replayEntry{expires: expires, done: make(chan struct{})}
-		c.used[nonce] = e
+		e = &replayEntry{expires: cl.expires, owner: cl.owner, done: make(chan struct{})}
+		c.used[cl.nonce] = e
+		c.perOwner[cl.owner]++
 	}
 	if e.out != nil {
 		return
 	}
 	e.out = &out
-	if !isClosed(e.done) {
-		close(e.done)
-	}
+	close(e.done)
 }
 
 // release frees a claim whose commit never reached the REST handler, so the
 // token stays usable.
-func (c *Confirmer) release(nonce [nonceLen]byte) {
+func (c *Confirmer) release(cl claims) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if e, ok := c.used[nonce]; ok && e.out == nil {
-		delete(c.used, nonce)
+	if e, ok := c.used[cl.nonce]; ok && e.out == nil {
+		c.deleteLocked(cl.nonce, e)
 		close(e.done)
 	}
 }
 
-// Verify checks token against p, t and call. A token used before returns
-// its recorded result (or, when the first commit failed, that error). A nil
-// prior with a nil error claims the token: the caller must then Record the
-// outcome.
-func (c *Confirmer) Verify(token string, p Principal, t Tool, call Call) (prior *Result, err error) {
-	cl, err := c.check(token, p, t, call)
-	if err != nil {
-		return nil, err
-	}
-	out, err := c.claim(context.Background(), cl)
-	if err != nil || out == nil {
-		return nil, err
-	}
-	if out.terr != nil {
-		return nil, out.terr
-	}
-	res := out.res
-	return &res, nil
-}
-
-// Record stores the result of the commit with token, so later commits with
-// it return r without writing again.
-func (c *Confirmer) Record(token string, r Result) {
-	if nonce, exp, ok := c.nonceOf(token); ok {
-		c.finish(nonce, exp, outcome{res: r})
-	}
+// verify checks token against p, t and call without claiming it.
+func (c *Confirmer) verify(token string, p Principal, t Tool, call Call) error {
+	_, err := c.check(token, p, t, call)
+	return err
 }
 
 func (c *Confirmer) size() int {

@@ -186,7 +186,7 @@ func restConfirmation(t Tool, c Call) string {
 	switch t.Name {
 	case "kaflux_topic_bulk_delete":
 		n := len(distinctStrings(body["topics"]))
-		return fmt.Sprintf("body.confirmation must be exactly %q (the number of distinct topics in body.topics)", fmt.Sprintf("delete %d topics", n))
+		return fmt.Sprintf("body.confirmation must be exactly %q (the number of distinct topics in body.topics); body.fingerprints must map every listed topic to its fingerprint from kaflux_topic_unused", fmt.Sprintf("delete %d topics", n))
 	case "kaflux_group_reset_offsets":
 		group, _ := c.Args["group"].(string)
 		if p, _ := body["preview"].(bool); p {

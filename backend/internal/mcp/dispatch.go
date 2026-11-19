@@ -408,8 +408,7 @@ func (d *Dispatcher) do(ctx context.Context, p Principal, t Tool, c Call) (Resul
 	}
 	if wait, ok := d.limiter.allow(key, d.limits.PerMinute, d.now()); !ok {
 		d.limiter.release(key, d.limits.Concurrency)
-		secs := max(1, int(math.Ceil(wait.Seconds())))
-		return Result{}, &ToolError{Code: "rate_limited", Message: "Rate limit exceeded for this token", Hint: fmt.Sprintf("Too many calls; retry after %ds.", secs), Status: 429}, false
+		return Result{}, rateLimited(wait), false
 	}
 	callCtx, cancel := context.WithTimeout(ctx, d.limits.Timeout)
 	defer cancel()
@@ -455,6 +454,23 @@ func (d *Dispatcher) do(ctx context.Context, p Principal, t Tool, c Call) (Resul
 		return Result{}, &ToolError{Code: "response_too_large", Message: "Response too large", Hint: "Narrow your query with filters, a smaller limit or a more specific tool.", Status: 502}, true
 	}
 	return d.shape(t, pg, status, body), nil, true
+}
+
+func rateLimited(wait time.Duration) *ToolError {
+	secs := max(1, int(math.Ceil(wait.Seconds())))
+	return &ToolError{Code: "rate_limited", Message: "Rate limit exceeded for this token", Hint: fmt.Sprintf("Too many calls; retry after %ds.", secs), Status: 429}
+}
+
+// mayAttempt reports whether p holds any grant on cluster for an action of
+// t's scope, the same coarse check the REST handlers apply before acting.
+func mayAttempt(p Principal, t Tool, cluster string) bool {
+	az, u := auth.Authorizer{Grants: p.Grants}, mcpSession(p).User
+	for _, a := range ScopeActions[t.Scope] {
+		if az.AnyAllowed(u, cluster, a) {
+			return true
+		}
+	}
+	return false
 }
 
 // shape pages and caps a successful response.
@@ -690,6 +706,11 @@ func (d *Dispatcher) Prepare(ctx context.Context, p Principal, t Tool, c Call) (
 	if p.TokenID == "" {
 		return PrepareOutput{}, &ToolError{Code: "internal", Message: "Call has no token identity", Hint: "This is a Kaflux defect; report it.", Status: 500}
 	}
+	// A prepare spends a rate token like any call; its preview reads go
+	// through Do and so also take the concurrency limit.
+	if wait, ok := d.limiter.allow(p.TokenID, d.limits.PerMinute, d.now()); !ok {
+		return PrepareOutput{}, rateLimited(wait)
+	}
 	c = withoutConfirmation(c)
 	if e := checkBulk(t, c); e != nil {
 		return PrepareOutput{}, e
@@ -698,6 +719,14 @@ func (d *Dispatcher) Prepare(ctx context.Context, p Principal, t Tool, c Call) (
 	r, terr := d.buildRequest(ctx, p, t, c, nil)
 	if terr != nil {
 		return PrepareOutput{}, terr
+	}
+	cluster := c.Cluster
+	if cluster == "" {
+		cluster, _ = c.Args["cluster"].(string)
+	}
+	// Deny before any preview, token or audit row.
+	if !mayAttempt(p, t, cluster) {
+		return PrepareOutput{}, mapError(t, c, http.StatusForbidden, []byte(`{"error":{"code":"permission_denied","message":"Permission denied"}}`))
 	}
 	var pv any
 	if t.Preview != nil {
@@ -710,10 +739,6 @@ func (d *Dispatcher) Prepare(ctx context.Context, p Principal, t Tool, c Call) (
 			return PrepareOutput{}, &ToolError{Code: "preview_failed", Message: "Could not compute the preview", Hint: "Read the target with the matching get tool, then prepare again.", Status: 502}
 		}
 		pv = v
-	}
-	cluster := c.Cluster
-	if cluster == "" {
-		cluster, _ = c.Args["cluster"].(string)
 	}
 	token, expires := d.confirm.Mint(p, t, c)
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -801,13 +826,32 @@ func (d *Dispatcher) Commit(ctx context.Context, p Principal, t Tool, c Call, co
 	if prior != nil {
 		return replayed(prior)
 	}
-	res, terr, ran := d.do(ctx, p, t, c)
+	return d.commitClaimed(ctx, p, t, c, cl)
+}
+
+// commitClaimed sends the write for a claimed token and always settles the
+// claim, even if dispatch panics, so a pending entry never wedges the token.
+func (d *Dispatcher) commitClaimed(ctx context.Context, p Principal, t Tool, c Call, cl claims) (res Result, terr *ToolError) {
+	settled := false
+	defer func() {
+		if settled {
+			return
+		}
+		_ = recover() // a dispatch panic becomes an uncertain internal error
+		res, terr = Result{}, &ToolError{Code: "internal", Message: "Internal error", Hint: writeUncertainHint, Status: 500}
+		d.confirm.finish(cl, outcome{terr: terr, uncertain: true})
+	}()
+	res, terr, ran := commitDo(d, ctx, p, t, c)
 	if !ran {
 		// Refused before the REST handler: nothing was written, so the
 		// confirmation stays usable.
-		d.confirm.release(cl.nonce)
-		return res, terr
+		d.confirm.release(cl)
+	} else {
+		d.confirm.finish(cl, outcome{res: res, terr: terr, uncertain: uncertain(terr)})
 	}
-	d.confirm.finish(cl.nonce, cl.expires, outcome{res: res, terr: terr, uncertain: uncertain(terr)})
+	settled = true
 	return res, terr
 }
+
+// commitDo is d.do; tests replace it to exercise the settle guard.
+var commitDo = (*Dispatcher).do

@@ -58,19 +58,18 @@ func TestConfirmRoundTrip(t *testing.T) {
 	// The confirmation argument itself is not part of the binding.
 	call := deleteCall()
 	call.Args["confirmation"] = tok
-	prior, err := c.Verify(tok, testPrincipal(), tool, call)
-	if err != nil || prior != nil {
-		t.Fatalf("verify: prior %v err %v", prior, err)
+	if err := c.verify(tok, testPrincipal(), tool, call); err != nil {
+		t.Fatalf("verify: %v", err)
 	}
 	// Map key order never changes the binding.
 	other := Call{Cluster: "prod", Args: map[string]any{"body": map[string]any{"confirmation": "orders-old"}, "topic": "orders-old"}}
 	tok2, _ := c.Mint(testPrincipal(), tool, other)
-	if _, err := c.Verify(tok2, testPrincipal(), tool, deleteCall()); err != nil {
+	if err := c.verify(tok2, testPrincipal(), tool, deleteCall()); err != nil {
 		t.Fatalf("reordered args: %v", err)
 	}
 	// A token from another key (another process) is rejected.
 	foreign, _ := NewConfirmer(nil, 5*time.Minute, nil).Mint(testPrincipal(), tool, deleteCall())
-	if _, err := c.Verify(foreign, testPrincipal(), tool, deleteCall()); !errors.Is(err, ErrConfirmationInvalid) {
+	if err := c.verify(foreign, testPrincipal(), tool, deleteCall()); !errors.Is(err, ErrConfirmationInvalid) {
 		t.Fatalf("foreign key: %v", err)
 	}
 }
@@ -80,7 +79,7 @@ func TestConfirmExpired(t *testing.T) {
 	tool := mustTool(t, "kaflux_topic_delete")
 	tok, _ := c.Mint(testPrincipal(), tool, deleteCall())
 	clock.Add(5*time.Minute + time.Second)
-	if _, err := c.Verify(tok, testPrincipal(), tool, deleteCall()); !errors.Is(err, ErrConfirmationExpired) {
+	if err := c.verify(tok, testPrincipal(), tool, deleteCall()); !errors.Is(err, ErrConfirmationExpired) {
 		t.Fatalf("expired: %v", err)
 	}
 }
@@ -95,7 +94,7 @@ func TestConfirmArgsTampered(t *testing.T) {
 		"extra":    {Cluster: "prod", Args: map[string]any{"topic": "orders-old", "extra": 1, "body": map[string]any{"confirmation": "orders-old"}}},
 		"cluster":  {Cluster: "stage", Args: deleteCall().Args},
 	} {
-		if _, err := c.Verify(tok, testPrincipal(), tool, call); !errors.Is(err, ErrConfirmationMismatch) {
+		if err := c.verify(tok, testPrincipal(), tool, call); !errors.Is(err, ErrConfirmationMismatch) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
@@ -110,7 +109,7 @@ func TestConfirmOtherPrincipal(t *testing.T) {
 	otherOwner := testPrincipal()
 	otherOwner.Session.User.ID = "owner-2"
 	for _, p := range []Principal{otherToken, otherOwner} {
-		if _, err := c.Verify(tok, p, tool, deleteCall()); !errors.Is(err, ErrConfirmationMismatch) {
+		if err := c.verify(tok, p, tool, deleteCall()); !errors.Is(err, ErrConfirmationMismatch) {
 			t.Fatalf("principal %s/%s: %v", p.Session.User.ID, p.TokenID, err)
 		}
 	}
@@ -119,7 +118,7 @@ func TestConfirmOtherPrincipal(t *testing.T) {
 func TestConfirmOtherTool(t *testing.T) {
 	c, _ := newTestConfirmer()
 	tok, _ := c.Mint(testPrincipal(), mustTool(t, "kaflux_topic_delete"), deleteCall())
-	if _, err := c.Verify(tok, testPrincipal(), mustTool(t, "kaflux_topic_truncate"), deleteCall()); !errors.Is(err, ErrConfirmationMismatch) {
+	if err := c.verify(tok, testPrincipal(), mustTool(t, "kaflux_topic_truncate"), deleteCall()); !errors.Is(err, ErrConfirmationMismatch) {
 		t.Fatalf("other tool: %v", err)
 	}
 }
@@ -136,13 +135,13 @@ func TestConfirmBitFlipRejected(t *testing.T) {
 		for bit := 0; bit < 8; bit++ {
 			flipped := append([]byte{}, raw...)
 			flipped[i] ^= 1 << bit
-			if _, err := c.Verify(base64.RawURLEncoding.EncodeToString(flipped), testPrincipal(), tool, deleteCall()); !errors.Is(err, ErrConfirmationInvalid) {
+			if err := c.verify(base64.RawURLEncoding.EncodeToString(flipped), testPrincipal(), tool, deleteCall()); !errors.Is(err, ErrConfirmationInvalid) {
 				t.Fatalf("byte %d bit %d: %v", i, bit, err)
 			}
 		}
 	}
 	for _, bad := range []string{"", "x", tok + "A", tok[:len(tok)-1], "!!!!"} {
-		if _, err := c.Verify(bad, testPrincipal(), tool, deleteCall()); !errors.Is(err, ErrConfirmationInvalid) {
+		if err := c.verify(bad, testPrincipal(), tool, deleteCall()); !errors.Is(err, ErrConfirmationInvalid) {
 			t.Fatalf("%q: %v", bad, err)
 		}
 	}
@@ -150,32 +149,161 @@ func TestConfirmBitFlipRejected(t *testing.T) {
 
 func TestConfirmReplayCacheBounded(t *testing.T) {
 	c, clock := newTestConfirmer()
-	c.maxEntries = 3
+	c.maxEntries = 32 // per-token cap 2
 	tool := mustTool(t, "kaflux_topic_delete")
-	use := func() error {
-		tok, _ := c.Mint(testPrincipal(), tool, deleteCall())
-		if _, err := c.Verify(tok, testPrincipal(), tool, deleteCall()); err != nil {
+	use := func(p Principal) error {
+		tok, _ := c.Mint(p, tool, deleteCall())
+		cl, err := c.check(tok, p, tool, deleteCall())
+		if err != nil {
 			return err
 		}
-		c.Record(tok, Result{Status: 200})
+		if _, err := c.claim(context.Background(), cl); err != nil {
+			return err
+		}
+		c.finish(cl, outcome{res: Result{Status: 200}})
 		return nil
 	}
-	for i := 0; i < 3; i++ {
-		if err := use(); err != nil {
+	principal := func(i int) Principal {
+		p := testPrincipal()
+		p.TokenID = fmt.Sprintf("tok-%d", i)
+		return p
+	}
+	// One token cannot take more than its share.
+	for i := 0; i < 2; i++ {
+		if err := use(principal(0)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	// Full of live entries: refuse rather than forget a used token.
-	if err := use(); !errors.Is(err, ErrConfirmationBusy) {
+	if err := use(principal(0)); !errors.Is(err, ErrConfirmationBusy) {
+		t.Fatalf("per-token cap: %v", err)
+	}
+	// Other tokens fill the global cap; full of live entries, refuse rather
+	// than forget a used token.
+	for i := 1; i < 16; i++ {
+		for j := 0; j < 2; j++ {
+			if err := use(principal(i)); err != nil {
+				t.Fatalf("token %d: %v", i, err)
+			}
+		}
+	}
+	if err := use(principal(99)); !errors.Is(err, ErrConfirmationBusy) {
 		t.Fatalf("full cache: %v", err)
 	}
-	// Expired entries are pruned, making room again.
+	// Expired entries stay for a grace TTL, then are pruned.
 	clock.Add(6 * time.Minute)
-	if err := use(); err != nil {
-		t.Fatalf("after expiry: %v", err)
+	if err := use(principal(99)); !errors.Is(err, ErrConfirmationBusy) {
+		t.Fatalf("within grace: %v", err)
+	}
+	clock.Add(5 * time.Minute)
+	if err := use(principal(99)); err != nil {
+		t.Fatalf("after grace: %v", err)
 	}
 	if n := c.size(); n != 1 {
 		t.Fatalf("cache size %d", n)
+	}
+}
+
+func TestConfirmClaimRechecksExpiry(t *testing.T) {
+	c, clock := newTestConfirmer()
+	tool := mustTool(t, "kaflux_topic_delete")
+	tok, _ := c.Mint(testPrincipal(), tool, deleteCall())
+	cl, err := c.check(tok, testPrincipal(), tool, deleteCall())
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.Add(5*time.Minute + time.Second) // expires between check and claim
+	if _, err := c.claim(context.Background(), cl); !errors.Is(err, ErrConfirmationExpired) {
+		t.Fatalf("claim after expiry: %v", err)
+	}
+}
+
+func TestCommitSettlesOnPanic(t *testing.T) {
+	// A panicking REST handler is recovered by dispatch and recorded as uncertain.
+	d, _, _ := newConfirmDispatcher(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			jsonHandler(200, `{"data":{}}`)(w, r)
+			return
+		}
+		panic("boom")
+	}))
+	tool := mustTool(t, "kaflux_topic_delete")
+	out, e := d.Prepare(context.Background(), testPrincipal(), tool, deleteCall())
+	if e != nil {
+		t.Fatalf("prepare: %+v", e)
+	}
+	if _, e := d.Commit(context.Background(), testPrincipal(), tool, deleteCall(), out.Confirmation); e == nil || e.Code != "internal" {
+		t.Fatalf("panicking handler: %+v", e)
+	}
+	if _, e := d.Commit(context.Background(), testPrincipal(), tool, deleteCall(), out.Confirmation); e == nil || e.Code != "outcome_uncertain" {
+		t.Fatalf("replay after panic: %+v", e)
+	}
+	// A panic inside dispatch itself still settles the claim instead of
+	// leaving it pending forever.
+	orig := commitDo
+	commitDo = func(*Dispatcher, context.Context, Principal, Tool, Call) (Result, *ToolError, bool) {
+		panic("dispatch bug")
+	}
+	defer func() { commitDo = orig }()
+	out, _ = d.Prepare(context.Background(), testPrincipal(), tool, deleteCall())
+	if _, e := d.Commit(context.Background(), testPrincipal(), tool, deleteCall(), out.Confirmation); e == nil || e.Code != "internal" {
+		t.Fatalf("dispatch panic: %+v", e)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, e := d.Commit(ctx, testPrincipal(), tool, deleteCall(), out.Confirmation); e == nil || e.Code != "outcome_uncertain" {
+		t.Fatalf("replay after dispatch panic (wedged?): %+v", e)
+	}
+}
+
+func TestPrepareDeniesWithoutGrant(t *testing.T) {
+	s := &spy{}
+	d, sink, _ := newConfirmDispatcher(s)
+	tool := mustTool(t, "kaflux_topic_create")
+	call := Call{Cluster: "prod", Args: map[string]any{"body": map[string]any{"name": "orders"}}}
+	for name, grants := range map[string][]auth.Grant{
+		"none":          {},
+		"read only":     {{Role: "administrator", Cluster: "*", Action: "read", Pattern: "*"}},
+		"other cluster": {{Role: "administrator", Cluster: "stage", Action: "*", Pattern: "*"}},
+	} {
+		p := testPrincipal()
+		p.Grants = grants
+		out, e := d.Prepare(context.Background(), p, tool, call)
+		if e == nil || e.Status != 403 || e.Code != "permission_denied" || out.Confirmation != "" {
+			t.Fatalf("%s: %+v %+v", name, out, e)
+		}
+	}
+	// A destructive tool with a preview is denied before the preview runs.
+	p := testPrincipal()
+	p.Grants = []auth.Grant{{Role: "administrator", Cluster: "*", Action: "create", Pattern: "*"}}
+	if _, e := d.Prepare(context.Background(), p, mustTool(t, "kaflux_topic_delete"), deleteCall()); e == nil || e.Status != 403 {
+		t.Fatalf("destructive with write grant: %+v", e)
+	}
+	if len(sink.rows) != 0 || len(s.seen()) != 0 {
+		t.Fatalf("denied prepares audited %v or reached REST %v", sink.rows, s.seen())
+	}
+	p.Grants = []auth.Grant{{Role: "administrator", Cluster: "prod", Action: "create", Pattern: "*"}}
+	if out, e := d.Prepare(context.Background(), p, tool, call); e != nil || out.Confirmation == "" || len(sink.rows) != 1 {
+		t.Fatalf("granted prepare: %+v %+v rows %d", out, e, len(sink.rows))
+	}
+}
+
+func TestPrepareRateLimited(t *testing.T) {
+	s := &spy{}
+	d := NewDispatcher(s, Limits{PerMinute: 2})
+	c, _ := newTestConfirmer()
+	d.SetConfirmer(c)
+	sink := &auditSink{}
+	d.SetAudit(sink.Audit)
+	tool := mustTool(t, "kaflux_topic_create")
+	call := Call{Cluster: "prod", Args: map[string]any{"body": map[string]any{"name": "orders"}}}
+	for i := 0; i < 2; i++ {
+		if _, e := d.Prepare(context.Background(), testPrincipal(), tool, call); e != nil {
+			t.Fatalf("prepare %d: %+v", i, e)
+		}
+	}
+	out, e := d.Prepare(context.Background(), testPrincipal(), tool, call)
+	if e == nil || e.Code != "rate_limited" || e.Status != 429 || out.Confirmation != "" || len(sink.rows) != 2 {
+		t.Fatalf("third prepare: %+v %+v rows %d", out, e, len(sink.rows))
 	}
 }
 
