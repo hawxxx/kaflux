@@ -18,6 +18,7 @@ import (
 
 	"github.com/hawxxx/kaflux/backend/internal/api"
 	"github.com/hawxxx/kaflux/backend/internal/auth"
+	"github.com/hawxxx/kaflux/backend/internal/store"
 )
 
 // Dispatcher runs tool calls against the in-process REST handler, so every
@@ -27,12 +28,25 @@ type Dispatcher struct {
 	limits  Limits
 	limiter *limiter
 	now     func() time.Time
+	confirm *Confirmer
+	audit   AuditFunc
 }
+
+// AuditFunc persists one audit row, as store.Store.Audit does.
+type AuditFunc func(context.Context, store.Audit) error
 
 // NewDispatcher wraps the REST handler h (the api.API) with limits l.
 func NewDispatcher(h http.Handler, l Limits) *Dispatcher {
-	return &Dispatcher{handler: h, limits: l.withDefaults(), limiter: newLimiter(), now: time.Now}
+	return &Dispatcher{handler: h, limits: l.withDefaults(), limiter: newLimiter(), now: time.Now, confirm: NewConfirmer(nil, DefaultConfirmTTL, nil)}
 }
+
+// SetConfirmer replaces the default per-process confirmer, e.g. with one
+// keyed by a shared secret so tokens work across replicas. Call before use.
+func (d *Dispatcher) SetConfirmer(c *Confirmer) { d.confirm = c }
+
+// SetAudit sets where Prepare records its audit rows. Without one, Prepare
+// refuses, because every prepared write must be audited. Call before use.
+func (d *Dispatcher) SetAudit(f AuditFunc) { d.audit = f }
 
 // Principal is the authenticated MCP caller: the token owner's session and
 // the grants narrowed by the token's scopes and cluster allowlist.
@@ -369,33 +383,40 @@ func (w *memWriter) Write(b []byte) (int, error) {
 // Do runs one tool call as p and returns the paged, capped result or a
 // tool error. It never reaches /auth or /admin routes.
 func (d *Dispatcher) Do(ctx context.Context, p Principal, t Tool, c Call) (Result, *ToolError) {
+	res, terr, _ := d.do(ctx, p, t, c)
+	return res, terr
+}
+
+// do is Do that also reports whether the REST handler was invoked, so a
+// commit refused before reaching it can leave its confirmation unused.
+func (d *Dispatcher) do(ctx context.Context, p Principal, t Tool, c Call) (Result, *ToolError, bool) {
 	var pg *paging
 	if t.Paginated {
 		resolved, err := resolvePaging(t, c.Args)
 		if err != nil {
-			return Result{}, err
+			return Result{}, err, false
 		}
 		pg = &resolved
 	}
 	key := p.TokenID
 	if key == "" {
-		return Result{}, &ToolError{Code: "internal", Message: "Call has no token identity", Hint: "This is a Kaflux defect; report it.", Status: 500}
+		return Result{}, &ToolError{Code: "internal", Message: "Call has no token identity", Hint: "This is a Kaflux defect; report it.", Status: 500}, false
 	}
 	// Concurrency first, so a refused call does not spend a rate token.
 	if !d.limiter.acquire(key, d.limits.Concurrency) {
-		return Result{}, &ToolError{Code: "rate_limited", Message: "Too many concurrent calls for this token", Hint: fmt.Sprintf("At most %d concurrent calls per token; wait for running calls to finish, then retry.", d.limits.Concurrency), Status: 429}
+		return Result{}, &ToolError{Code: "rate_limited", Message: "Too many concurrent calls for this token", Hint: fmt.Sprintf("At most %d concurrent calls per token; wait for running calls to finish, then retry.", d.limits.Concurrency), Status: 429}, false
 	}
 	if wait, ok := d.limiter.allow(key, d.limits.PerMinute, d.now()); !ok {
 		d.limiter.release(key, d.limits.Concurrency)
 		secs := max(1, int(math.Ceil(wait.Seconds())))
-		return Result{}, &ToolError{Code: "rate_limited", Message: "Rate limit exceeded for this token", Hint: fmt.Sprintf("Too many calls; retry after %ds.", secs), Status: 429}
+		return Result{}, &ToolError{Code: "rate_limited", Message: "Rate limit exceeded for this token", Hint: fmt.Sprintf("Too many calls; retry after %ds.", secs), Status: 429}, false
 	}
 	callCtx, cancel := context.WithTimeout(ctx, d.limits.Timeout)
 	defer cancel()
 	r, terr := d.buildRequest(callCtx, p, t, c, pg)
 	if terr != nil {
 		d.limiter.release(key, d.limits.Concurrency)
-		return Result{}, terr
+		return Result{}, terr, false
 	}
 	w := &memWriter{header: http.Header{}}
 	done := make(chan any, 1)
@@ -409,31 +430,31 @@ func (d *Dispatcher) Do(ctx context.Context, p Principal, t Tool, c Call) (Resul
 	select {
 	case panicked := <-done:
 		if panicked != nil {
-			return Result{}, &ToolError{Code: "internal", Message: "Internal error", Hint: "Kaflux failed handling the call; retry later.", Status: 500}
+			return Result{}, &ToolError{Code: "internal", Message: "Internal error", Hint: "Kaflux failed handling the call; retry later.", Status: 500}, true
 		}
 	case <-callCtx.Done():
 		w.mu.Lock()
 		w.closed = true
 		w.mu.Unlock()
 		if ctx.Err() != nil {
-			return Result{}, &ToolError{Code: "cancelled", Message: "Call cancelled", Hint: "The client cancelled the call.", Status: 499}
+			return Result{}, &ToolError{Code: "cancelled", Message: "Call cancelled", Hint: "The client cancelled the call.", Status: 499}, true
 		}
 		if t.IsWrite() {
-			return Result{}, &ToolError{Code: "timeout", Message: fmt.Sprintf("Call exceeded %s; the write may have been applied", d.limits.Timeout), Hint: writeUncertainHint, Status: 504}
+			return Result{}, &ToolError{Code: "timeout", Message: fmt.Sprintf("Call exceeded %s; the write may have been applied", d.limits.Timeout), Hint: writeUncertainHint, Status: 504}, true
 		}
-		return Result{}, &ToolError{Code: "timeout", Message: fmt.Sprintf("Call exceeded %s", d.limits.Timeout), Hint: "Kafka did not answer in time; retry, or narrow the query.", Status: 504}
+		return Result{}, &ToolError{Code: "timeout", Message: fmt.Sprintf("Call exceeded %s", d.limits.Timeout), Hint: "Kafka did not answer in time; retry, or narrow the query.", Status: 504}, true
 	}
 	status, body := w.status, w.buf.Bytes()
 	if status == 0 {
 		status = http.StatusOK
 	}
 	if status >= 400 {
-		return Result{}, mapError(t, c, status, body)
+		return Result{}, mapError(t, c, status, body), true
 	}
 	if w.overflow {
-		return Result{}, &ToolError{Code: "response_too_large", Message: "Response too large", Hint: "Narrow your query with filters, a smaller limit or a more specific tool.", Status: 502}
+		return Result{}, &ToolError{Code: "response_too_large", Message: "Response too large", Hint: "Narrow your query with filters, a smaller limit or a more specific tool.", Status: 502}, true
 	}
-	return d.shape(t, pg, status, body), nil
+	return d.shape(t, pg, status, body), nil, true
 }
 
 // shape pages and caps a successful response.
@@ -584,4 +605,209 @@ func mapError(t Tool, c Call, status int, body []byte) *ToolError {
 		e.Hint = "Check the arguments against the tool's input schema; body fields must match the REST API exactly."
 	}
 	return e
+}
+
+// MaxBulkTargets caps list-style targets of one MCP write; the REST API may
+// allow more, but an agent must batch.
+const MaxBulkTargets = 50
+
+// bulkTargets names the body list holding the targets of a bulk tool.
+var bulkTargets = map[string]string{"kaflux_topic_bulk_delete": "topics"}
+
+// PlanSummary describes the REST call a commit will make.
+type PlanSummary struct {
+	Tool          string         `json:"tool"`
+	Method        string         `json:"method"`
+	Path          string         `json:"path"`
+	Arguments     map[string]any `json:"arguments"`
+	ScopeRequired string         `json:"scopeRequired"`
+}
+
+// PrepareOutput is the first phase of a write: what would happen, and the
+// token that commits exactly this call. RestConfirmation says which values
+// the REST body itself must carry; they are never filled in for the agent.
+type PrepareOutput struct {
+	Plan             PlanSummary `json:"plan"`
+	Preview          any         `json:"preview,omitempty"`
+	Confirmation     string      `json:"confirmation"`
+	ExpiresAt        time.Time   `json:"expiresAt"`
+	Destructive      bool        `json:"destructive"`
+	RestConfirmation string      `json:"restConfirmation"`
+}
+
+// withoutConfirmation copies c without the MCP confirmation argument.
+func withoutConfirmation(c Call) Call {
+	args := make(map[string]any, len(c.Args))
+	for k, v := range c.Args {
+		if k != "confirmation" {
+			args[k] = v
+		}
+	}
+	return Call{Cluster: c.Cluster, Args: args}
+}
+
+func listLen(v any) int {
+	switch l := v.(type) {
+	case []any:
+		return len(l)
+	case []string:
+		return len(l)
+	}
+	return 0
+}
+
+func checkBulk(t Tool, c Call) *ToolError {
+	field, ok := bulkTargets[t.Name]
+	if !ok {
+		return nil
+	}
+	if n := listLen(obj(c.Args["body"])[field]); n > MaxBulkTargets {
+		return &ToolError{Code: "too_many_targets", Message: fmt.Sprintf("body.%s lists %d targets; MCP allows at most %d per call", field, n, MaxBulkTargets),
+			Hint: fmt.Sprintf("Split body.%s into batches of at most %d and prepare each batch separately.", field, MaxBulkTargets), Status: 400}
+	}
+	return nil
+}
+
+func needsNoConfirmation(t Tool) *ToolError {
+	return &ToolError{Code: "invalid_argument", Message: fmt.Sprintf("%s is read-only and needs no confirmation", t.Name), Hint: "Call read tools directly.", Status: 400}
+}
+
+var errNoConfirmer = &ToolError{Code: "internal", Message: "Write confirmation is not configured", Hint: "This is a Kaflux defect; report it.", Status: 500}
+
+// Prepare is the first phase of a write: it validates the call, runs the
+// tool's read-only preview as p, mints a confirmation token bound to p, t
+// and c, and audits the prepare. It never sends the write itself.
+func (d *Dispatcher) Prepare(ctx context.Context, p Principal, t Tool, c Call) (PrepareOutput, *ToolError) {
+	if !t.IsWrite() {
+		return PrepareOutput{}, needsNoConfirmation(t)
+	}
+	if d.confirm == nil {
+		return PrepareOutput{}, errNoConfirmer
+	}
+	if d.audit == nil {
+		return PrepareOutput{}, &ToolError{Code: "internal", Message: "Prepare audit is not configured", Hint: "This is a Kaflux defect; report it.", Status: 500}
+	}
+	if p.TokenID == "" {
+		return PrepareOutput{}, &ToolError{Code: "internal", Message: "Call has no token identity", Hint: "This is a Kaflux defect; report it.", Status: 500}
+	}
+	c = withoutConfirmation(c)
+	if e := checkBulk(t, c); e != nil {
+		return PrepareOutput{}, e
+	}
+	// Built only to validate the arguments and name the target; never served.
+	r, terr := d.buildRequest(ctx, p, t, c, nil)
+	if terr != nil {
+		return PrepareOutput{}, terr
+	}
+	var pv any
+	if t.Preview != nil {
+		v, err := t.Preview(withPrincipal(ctx, p), d, c)
+		if err != nil {
+			var te *ToolError
+			if errors.As(err, &te) {
+				return PrepareOutput{}, te
+			}
+			return PrepareOutput{}, &ToolError{Code: "preview_failed", Message: "Could not compute the preview", Hint: "Read the target with the matching get tool, then prepare again.", Status: 502}
+		}
+		pv = v
+	}
+	cluster := c.Cluster
+	if cluster == "" {
+		cluster, _ = c.Args["cluster"].(string)
+	}
+	token, expires := d.confirm.Mint(p, t, c)
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	row := store.Audit{Actor: mcpSession(p).User.ID, Provider: "mcp", ClusterID: cluster, Action: "mcp.prepare:" + t.Name, Resource: r.URL.Path, Result: "prepared", SourceIP: ip}
+	if err := d.audit(ctx, row); err != nil {
+		return PrepareOutput{}, &ToolError{Code: "audit_failed", Message: "Could not record the prepare audit; nothing was prepared", Hint: "Retry later; the audit store is unavailable.", Status: 503}
+	}
+	return PrepareOutput{
+		Plan:             PlanSummary{Tool: t.Name, Method: t.Method, Path: r.URL.Path, Arguments: c.Args, ScopeRequired: t.Scope},
+		Preview:          pv,
+		Confirmation:     token,
+		ExpiresAt:        expires,
+		Destructive:      t.Destructive,
+		RestConfirmation: restConfirmation(t, c),
+	}, nil
+}
+
+func confirmationError(err error) *ToolError {
+	again := "Call the tool again without confirmation to prepare this exact call, then commit with the returned confirmation unchanged."
+	switch {
+	case errors.Is(err, ErrConfirmationExpired):
+		return &ToolError{Code: "confirmation_expired", Message: "Confirmation has expired", Hint: again, Status: 400}
+	case errors.Is(err, ErrConfirmationMismatch):
+		return &ToolError{Code: "confirmation_mismatch", Message: "Confirmation does not match this call", Hint: "It was prepared for a different token, tool, cluster or arguments. " + again, Status: 400}
+	case errors.Is(err, ErrConfirmationBusy):
+		return &ToolError{Code: "confirmation_busy", Message: "Too many confirmations in use", Hint: "Retry after a few minutes.", Status: 503}
+	}
+	return &ToolError{Code: "confirmation_invalid", Message: "Confirmation is not valid", Hint: again, Status: 400}
+}
+
+// uncertain reports whether a write that reached the handler may or may not
+// have been applied.
+func uncertain(e *ToolError) bool {
+	if e == nil {
+		return false
+	}
+	switch e.Code {
+	case "timeout", "cancelled", "internal":
+		return true
+	}
+	return e.Status == 502 || e.Status == 503 || e.Status == 504
+}
+
+// replayed returns the recorded outcome of an already-used confirmation.
+func replayed(o *outcome) (Result, *ToolError) {
+	if o.uncertain {
+		return Result{}, &ToolError{Code: "outcome_uncertain", Message: "This confirmation was already used; that commit ended without a definite outcome: " + o.terr.Message, Hint: writeUncertainHint, Status: o.terr.Status}
+	}
+	if o.terr != nil {
+		e := *o.terr
+		return Result{}, &e
+	}
+	return o.res, nil
+}
+
+// Commit is the second phase of a write: it verifies confirmation against
+// p, t and c and sends the write once. A repeated commit with the same
+// confirmation returns the first commit's recorded outcome without writing
+// again; concurrent commits wait for the first one.
+func (d *Dispatcher) Commit(ctx context.Context, p Principal, t Tool, c Call, confirmation string) (Result, *ToolError) {
+	if !t.IsWrite() {
+		return Result{}, needsNoConfirmation(t)
+	}
+	if d.confirm == nil {
+		return Result{}, errNoConfirmer
+	}
+	if confirmation == "" {
+		return Result{}, &ToolError{Code: "confirmation_required", Message: "This write needs a confirmation", Hint: "Call the tool without confirmation to prepare it, review the plan, then call again with the returned confirmation.", Status: 400}
+	}
+	c = withoutConfirmation(c)
+	if e := checkBulk(t, c); e != nil {
+		return Result{}, e
+	}
+	cl, err := d.confirm.check(confirmation, p, t, c)
+	if err != nil {
+		return Result{}, confirmationError(err)
+	}
+	prior, err := d.confirm.claim(ctx, cl)
+	if err != nil {
+		if ctx.Err() != nil {
+			return Result{}, &ToolError{Code: "cancelled", Message: "Call cancelled", Hint: "The client cancelled the call.", Status: 499}
+		}
+		return Result{}, confirmationError(err)
+	}
+	if prior != nil {
+		return replayed(prior)
+	}
+	res, terr, ran := d.do(ctx, p, t, c)
+	if !ran {
+		// Refused before the REST handler: nothing was written, so the
+		// confirmation stays usable.
+		d.confirm.release(cl.nonce)
+		return res, terr
+	}
+	d.confirm.finish(cl.nonce, cl.expires, outcome{res: res, terr: terr, uncertain: uncertain(terr)})
+	return res, terr
 }
