@@ -1592,10 +1592,10 @@ paths:
         - { name: includeInternal, in: query, schema: { type: boolean, default: false } }
         - { name: exclude, in: query, description: Regular expression of topic names to skip, schema: { type: string, maxLength: 200 } }
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "400": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/unused-topics/jobs/{job}:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1609,15 +1609,15 @@ paths:
         Only the user who started a job can read it; jobs expire 10 minutes after they finish (404).
       operationId: unusedTopicsJob
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "404": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     delete:
       summary: Cancel an unused topic evaluation job
       description: Stops a running job and returns it with status canceled. A finished job is returned unchanged.
       operationId: cancelUnusedTopicsJob
       responses:
-        "200": { $ref: "#/components/responses/Envelope" }
-        "404": { $ref: "#/components/responses/Error" }
+        "200": { description: "Data envelope", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/bulk-delete:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
