@@ -27,12 +27,16 @@ type MCPToken struct {
 	Name          string
 	OwnerID       string
 	OwnerProvider string
-	Scopes        []string
-	Clusters      []string
-	Expires       time.Time
-	Created       time.Time
-	LastUsed      *time.Time
-	Revoked       *time.Time
+	// OwnerRoles snapshots the owner's roles when the token was created; the
+	// owner's grants are resolved from them and the current configuration on
+	// every call.
+	OwnerRoles []string
+	Scopes     []string
+	Clusters   []string
+	Expires    time.Time
+	Created    time.Time
+	LastUsed   *time.Time
+	Revoked    *time.Time
 }
 
 // NewMCPSecret returns a fresh secret and the hex SHA-256 hash to persist.
@@ -58,6 +62,7 @@ type mcpStatic struct {
 	Name          string    `json:"name"`
 	OwnerID       string    `json:"ownerId"`
 	OwnerProvider string    `json:"ownerProvider"`
+	OwnerRoles    []string  `json:"ownerRoles"`
 	Scopes        []string  `json:"scopes"`
 	Clusters      []string  `json:"clusters"`
 	Expires       time.Time `json:"expires"`
@@ -65,7 +70,7 @@ type mcpStatic struct {
 }
 
 func mcpPayload(t MCPToken) ([]byte, error) {
-	return json.Marshal(mcpStatic{t.ID, t.Name, t.OwnerID, t.OwnerProvider, nonNil(t.Scopes), nonNil(t.Clusters), t.Expires.UTC(), t.Created.UTC()})
+	return json.Marshal(mcpStatic{t.ID, t.Name, t.OwnerID, t.OwnerProvider, nonNil(t.OwnerRoles), nonNil(t.Scopes), nonNil(t.Clusters), t.Expires.UTC(), t.Created.UTC()})
 }
 
 func nonNil(v []string) []string {
@@ -80,7 +85,7 @@ func mcpFromPayload(b []byte, lastUsed, revoked *time.Time) (MCPToken, error) {
 	if e := json.Unmarshal(b, &p); e != nil {
 		return MCPToken{}, e
 	}
-	return MCPToken{ID: p.ID, Name: p.Name, OwnerID: p.OwnerID, OwnerProvider: p.OwnerProvider, Scopes: p.Scopes, Clusters: p.Clusters, Expires: p.Expires, Created: p.Created, LastUsed: lastUsed, Revoked: revoked}, nil
+	return MCPToken{ID: p.ID, Name: p.Name, OwnerID: p.OwnerID, OwnerProvider: p.OwnerProvider, OwnerRoles: nonNil(p.OwnerRoles), Scopes: p.Scopes, Clusters: p.Clusters, Expires: p.Expires, Created: p.Created, LastUsed: lastUsed, Revoked: revoked}, nil
 }
 
 func sortMCP(out []MCPToken) {
@@ -93,6 +98,7 @@ func sortMCP(out []MCPToken) {
 }
 
 func cloneMCP(t MCPToken) MCPToken {
+	t.OwnerRoles = nonNil(t.OwnerRoles)
 	t.Scopes = nonNil(t.Scopes)
 	t.Clusters = nonNil(t.Clusters)
 	return t

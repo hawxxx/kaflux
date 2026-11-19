@@ -35,7 +35,7 @@ func mcpBackends() []mcpBackend {
 }
 
 func newMCPToken(id, owner string, expires time.Time) MCPToken {
-	return MCPToken{ID: id, Name: "tok " + id, OwnerID: owner, OwnerProvider: "local", Scopes: []string{"read", "messages"}, Clusters: []string{"c1"}, Expires: expires, Created: time.Now().UTC().Truncate(time.Millisecond)}
+	return MCPToken{ID: id, Name: "tok " + id, OwnerID: owner, OwnerProvider: "local", OwnerRoles: []string{"operator"}, Scopes: []string{"read", "messages"}, Clusters: []string{"c1"}, Expires: expires, Created: time.Now().UTC().Truncate(time.Millisecond)}
 }
 
 func TestMCPTokenLifecycle(t *testing.T) {
@@ -49,7 +49,7 @@ func TestMCPTokenLifecycle(t *testing.T) {
 				t.Fatal(e)
 			}
 			got, e := s.MCPTokenByHash(ctx, HashMCPSecret(secret))
-			if e != nil || got.ID != "t1" || got.OwnerID != "alice" || len(got.Scopes) != 2 || got.Clusters[0] != "c1" || got.LastUsed != nil || got.Revoked != nil {
+			if e != nil || got.ID != "t1" || got.OwnerID != "alice" || len(got.OwnerRoles) != 1 || got.OwnerRoles[0] != "operator" || len(got.Scopes) != 2 || got.Clusters[0] != "c1" || got.LastUsed != nil || got.Revoked != nil {
 				t.Fatalf("lookup %+v %v", got, e)
 			}
 			at := time.Now().UTC()
@@ -154,5 +154,14 @@ func TestListMCPTokensOwnerOnly(t *testing.T) {
 				t.Fatalf("carol %+v %v", none, e)
 			}
 		})
+	}
+}
+
+// A row written before owner roles were recorded still decodes, with no roles.
+func TestMCPPayloadWithoutOwnerRoles(t *testing.T) {
+	old := []byte(`{"id":"t0","name":"old","ownerId":"alice","ownerProvider":"local","scopes":["read"],"clusters":[],"expires":"2030-01-01T00:00:00Z","created":"2026-01-01T00:00:00Z"}`)
+	got, e := mcpFromPayload(old, nil, nil)
+	if e != nil || got.ID != "t0" || got.OwnerRoles == nil || len(got.OwnerRoles) != 0 {
+		t.Fatalf("old payload: %+v %v", got, e)
 	}
 }
