@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/hawxxx/kaflux/compare/v0.6.0...v0.6.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **deps:** update go-jose and OpenTelemetry to patched releases ([#74](https://github.com/hawxxx/kaflux/issues/74)) ([911c7ab](https://github.com/hawxxx/kaflux/commit/911c7ab905449d4a2e51293356ade0cd098cb1ca))
+* **jobs:** leave skipped topics out of rebalance progress and ETA ([#73](https://github.com/hawxxx/kaflux/issues/73)) ([23d03dd](https://github.com/hawxxx/kaflux/commit/23d03dd1048ec92800ca23cee605108712d02fad))
+
 ## [0.6.0](https://github.com/hawxxx/kaflux/compare/v0.5.0...v0.6.0) (2026-11-14)
 
 
