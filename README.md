@@ -95,6 +95,7 @@ For Kubernetes, use the [Helm chart](deploy/helm/kaflux). See the [deployment gu
 | `KAFLUX_DATABASE_URL` | PostgreSQL connection string |
 | `KAFLUX_PROMETHEUS_URL` | Prometheus endpoint for metrics |
 | `KAFLUX_DEMO` | Enables simulated data and operations |
+| `KAFLUX_HIDE_VERSION` | Keeps the build version off the sign-in page and the public `/api/v1/version` endpoint |
 
 See [authentication](docs/authentication.md), [storage](docs/storage.md), and [metrics](docs/metrics.md) for details. Use TLS when exposing Kaflux beyond localhost.
 

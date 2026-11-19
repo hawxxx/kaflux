@@ -77,6 +77,8 @@ spec:
               value: /app/frontend
             - name: KAFLUX_DEMO
               value: {{ .Values.config.demo | quote }}
+            - name: KAFLUX_HIDE_VERSION
+              value: {{ .Values.config.hideVersion | quote }}
             - name: KAFLUX_CLUSTERS_FILE
               value: /app/config/clusters.json
             - name: KAFLUX_CONFIG

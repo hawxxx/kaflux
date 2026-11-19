@@ -125,6 +125,16 @@ paths:
         "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /version:
+    get:
+      # Public by design: the sign-in page shows the running build before a session exists.
+      # kics-scan ignore-line
+      security: []
+      summary: Get the running Kaflux build version
+      operationId: getVersion
+      responses:
+        "200": { description: "Data envelope with the build version, for example 0.6.2, or dev for unstamped builds", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /auth/providers:
     get:
       # Public by design: sign-in runs before a session exists (identity and login handlers in backend/internal/api).

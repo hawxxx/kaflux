@@ -32,6 +32,8 @@ ingress:
   tls: []
 config:
   demo: false
+  # Keep the build version off the unauthenticated sign-in page.
+  hideVersion: false
   prometheusURL: ""
   # Connection metadata only; credentials resolve from secret environment variables.
   clusters: []

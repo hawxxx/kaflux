@@ -35,8 +35,10 @@ import (
 )
 
 type Options struct {
-	SessionLifetime      time.Duration
-	Demo                 bool
+	SessionLifetime time.Duration
+	Demo            bool
+	// HideVersion keeps the build version off unauthenticated responses.
+	HideVersion          bool
 	Store                *store.Store
 	Providers            map[string]kafka.Provider
 	Clusters             []model.Cluster
@@ -160,6 +162,16 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/health" {
 		respond(w, map[string]string{"status": "ok"})
+		return
+	}
+	// Public so the sign-in page can show the running build before a session exists.
+	// It reports only the release string; operators can withhold it with hideVersion.
+	if path == "/api/v1/version" && r.Method == http.MethodGet {
+		if a.o.HideVersion {
+			fail(w, 404, "not_found", "Not found")
+			return
+		}
+		respond(w, map[string]string{"version": buildinfo.Current()})
 		return
 	}
 	if path == "/ready" {

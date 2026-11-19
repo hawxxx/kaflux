@@ -50,6 +50,7 @@ type Runtime struct {
 	Listen                string `yaml:"listen"`
 	StaticDirectory       string `yaml:"staticDirectory"`
 	Demo                  bool   `yaml:"demo"`
+	HideVersion           bool   `yaml:"hideVersion"`
 	DatabaseURLEnv        string `yaml:"databaseURLEnv"`
 	AdminUserEnv          string `yaml:"adminUserEnv"`
 	AdminPasswordHashEnv  string `yaml:"adminPasswordHashEnv"`
@@ -74,6 +75,7 @@ type Config struct {
 	Listen                string                `yaml:"-"`
 	StaticDirectory       string                `yaml:"-"`
 	Demo                  bool                  `yaml:"-"`
+	HideVersion           bool                  `yaml:"-"`
 	DatabaseURL           string                `yaml:"-"`
 	AdminUser             string                `yaml:"-"`
 	AdminPasswordHash     string                `yaml:"-"`
@@ -148,6 +150,13 @@ func Load(path string) (Config, error) {
 		c.Demo, err = strconv.ParseBool(value)
 		if err != nil {
 			return c, fmt.Errorf("KAFLUX_DEMO must be a boolean")
+		}
+	}
+	c.HideVersion = c.Runtime.HideVersion
+	if value, ok := os.LookupEnv("KAFLUX_HIDE_VERSION"); ok {
+		c.HideVersion, err = strconv.ParseBool(value)
+		if err != nil {
+			return c, fmt.Errorf("KAFLUX_HIDE_VERSION must be a boolean")
 		}
 	}
 	for _, entry := range []struct {
