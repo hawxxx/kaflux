@@ -53,6 +53,8 @@ type Config struct {
 	OAuthCAFile          string   `json:"oauthCAFile"`
 	// RequireThrottle is enforced by the API; the provider ignores it.
 	RequireThrottle bool `json:"requireThrottle"`
+	// PrometheusURL is read by the metrics wiring in cmd/kaflux; the provider ignores it.
+	PrometheusURL string `json:"prometheusURL"`
 	// Capacity is what the operator declares each broker can hold. It describes
 	// clusters where no broker type can be read, such as self-managed Kafka.
 	Capacity *capacity.Config `json:"capacity"`

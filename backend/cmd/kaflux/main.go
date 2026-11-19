@@ -60,6 +60,7 @@ func run() error {
 	defer s.Close()
 	providers := map[string]kafka.Provider{}
 	clusters := []model.Cluster{}
+	var clusterMetrics []metrics.SourceConfig
 	if cfg.Demo {
 		providers["demo"] = kafka.NewDemo()
 		clusters = append(clusters, model.Cluster{ID: "demo", Name: "Development simulator", Environment: "development", Kind: "Kafka", Mode: "demo"})
@@ -98,6 +99,9 @@ func run() error {
 				return e
 			}
 			providers[c.ID] = p
+			if m, ok := clusterMetricSource(c); ok {
+				clusterMetrics = append(clusterMetrics, m)
+			}
 			clusters = append(clusters, model.Cluster{ID: c.ID, Name: c.Name, Environment: c.Environment, Kind: "Kafka", Mode: "live", RequireThrottle: c.RequireThrottle})
 		}
 	}
@@ -107,6 +111,7 @@ func run() error {
 		}
 	}()
 	var source []metrics.SourceConfig
+	source = append(source, clusterMetrics...)
 	metricsCluster := os.Getenv("KAFLUX_METRICS_CLUSTER_ID")
 	if metricsCluster == "" && len(clusters) == 1 {
 		metricsCluster = clusters[0].ID
@@ -225,4 +230,13 @@ func openStore(ctx context.Context, cfg config.Config) (*store.Store, error) {
 	default:
 		return nil, errors.New("unsupported storage backend")
 	}
+}
+
+// clusterMetricSource binds a cluster's own PromQL API to that cluster, so clusters
+// with different Prometheus servers can share one console.
+func clusterMetricSource(c kafka.Config) (metrics.SourceConfig, bool) {
+	if c.PrometheusURL == "" {
+		return metrics.SourceConfig{}, false
+	}
+	return metrics.SourceConfig{ID: "prometheus-" + c.ID, ClusterID: c.ID, URL: c.PrometheusURL, Kind: "prometheus"}, true
 }

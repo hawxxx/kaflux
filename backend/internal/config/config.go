@@ -41,6 +41,9 @@ type Cluster struct {
 	Capacity             *capacity.Config `yaml:"capacity"`
 	// RequireThrottle makes a replication throttle mandatory for rebalances on this cluster.
 	RequireThrottle bool `yaml:"requireThrottle"`
+	// PrometheusURL binds a PromQL-compatible API to this cluster only. The global
+	// prometheusURL needs KAFLUX_METRICS_CLUSTER_ID and serves one cluster.
+	PrometheusURL string `yaml:"prometheusURL"`
 }
 
 type Runtime struct {
