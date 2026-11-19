@@ -15,7 +15,7 @@ const API_BASE='/api/v1';
 // Only used to parse and validate; the request itself stays a same-origin relative path.
 const API_PARSE_ORIGIN='http://kaflux.invalid';
 /** The only top-level API areas the console talks to. */
-const API_ROOTS=new Set(['admin','audit','auth','clusters','metrics']);
+const API_ROOTS=new Set(['admin','audit','auth','clusters','metrics','version']);
 const invalidPath=()=>new ApiError('Invalid API path','INVALID_PATH',0);
 /** First path segment under the API base. Absolute, protocol-relative, backslash and dot-segment paths are rejected, so a request can never leave /api/v1. */
 export function apiRoot(path:string):string{

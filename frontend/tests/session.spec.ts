@@ -15,7 +15,7 @@ test('sign out retries failures and returns an authenticated user to login',asyn
   await expect(page.getByRole('alert')).toContainText('Session store unavailable');
   await expect(button).toBeEnabled();await button.click();
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole('heading',{name:'Welcome to your control plane.'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Every stream, one console.'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Sign out',exact:true})).toHaveCount(0);
 });
 

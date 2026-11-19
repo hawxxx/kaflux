@@ -180,7 +180,7 @@ func run() error {
 		}
 		external[config.ID] = client
 	}
-	handler := api.New(api.Options{SessionLifetime: cfg.SessionLifetime, Demo: cfg.Demo, Store: s, Providers: providers, Clusters: clusters, AdminUser: cfg.AdminUser, AdminHash: cfg.AdminPasswordHash, Metrics: gateway.Handler(), ClusterMetrics: gateway.HandlerForCluster, StaticDir: cfg.StaticDirectory, OIDC: identityProviders, LDAP: cfg.LDAP, Grants: grants, Integrations: external})
+	handler := api.New(api.Options{SessionLifetime: cfg.SessionLifetime, Demo: cfg.Demo, HideVersion: cfg.HideVersion, Store: s, Providers: providers, Clusters: clusters, AdminUser: cfg.AdminUser, AdminHash: cfg.AdminPasswordHash, Metrics: gateway.Handler(), ClusterMetrics: gateway.HandlerForCluster, StaticDir: cfg.StaticDirectory, OIDC: identityProviders, LDAP: cfg.LDAP, Grants: grants, Integrations: external})
 	worker := jobs.Worker{Store: s, Providers: providers}
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); worker.Run(ctx) }()

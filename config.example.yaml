@@ -7,6 +7,7 @@ runtime:
   listen: ":8080" # KAFLUX_LISTEN
   staticDirectory: /app/frontend # KAFLUX_STATIC_DIR
   demo: false # KAFLUX_DEMO; opt in to backend simulation
+  hideVersion: false # KAFLUX_HIDE_VERSION; keep the build version off the sign-in page
   storageBackend: sqlite # KAFLUX_STORAGE_BACKEND; postgres for multiple replicas
   sqlitePath: /var/lib/kaflux/kaflux.db # KAFLUX_SQLITE_PATH; mount the directory
   # For postgres replace storageBackend and uncomment the secret reference:
