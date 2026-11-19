@@ -75,6 +75,7 @@ type Config struct {
 	LDAP                  []auth.LDAPConfig     `yaml:"ldap"`
 	Grants                []Grant               `yaml:"grants"`
 	Integrations          []integrations.Config `yaml:"integrations"`
+	Decoders              []Decoder             `yaml:"decoders"`
 	Listen                string                `yaml:"-"`
 	StaticDirectory       string                `yaml:"-"`
 	Demo                  bool                  `yaml:"-"`
@@ -225,4 +226,16 @@ func override(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// Decoder describes an unframed Protobuf schema, for topics whose producers write
+// no registry header. Directory holds the .proto files (not searched recursively),
+// File is the one to compile, and Message is the full name of the value type.
+type Decoder struct {
+	ID        string   `yaml:"id"`
+	Name      string   `yaml:"name"`
+	Directory string   `yaml:"directory"`
+	File      string   `yaml:"file"`
+	Message   string   `yaml:"message"`
+	Topics    []string `yaml:"topics"`
 }

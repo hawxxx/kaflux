@@ -1,4 +1,4 @@
-import {useLayoutEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {ArrowDownToLine,ChevronRight,Copy,Pause,Play,RefreshCw,ScanSearch,Search,SendHorizontal,X} from 'lucide-react';
 import {api,bytes,type Message} from './api';
@@ -14,6 +14,9 @@ import type {TopicDetail} from './TopicOverview';
 import './Messages.css';
 
 type Start='latest'|'earliest'|'offset'|'time';
+type RawDecoderInfo={id:string;name:string;message:string;topics:string[]};
+// Topic hints are globs where * matches any run of characters.
+export function topicMatches(patterns:string[],topic:string){return patterns.some(p=>new RegExp('^'+p.split('*').map(x=>x.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$').test(topic))}
 const starts:[Start,string][]=[['latest','Latest'],['earliest','Earliest'],['offset','Offset'],['time','Time']];
 const recordId=(m:Message)=>`${m.partition}-${m.offset}`;
 type SearchBody={topic:string;partitions?:number[];from?:{timestamp?:string;offsets?:Record<string,number>};match:{in:string;text:string}};
@@ -60,13 +63,17 @@ export function Messages({clusterId,initialTopic,canProduce}:{clusterId:string;i
   const [scan,setScan]=useState<Scan|null>(null);
   const [scanning,setScanning]=useState<AbortController|null>(null);
   const [scanError,setScanError]=useState<Error|null>(null);
+  const decoders=useQuery({queryKey:[`/clusters/${clusterId}/decoders`],queryFn:()=>api<RawDecoderInfo[]>(`/clusters/${clusterId}/decoders`)});
   const registries=useQuery({queryKey:[`/clusters/${clusterId}/schemas`],queryFn:()=>api<{id:string}[]>(`/clusters/${clusterId}/schemas`)});
   const detailPath=`/clusters/${clusterId}/topics/${encodeURIComponent(topic)}`;
   const detail=useQuery({queryKey:[detailPath],queryFn:()=>api<TopicDetail>(detailPath),enabled:!!topic});
+  // Suggest a configured decoder when the picked topic matches its hint; the user can still choose Raw / JSON.
+  useEffect(()=>{const hit=decoders.data?.data.find(x=>topic&&topicMatches(x.topics,topic));if(hit)setRegistry(r=>r===''?`raw:${hit.id}`:r)},[topic,decoders.data]);
   const all=partition==='all';
   const partitions=[...detail.data?.data.partitions??[]].sort((a,b)=>a.id-b.id);
   const params=new URLSearchParams({topic,limit,partition,decoderTarget});
-  if(registry){params.set('decoder',registry.startsWith('protobuf:')?'protobuf':'avro');params.set('registry',registry.replace(/^protobuf:/,''))}
+  if(registry.startsWith('raw:')){params.set('decoder','protobuf-raw');params.set('rawDecoder',registry.slice(4))}
+  else if(registry){params.set('decoder',registry.startsWith('protobuf:')?'protobuf':'avro');params.set('registry',registry.replace(/^protobuf:/,''))}
   if(start==='offset')params.set('offset',offset||'0');
   if(start==='time'){const at=tz.parse(timestamp);if(Number.isFinite(at.getTime()))params.set('timestamp',at.toISOString())}
   const signature=`${start}:${params}`;
@@ -166,6 +173,7 @@ export function Messages({clusterId,initialTopic,canProduce}:{clusterId:string;i
         <label>Decoder
           <select aria-label="Value decoder" value={registry} onChange={e=>setRegistry(e.target.value)}>
             <option value="">Raw / JSON</option>
+            {decoders.data?.data.map(x=><option key={`raw:${x.id}`} value={`raw:${x.id}`}>Protobuf · {x.name}</option>)}
             {registries.data?.data.flatMap(x=>[<option key={x.id} value={x.id}>Avro · {x.id}</option>,<option key={`protobuf:${x.id}`} value={`protobuf:${x.id}`}>Protobuf · {x.id}</option>])}
           </select>
         </label>
