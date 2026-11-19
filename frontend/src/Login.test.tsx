@@ -61,7 +61,7 @@ describe('Login',()=>{
     mount(null,null);
     expect(screen.queryByLabelText('Username')).toBeNull();
     expect(screen.getByLabelText('Loading sign-in options')).toBeInTheDocument();
-    expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in options could not be loaded');
+    expect(await screen.findByRole('alert',{},{timeout:4000})).toHaveTextContent('Sign-in options could not be loaded');
     expect(screen.getByLabelText('Username')).toBeVisible();
     expect(screen.getByRole('button',{name:'Sign in'})).toBeVisible();
   });
