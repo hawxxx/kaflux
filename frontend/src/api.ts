@@ -4,7 +4,7 @@ export type Broker = {id:number;host:string;port:number;rack:string;partitions:n
 export type Message = {partition:number;offset:number;timestamp:string;key:unknown;value:unknown;headers:{key:string;value:string}[];valueBase64?:string;keyBase64?:string;truncated?:boolean;decodedValue?:unknown;schemaId?:number;decodeError?:string;decodedFormat?:string;decodedKey?:unknown;keyDecodedFormat?:string;keySchemaId?:number;keyDecodeError?:string};
 export const metadataModeLabel=(mode?:string)=>mode==='kraft'?'KRaft':mode==='zookeeper'?'ZooKeeper':undefined;
 export const kafkaSummary=(c?:Pick<Cluster,'kafkaVersion'|'metadataMode'>)=>[c?.kafkaVersion&&`Kafka ${c.kafkaVersion}`,metadataModeLabel(c?.metadataMode)].filter(Boolean).join(' · ');
-export type Session = {user:{username:string;name?:string;role?:string;roles?:string[]};csrfToken:string;demo:boolean;version?:string;canManageSessions?:boolean;permissions?:Record<string,string[]>};
+export type Session = {user:{username:string;name?:string;role?:string;roles?:string[]};csrfToken:string;demo:boolean;version?:string;canManageSessions?:boolean;canManageMcp?:boolean;permissions?:Record<string,string[]>};
 /** Whether the backend grants the action on at least one resource of the cluster; each request is still authorized server-side. */
 export function can(session:Session|undefined,clusterId:string,action:string){return !!session?.permissions?.[clusterId]?.includes(action)}
 export type Envelope<T> = {data:T;meta?:{total:number;page:number;pageSize:number}};
