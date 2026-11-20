@@ -32,6 +32,7 @@ type Cluster struct {
 	Region               string           `yaml:"region"`
 	RoleARN              string           `yaml:"roleArn"`
 	MSKClusterARN        string           `yaml:"mskClusterArn"`
+	GCPPrincipal         string           `yaml:"gcpPrincipal"`
 	OAuthTokenEnv        string           `yaml:"oauthTokenEnv"`
 	OAuthTokenEndpoint   string           `yaml:"oauthTokenEndpoint"`
 	OAuthClientID        string           `yaml:"oauthClientId"`

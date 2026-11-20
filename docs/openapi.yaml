@@ -258,8 +258,8 @@ paths:
     get:
       summary: Get sanitized cluster capability configuration
       description:
-        Returns capability status; broker credentials and mutable broker configuration are not
-        exposed.
+        Returns capability status and the configured broker authentication mechanism. Broker
+        credentials and mutable broker configuration are not exposed.
       operationId: getClusterConfiguration
       responses:
         "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
