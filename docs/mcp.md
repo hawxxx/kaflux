@@ -136,7 +136,7 @@ names the discovery document, and the client does the rest:
 5. The client exchanges the code at `POST /oauth/token` for an access token (1 hour) and a refresh token
    (30 days) that rotates on every use.
 
-Only a user holding the global `manage-mcp` grant can approve, the same rule as creating a token. The
+Only a user holding the global `manage-mcp` grant can approve, the same rule as creating a token. A pending request belongs to the first user who opens it; anyone else sees it as expired. The
 connection appears in MCP access marked **Signed in**, and revoking it ends its access tokens at once.
 Approval, denial, issue and refresh are audited as `mcp.oauth.approve`, `mcp.oauth.deny`,
 `mcp.oauth.token` and `mcp.oauth.refresh`.

@@ -241,3 +241,27 @@ func TestOAuthDenyAndTokenCannotApprove(t *testing.T) {
 		t.Fatalf("bad id %d", w.Code)
 	}
 }
+
+func TestOAuthRequestBelongsToTheFirstUserWhoOpensIt(t *testing.T) {
+	f := newTokenFixture(t)
+	f.oauthFixture()
+	client := f.register("https://app.example/cb")
+	id := f.authorize(client, "https://app.example/cb", "read")
+	// builder holds manage-mcp, so only the binding stops it.
+	if w := f.call("admin", "GET", oauthRequestsBase+id, ""); w.Code != 200 {
+		t.Fatalf("first open %d", w.Code)
+	}
+	if w := f.call("builder", "GET", oauthRequestsBase+id, ""); w.Code != 404 {
+		t.Fatalf("second user opened it: %d", w.Code)
+	}
+	if code, _ := f.approve("builder", id, `{"scopes":["read"]}`); code != 404 {
+		t.Fatalf("second user approved it: %d", code)
+	}
+	if w := f.call("builder", "POST", oauthRequestsBase+id+"/deny", "{}"); w.Code != 404 {
+		t.Fatalf("second user denied it: %d", w.Code)
+	}
+	// The owner is unaffected by the attempts.
+	if code, authCode := f.approve("admin", id, `{"scopes":["read"]}`); code != 200 || authCode == "" {
+		t.Fatalf("owner approve %d", code)
+	}
+}

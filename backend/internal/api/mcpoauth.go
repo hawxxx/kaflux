@@ -61,6 +61,8 @@ type oauthRequest struct {
 	challenge   string
 	scopes      []string
 	created     time.Time
+	// owner is the console user who first opened the request; nobody else may decide it.
+	owner string
 }
 
 type oauthCode struct {
@@ -326,13 +328,22 @@ func (a *API) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/oauth/consent?request="+id, http.StatusFound)
 }
 
-func (a *API) takeOAuthRequest(id string, consume bool) (oauthRequest, bool) {
+// takeOAuthRequest returns a pending request for user u, binding it to u the first time it is opened.
+// A request first opened by someone else looks the same as one that expired.
+func (a *API) takeOAuthRequest(id string, u auth.User, consume bool) (oauthRequest, bool) {
 	a.oauth.init()
 	a.oauth.mu.Lock()
 	defer a.oauth.mu.Unlock()
 	p, ok := a.oauth.requests[id]
 	if !ok || time.Since(p.created) > oauthRequestTTL {
 		delete(a.oauth.requests, id)
+		return oauthRequest{}, false
+	}
+	who := u.Provider + "\x00" + u.ID
+	if p.owner == "" {
+		p.owner = who
+		a.oauth.requests[id] = p
+	} else if p.owner != who {
 		return oauthRequest{}, false
 	}
 	if consume {
@@ -396,7 +407,7 @@ func (a *API) mcpOAuthConsole(w http.ResponseWriter, r *http.Request, s auth.Ses
 	}
 	switch {
 	case action == "" && r.Method == http.MethodGet:
-		p, ok := a.takeOAuthRequest(id, false)
+		p, ok := a.takeOAuthRequest(id, s.User, false)
 		if !ok {
 			fail(w, 404, "not_found", "This request has expired or was already used")
 			return true
@@ -412,7 +423,7 @@ func (a *API) mcpOAuthConsole(w http.ResponseWriter, r *http.Request, s auth.Ses
 	case action == "approve" && r.Method == http.MethodPost:
 		a.oauthApprove(w, r, s, az, id)
 	case action == "deny" && r.Method == http.MethodPost:
-		p, ok := a.takeOAuthRequest(id, true)
+		p, ok := a.takeOAuthRequest(id, s.User, true)
 		if !ok {
 			fail(w, 404, "not_found", "This request has expired or was already used")
 			return true
@@ -438,7 +449,7 @@ func (a *API) oauthApprove(w http.ResponseWriter, r *http.Request, s auth.Sessio
 	if !decode(w, r, &body) {
 		return
 	}
-	p, ok := a.takeOAuthRequest(id, false)
+	p, ok := a.takeOAuthRequest(id, s.User, false)
 	if !ok {
 		fail(w, 404, "not_found", "This request has expired or was already used")
 		return
@@ -478,7 +489,7 @@ func (a *API) oauthApprove(w http.ResponseWriter, r *http.Request, s auth.Sessio
 		return
 	}
 	// Only the first approval of a request wins.
-	if _, ok := a.takeOAuthRequest(id, true); !ok {
+	if _, ok := a.takeOAuthRequest(id, s.User, true); !ok {
 		fail(w, 404, "not_found", "This request has expired or was already used")
 		return
 	}
