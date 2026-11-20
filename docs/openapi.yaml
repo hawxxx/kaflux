@@ -1990,6 +1990,12 @@ components:
                 description:
                   Effective global session inventory permission; returned by GET /auth/session,
               }
+            canManageMcp:
+              {
+                type: boolean,
+                description:
+                  Effective global manage-mcp permission (create MCP tokens and see every user's tokens); returned by GET /auth/session,
+              }
             permissions:
               type: object
               description: >-

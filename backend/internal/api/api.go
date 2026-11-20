@@ -613,14 +613,14 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // sessionView reports the signed-in user and the actions they may attempt per
-// cluster ("*" holds global actions such as audit and manage-sessions).
+// cluster ("*" holds global actions such as audit, manage-sessions and manage-mcp).
 func (a *API) sessionView(r *http.Request, s auth.Session) map[string]any {
 	authorizer := auth.Authorizer{Grants: a.grants(r)}
 	permissions := map[string][]string{"*": authorizer.Permissions(s.User, "*")}
 	for _, c := range a.o.Clusters {
 		permissions[c.ID] = authorizer.Permissions(s.User, c.ID)
 	}
-	return map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "version": buildinfo.Current(), "canManageSessions": authorizer.Allowed(s.User, "*", "manage-sessions", "*"), "permissions": permissions}
+	return map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "version": buildinfo.Current(), "canManageSessions": authorizer.Allowed(s.User, "*", "manage-sessions", "*"), "canManageMcp": authorizer.AnyAllowed(s.User, "*", "manage-mcp"), "permissions": permissions}
 }
 func (a *API) allowed(r *http.Request, u auth.User, c, action, resource string, w http.ResponseWriter) bool {
 	if (auth.Authorizer{Grants: a.grants(r)}).Allowed(u, c, action, resource) {
