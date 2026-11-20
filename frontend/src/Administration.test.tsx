@@ -43,6 +43,28 @@ it('paginates and filters cluster names only from ten clusters',async()=>{
   expect(screen.getAllByRole('listitem').length).toBe(1);
 });
 
+it('shows the MSK Express capability fields, the rebalancing badge and the reason callout',async()=>{
+  const reason='Amazon MSK intelligent rebalancing is ACTIVE. Manual partition reassignment is blocked by AWS.';
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>({data:url.endsWith('/clusters')?[]:{manualReassignmentAllowed:false,planningAllowed:true,rebalancingStatus:'ACTIVE',reason,kind:'MSK Express',brokerType:'express.m7g.xlarge',observedAt:'2026-11-20T00:40:49.547892287Z'}})}) as Response));
+  render(<QueryClientProvider client={new QueryClient()}><ClusterSettings clusterId="int" session={session('viewer')}/></QueryClientProvider>);
+  expect(await screen.findByText('MSK Express')).toBeInTheDocument();
+  expect(screen.getByText('express.m7g.xlarge')).toBeInTheDocument();
+  expect(screen.getByText('Active')).toHaveClass('rebalancing-status');
+  expect(screen.getByText('2026-11-20T00:40:49Z')).toBeInTheDocument();
+  expect(screen.getByText(reason)).toBeInTheDocument();
+  expect(screen.getByText('manual Reassignment Allowed')).toBeInTheDocument();
+});
+it('runs the connection check with one action and shows the result',async()=>{
+  const fetch=vi.fn(async(url:string,init?:RequestInit)=>({ok:true,json:async()=>({data:url.endsWith('/test')?{status:'connected',brokerCount:3}:url.endsWith('/clusters')?[]:{kind:'Kafka'}})}) as Response);
+  vi.stubGlobal('fetch',fetch);
+  render(<QueryClientProvider client={new QueryClient()}><ClusterSettings clusterId="int" session={session('viewer')}/></QueryClientProvider>);
+  fireEvent.click(await screen.findByRole('button',{name:/Test connection/}));
+  expect(await screen.findByText('connected')).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:/Test again/})).toBeEnabled();
+  const call=fetch.mock.calls.find(([url])=>url.endsWith('/clusters/int/test'));
+  expect(JSON.parse(String(call?.[1]?.body))).toEqual({confirmation:true});
+});
+
 it('lists every cluster and renames any of them through the backend',async()=>{
   let clusters=[clusterFixture('west','West'),clusterFixture('east','East')];
   const fetch=vi.fn(async(url:string,init?:RequestInit)=>{
