@@ -1,7 +1,7 @@
 import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,expect,it,vi} from 'vitest';
-import {SessionAdministration} from './SessionAdministration';
+import {SessionAdministration,shortUser} from './SessionAdministration';
 import {api,setCsrf,type Session} from './api';
 const admin:Session={user:{username:'admin',roles:['administrator']},csrfToken:'csrf',demo:false};
 const row={handle:'a'.repeat(64),userId:'alice',provider:'local',roles:['viewer'],expires:'2026-10-04T12:00:00Z',current:false};
@@ -98,4 +98,12 @@ it('aligns each revoke button of an expanded user under the action column',async
  for(const b of revokes){const cell=b.closest('td') as HTMLTableCellElement;expect(cell.cellIndex).toBe(1);expect((cell.previousElementSibling as HTMLTableCellElement).colSpan).toBe(5)}
  expect(screen.getByRole('button',{name:'Revoke other sessions for alice'}).closest('td')).not.toBeNull();
 });
-
+it('shortens long user identifiers in the middle and keeps the full value in the tooltip',async()=>{
+ const id='authentik:f1f92a1c6002c8e169862b138bca9fe82a445facca4d94ddef58481679dc5f98';
+ expect(shortUser('alice')).toBe('alice');
+ expect(shortUser(id)).toBe('authentik:f1f92a…dc5f98');
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({data:[{...row,userId:id,current:true}],meta:{limit:25,offset:0,hasMore:false}}))));mount();
+ const name=await screen.findByText('authentik:f1f92a…dc5f98');
+ expect(name).toHaveAttribute('title',id);
+ expect(screen.getByRole('button',{name:`Revoke session for ${id}`})).toBeVisible();
+});
