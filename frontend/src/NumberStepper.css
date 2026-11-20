@@ -1,0 +1,10 @@
+.number-stepper { display: inline-flex; align-items: stretch; max-width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); overflow: hidden; }
+.number-stepper:focus-within { border-color: var(--purple); }
+.number-stepper.invalid { border-color: var(--bad); }
+.number-stepper input { border: 0; border-radius: 0; width: 7ch; min-width: 0; text-align: center; font-family: 'IBM Plex Mono', monospace; background: transparent; }
+.number-stepper .stepper-button { display: grid; place-items: center; width: 34px; min-height: 36px; padding: 0; border: 0; background: var(--raised); color: var(--muted); }
+.number-stepper .stepper-button:first-child { border-right: 1px solid var(--border); }
+.number-stepper .stepper-button:last-child { border-left: 1px solid var(--border); }
+.number-stepper .stepper-button:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.number-stepper .stepper-button:disabled { opacity: .4; cursor: not-allowed; }
+@media (pointer: coarse) { .number-stepper .stepper-button { width: 44px; min-height: 44px; } }
