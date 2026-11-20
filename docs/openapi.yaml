@@ -1592,10 +1592,10 @@ paths:
             name: rules,
             in: query,
             description:
-              "JSON list of at most 20 name rules, each an object with op, value, not and join. op is
-              starts, ends, contains, equals or regex (RE2). join (and, or) connects a rule to the one
-              before it and is required from the second rule on; AND binds tighter than OR. Topics for
-              which the expression is true are skipped, and so are topics matching exclude.",
+              "JSON object {include, except}, each a list of at most 20 terms {op, value} with op
+              starts, ends, contains or equals. A topic is skipped when any include term (or the
+              exclude regular expression) matches and no except term does; except terms alone skip
+              nothing.",
             schema: { type: string, maxLength: 16384 },
           }
       responses:
@@ -1621,10 +1621,10 @@ paths:
             name: rules,
             in: query,
             description:
-              "JSON list of at most 20 name rules, each an object with op, value, not and join. op is
-              starts, ends, contains, equals or regex (RE2). join (and, or) connects a rule to the one
-              before it and is required from the second rule on; AND binds tighter than OR. Topics for
-              which the expression is true are skipped, and so are topics matching exclude.",
+              "JSON object {include, except}, each a list of at most 20 terms {op, value} with op
+              starts, ends, contains or equals. A topic is skipped when any include term (or the
+              exclude regular expression) matches and no except term does; except terms alone skip
+              nothing.",
             schema: { type: string, maxLength: 16384 },
           }
       responses:

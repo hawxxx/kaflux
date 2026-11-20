@@ -1,33 +1,35 @@
 package api
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseExcluder(t *testing.T) {
 	if e, err := parseExcluder("", ""); e != nil || err != nil {
 		t.Fatalf("nothing given should give nil, got %v %v", e, err)
 	}
+	terms := func(n int) string {
+		return `{"include":[` + strings.TrimSuffix(strings.Repeat(`{"op":"equals","value":"a"},`, n), ",") + `]}`
+	}
 	for name, c := range map[string][2]string{
 		"bad regex":      {"(", ""},
-		"long regex":     {string(make([]byte, 201)), ""},
+		"long regex":     {strings.Repeat("a", 201), ""},
 		"bad json":       {"", "{"},
-		"empty value":    {"", `[{"op":"starts","value":""}]`},
-		"unknown op":     {"", `[{"op":"like","value":"a"}]`},
-		"missing join":   {"", `[{"op":"starts","value":"a"},{"op":"ends","value":"b"}]`},
-		"bad rule regex": {"", `[{"op":"regex","value":"("}]`},
-		"too many":       {"", "[" + repeat(`{"op":"equals","value":"a","join":"or"},`, 20) + `{"op":"equals","value":"a","join":"or"}]`},
+		"a list":         {"", `[{"op":"starts","value":"a"}]`},
+		"empty value":    {"", `{"include":[{"op":"starts","value":""}]}`},
+		"unknown op":     {"", `{"include":[{"op":"like","value":"a"}]}`},
+		"regex term":     {"", `{"except":[{"op":"regex","value":"a"}]}`},
+		"long value":     {"", `{"include":[{"op":"starts","value":"` + strings.Repeat("a", 201) + `"}]}`},
+		"too many terms": {"", terms(21)},
 	} {
 		if _, err := parseExcluder(c[0], c[1]); err == nil {
 			t.Fatalf("%s accepted", name)
 		}
 	}
-}
-
-func repeat(s string, n int) string {
-	out := ""
-	for i := 0; i < n; i++ {
-		out += s
+	if _, err := parseExcluder("", terms(20)); err != nil {
+		t.Fatalf("20 terms rejected: %v", err)
 	}
-	return out
 }
 
 func TestExcluderMatch(t *testing.T) {
@@ -38,27 +40,26 @@ func TestExcluderMatch(t *testing.T) {
 	cases := []struct {
 		name   string
 		regex  string
-		rules  string
+		filter string
 		topic  string
 		expect bool
 	}{
 		{"regex only", `^tmp\.`, "", "tmp.a", true},
 		{"regex only miss", `^tmp\.`, "", "prod.a", false},
-		{"starts or starts", "", `[{"op":"starts","value":"tmp"},{"op":"starts","value":"test","join":"or"}]`, "test-1", true},
-		{"or miss", "", `[{"op":"starts","value":"tmp"},{"op":"starts","value":"test","join":"or"}]`, "prod", false},
-		{"and not keeps the topic", "", `[{"op":"starts","value":"tmp"},{"op":"contains","value":"keep","not":true,"join":"and"}]`, "tmp-keep", false},
-		{"and not excludes the rest", "", `[{"op":"starts","value":"tmp"},{"op":"contains","value":"keep","not":true,"join":"and"}]`, "tmp-x", true},
-		{"not alone excludes everything else", "", `[{"op":"starts","value":"prod","not":true}]`, "dev-x", true},
-		{"not alone keeps matches", "", `[{"op":"starts","value":"prod","not":true}]`, "prod-x", false},
-		{"and binds tighter than or", "", `[{"op":"equals","value":"a"},{"op":"starts","value":"b","join":"or"},{"op":"contains","value":"c","join":"and"}]`, "bc", true},
-		{"and binds tighter than or miss", "", `[{"op":"equals","value":"a"},{"op":"starts","value":"b","join":"or"},{"op":"contains","value":"c","join":"and"}]`, "b", false},
-		{"ends and regex rule", "", `[{"op":"ends","value":"-dlq"},{"op":"regex","value":"^[a-z]+-","join":"and"}]`, "orders-dlq", true},
-		{"regex or rules", `^x`, `[{"op":"equals","value":"y"}]`, "xa", true},
-		{"regex or rules second", `^x`, `[{"op":"equals","value":"y"}]`, "y", true},
-		{"neither", `^x`, `[{"op":"equals","value":"y"}]`, "z", false},
+		{"include any", "", `{"include":[{"op":"starts","value":"tmp"},{"op":"starts","value":"test"}]}`, "test-1", true},
+		{"include miss", "", `{"include":[{"op":"starts","value":"tmp"},{"op":"starts","value":"test"}]}`, "prod", false},
+		{"except keeps the topic", "", `{"include":[{"op":"starts","value":"tmp"},{"op":"starts","value":"test"}],"except":[{"op":"contains","value":"keep"}]}`, "tmp-keep", false},
+		{"except keeps a test topic", "", `{"include":[{"op":"starts","value":"tmp"},{"op":"starts","value":"test"}],"except":[{"op":"contains","value":"keep"}]}`, "test-keep-1", false},
+		{"except leaves the rest excluded", "", `{"include":[{"op":"starts","value":"tmp"},{"op":"starts","value":"test"}],"except":[{"op":"contains","value":"keep"}]}`, "tmp-x", true},
+		{"except alone excludes nothing", "", `{"except":[{"op":"starts","value":"prod"}]}`, "dev-x", false},
+		{"ends and equals", "", `{"include":[{"op":"ends","value":"-dlq"},{"op":"equals","value":"scratch"}]}`, "orders-dlq", true},
+		{"equals is exact", "", `{"include":[{"op":"equals","value":"scratch"}]}`, "scratch2", false},
+		{"regex joins the includes", `^x`, `{"include":[{"op":"equals","value":"y"}]}`, "y", true},
+		{"regex hit is still vetoed", `^x`, `{"except":[{"op":"contains","value":"keep"}]}`, "x-keep", false},
+		{"neither", `^x`, `{"include":[{"op":"equals","value":"y"}]}`, "z", false},
 	}
 	for _, c := range cases {
-		e, err := parseExcluder(c.regex, c.rules)
+		e, err := parseExcluder(c.regex, c.filter)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}

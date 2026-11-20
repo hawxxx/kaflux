@@ -145,19 +145,19 @@ func TestUnusedTopicsExcludeRegex(t *testing.T) {
 
 func TestUnusedTopicsExcludeRules(t *testing.T) {
 	_, request := unusedAPI(t)
-	// scratch.* OR shipping.* AND NOT *.dispatched: the dispatched topic is kept, the rest of both families goes.
-	rules := url.QueryEscape(`[{"op":"starts","value":"scratch"},{"op":"starts","value":"shipping","join":"or"},{"op":"ends","value":".dispatched","not":true,"join":"and"}]`)
+	// Leave out scratch* and shipping*, except *.dispatched: that topic stays in the report.
+	rules := url.QueryEscape(`{"include":[{"op":"starts","value":"scratch"},{"op":"starts","value":"shipping"}],"except":[{"op":"ends","value":".dispatched"}]}`)
 	got := unusedGet(t, request, "?rules="+rules)
 	if _, ok := got["scratch.empty"]; ok {
-		t.Fatalf("rule ignored %v", got)
+		t.Fatalf("include term ignored %v", got)
 	}
 	if got["shipping.dispatched"] == "" {
-		t.Fatalf("NOT rule did not keep the topic %v", got)
+		t.Fatalf("except term did not keep the topic %v", got)
 	}
 	if got["inventory.updated"] == "" {
 		t.Fatalf("non-matching topic removed %v", got)
 	}
-	for _, q := range []string{"?rules=%7B", "?rules=" + url.QueryEscape(`[{"op":"like","value":"a"}]`), "?rules=" + url.QueryEscape(`[{"op":"starts","value":""}]`)} {
+	for _, q := range []string{"?rules=%7B", "?rules=" + url.QueryEscape(`{"include":[{"op":"like","value":"a"}]}`), "?rules=" + url.QueryEscape(`{"include":[{"op":"starts","value":""}]}`)} {
 		if w := request("GET", "unused-topics"+q, ""); w.Code != 400 {
 			t.Errorf("%s got %d", q, w.Code)
 		}

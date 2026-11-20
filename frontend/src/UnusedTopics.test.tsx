@@ -77,42 +77,40 @@ describe('unused topics',()=>{
     expect(screen.getByRole('button',{name:'Delete selected (1)'})).toBeDisabled();
     expect(screen.getByLabelText('Select _int')).toBeDisabled();
   });
-  it('sends the threshold, internal flag and exclude pattern, and blocks invalid regexes locally',async()=>{
+  it('sends the threshold and internal flag',async()=>{
     const calls:Call[]=[];stub(calls,()=>({data:report()}));
     wrap(<UnusedTopics clusterId="demo" session={session}/>);
     await screen.findByText('a.empty');
     fireEvent.change(screen.getByLabelText('Unused for at least (days)'),{target:{value:'90'}});
     await waitFor(()=>expect(calls.some(c=>c.path.includes('minAgeDays=90'))).toBe(true));
-    fireEvent.change(screen.getByLabelText(/Exclude names/),{target:{value:'('}});
-    expect(await screen.findByText(/Not a valid regular expression/)).toBeInTheDocument();
-    await new Promise(r=>setTimeout(r,500));
-    expect(calls.some(c=>c.path.includes('exclude=%28'))).toBe(false);
-    fireEvent.change(screen.getByLabelText(/Exclude names/),{target:{value:'^tmp'}});
-    await waitFor(()=>expect(calls.some(c=>c.path.includes('exclude=%5Etmp'))).toBe(true));
-    expect(screen.queryByText(/Not a valid regular expression/)).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Show internal topics/));
+    await waitFor(()=>expect(calls.some(c=>c.path.includes('includeInternal=true'))).toBe(true));
+    expect(calls.every(c=>!c.path.includes('exclude='))).toBe(true);
   });
-  it('sends name rules as one JSON parameter next to the optional regex',async()=>{
+  it('turns the keyword bar into include and except terms for the server',async()=>{
     const calls:Call[]=[];stub(calls,()=>({data:report()}));
     wrap(<UnusedTopics clusterId="demo" session={session}/>);
     await screen.findByText('a.empty');
     expect(calls.every(c=>!c.path.includes('rules='))).toBe(true);
-    fireEvent.click(screen.getByRole('button',{name:/Add rule/}));
-    fireEvent.change(screen.getByLabelText('Value for rule 1'),{target:{value:'tmp'}});
-    fireEvent.click(screen.getByRole('button',{name:/Add rule/}));
-    fireEvent.change(screen.getByLabelText('Value for rule 2'),{target:{value:'keep'}});
-    fireEvent.change(screen.getByLabelText('Match type for rule 2'),{target:{value:'contains'}});
-    fireEvent.click(screen.getByRole('button',{name:'Negate rule 2'}));
-    fireEvent.click(screen.getByRole('button',{name:/Rule 2 joins the previous rule with OR/}));
-    fireEvent.change(screen.getByLabelText(/Exclude names/),{target:{value:'^scratch'}});
+    fireEvent.change(screen.getByLabelText('Topic name filter'),{target:{value:'tmp OR test *-dlq NOT keep*'}});
     await waitFor(()=>{
       const hit=calls.map(c=>new URL(c.path,'http://x').searchParams).find(p=>p.has('rules'));
       expect(hit).toBeDefined();
-      expect(JSON.parse(hit!.get('rules')!)).toEqual([{op:'starts',value:'tmp',not:false,join:'or'},{op:'contains',value:'keep',not:true,join:'and'}]);
+      expect(JSON.parse(hit!.get('rules')!)).toEqual({include:[{op:'starts',value:'tmp'},{op:'starts',value:'test'},{op:'ends',value:'-dlq'}],except:[{op:'starts',value:'keep'}]});
     });
+    expect(screen.getByLabelText('How the filter is read')).toHaveTextContent('Leaves outstarts with tmpORstarts with testORends with -dlq');
+  });
+  it('uses the match type menu for bare words and sends nothing for words it cannot read',async()=>{
+    const calls:Call[]=[];stub(calls,()=>({data:report()}));
+    wrap(<UnusedTopics clusterId="demo" session={session}/>);
+    await screen.findByText('a.empty');
+    fireEvent.change(screen.getByLabelText('Match type'),{target:{value:'contains'}});
+    fireEvent.change(screen.getByLabelText('Topic name filter'),{target:{value:'scratch AND a*b'}});
     await waitFor(()=>{
-      const last=calls.map(c=>new URL(c.path,'http://x').searchParams).filter(p=>p.has('rules')&&p.get('exclude')==='^scratch');
-      expect(last.length).toBeGreaterThan(0);
+      const hit=calls.map(c=>new URL(c.path,'http://x').searchParams).find(p=>p.has('rules'));
+      expect(JSON.parse(hit!.get('rules')!)).toEqual({include:[{op:'contains',value:'scratch'}],except:[]});
     });
+    expect(screen.getAllByRole('alert').length).toBe(2);
   });
   it('filters by name, caps the selection at 100 and keeps hidden selections when deselecting shown rows',async()=>{
     const many=Array.from({length:120},(_,i)=>row(`t${String(i).padStart(3,'0')}`,'likely-unused'));
