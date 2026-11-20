@@ -425,7 +425,18 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if endpoint == "capabilities" || endpoint == "configuration" {
 		cap, _ := jobs.Capabilities(r.Context(), provider, false)
-		respond(w, cap)
+		if endpoint == "configuration" {
+			authentication := ""
+			if configured, ok := provider.(interface{ BrokerAuthentication() string }); ok {
+				authentication = configured.BrokerAuthentication()
+			}
+			respond(w, struct {
+				msk.Capabilities
+				BrokerAuthentication string `json:"brokerAuthentication,omitempty"`
+			}{cap, authentication})
+		} else {
+			respond(w, cap)
+		}
 		return
 	}
 	if endpoint == "rebalances" {

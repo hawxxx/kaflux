@@ -45,6 +45,7 @@ type Config struct {
 	Region               string   `json:"region"`
 	RoleARN              string   `json:"roleArn"`
 	MSKClusterARN        string   `json:"mskClusterArn"`
+	GCPPrincipal         string   `json:"gcpPrincipal"`
 	OAuthTokenEnv        string   `json:"oauthTokenEnv"`
 	OAuthTokenEndpoint   string   `json:"oauthTokenEndpoint"`
 	OAuthClientID        string   `json:"oauthClientId"`
@@ -82,6 +83,8 @@ type Native struct {
 	groupsCache []model.Group
 	groupsUntil time.Time
 
+	brokerAuthentication string
+
 	// Cleanup policy and retention per topic (see topicconfigs.go).
 	cfgLoadMu     sync.Mutex // serializes loads when nothing usable is cached
 	cfgMu         sync.Mutex
@@ -91,6 +94,14 @@ type Native struct {
 	cfgGeneration uint64                                                                  // bumped by every invalidation
 	fetchSettings func(context.Context, []string) (map[string]topicSetting, error)        // set by tests
 	describe      func(context.Context, *kmsg.DescribeConfigsRequest) []kgo.ResponseShard // set by tests
+}
+
+// BrokerAuthentication returns the configured mechanism for connection diagnostics.
+func (n *Native) BrokerAuthentication() string {
+	if n.brokerAuthentication == "" {
+		return "none"
+	}
+	return n.brokerAuthentication
 }
 
 func NewNative(c Config) (*Native, error) {
@@ -153,6 +164,12 @@ func NewNative(c Config) (*Native, error) {
 			v, e := credentials.Retrieve(ctx)
 			return saslaws.Auth{AccessKey: v.AccessKeyID, SecretKey: v.SecretAccessKey, SessionToken: v.SessionToken, UserAgent: "kaflux"}, e
 		})))
+	case "gcp-iam", "azure-iam":
+		mechanism, err := newCloudIAM(c)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, kgo.SASL(mechanism))
 	case "oauthbearer":
 		if !c.TLS {
 			return nil, fmt.Errorf("OAUTHBEARER requires TLS")
@@ -192,7 +209,7 @@ func NewNative(c Config) (*Native, error) {
 		}
 		return nil, e
 	}
-	n := &Native{client: cl, admin: kadm.NewClient(cl), opts: opts, budget: make(chan struct{}, 8), searches: make(chan struct{}, 2), oauthTokens: tokens, capacity: c.Capacity}
+	n := &Native{brokerAuthentication: c.SASL, client: cl, admin: kadm.NewClient(cl), opts: opts, budget: make(chan struct{}, 8), searches: make(chan struct{}, 2), oauthTokens: tokens, capacity: c.Capacity}
 	n.knownMSK = c.SASL == "msk-iam" || c.MSKClusterARN != ""
 	for _, seed := range c.Seeds {
 		if strings.Contains(seed, ".kafka.") || strings.Contains(seed, ".kafka-serverless.") {
