@@ -4,7 +4,8 @@
 .mcp-intro p, .mcp-tokens .panel-title p, .mcp-create .panel-title p, .mcp-reveal .panel-title p { max-width: 720px; line-height: 1.6; }
 .mcp-load-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 20px; color: var(--bad); }
 
-.mcp-form { display: grid; gap: 20px; padding: 0 20px 22px; max-width: 760px; }
+.mcp-create-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; padding-right: 20px; }
+.mcp-form { display: grid; gap: 20px; padding: 0 20px 22px; min-width: 0; }
 .mcp-field { display: grid; gap: 7px; justify-items: start; }
 .mcp-field label { font-size: 10px; color: var(--muted); }
 .mcp-field input#mcp-token-name { width: min(420px, 100%); }
@@ -73,3 +74,53 @@
   .mcp-actions:before { display: none; }
   .mcp-secret { flex-direction: column; align-items: stretch; }
 }
+
+/* Scope tiers: each scope is a card tinted by how much it can change. */
+.mcp-tiers { border: 0; padding: 0; }
+.mcp-tiers legend { padding: 0; margin-bottom: 8px; }
+.mcp-tier-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mcp-scope { --tier: var(--green); position: relative; align-content: start; padding: 13px 14px 13px 17px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--text) 2%, transparent); transition: border-color .18s, background .18s, box-shadow .18s; }
+.mcp-scope[data-scope=messages] { --tier: var(--blue); }
+.mcp-scope[data-scope=write] { --tier: var(--warn); }
+.mcp-scope[data-scope=destructive] { --tier: var(--bad); }
+.mcp-scope::before { content: ''; position: absolute; left: 0; top: 13px; bottom: 13px; width: 3px; border-radius: 0 3px 3px 0; background: var(--tier); opacity: .35; transition: opacity .18s; }
+.mcp-scope[data-checked=true] { border-color: color-mix(in srgb, var(--tier) 55%, transparent); background: color-mix(in srgb, var(--tier) 8%, var(--panel)); box-shadow: 0 12px 28px -22px var(--tier); }
+.mcp-scope[data-checked=true]::before { opacity: 1; }
+.mcp-scope:has(input:focus-visible) { outline: 2px solid var(--purple); outline-offset: 2px; }
+.mcp-scope-warning { grid-column: 1 / -1; }
+.mcp-scope-label { cursor: pointer; }
+.mcp-scope-label input { accent-color: var(--tier); }
+
+/* Live summary of the token being created. */
+.mcp-summary { position: sticky; top: 16px; display: grid; gap: 12px; padding: 18px; border: 1px solid var(--glass-border, var(--border)); border-radius: 12px; background: var(--glass, var(--raised)); box-shadow: var(--glass-edge, none); }
+.mcp-summary h3 { margin: 0; font-size: 13px; font-weight: 500; }
+.mcp-summary-who { display: flex; gap: 11px; align-items: center; min-width: 0; }
+.mcp-summary-who div { display: grid; min-width: 0; }
+.mcp-summary-who strong { font-weight: 500; font-size: 12px; overflow-wrap: anywhere; }
+.mcp-summary small { font-size: 10px; color: var(--muted); }
+.mcp-avatar { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font: 500 12px 'IBM Plex Mono', monospace; color: var(--purple); background: color-mix(in srgb, var(--purple) 14%, transparent); border: 1px solid color-mix(in srgb, var(--purple) 40%, transparent); }
+.mcp-reach { height: 5px; border-radius: 9px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+.mcp-reach span { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--warn), var(--bad)); background-size: 296px 100%; transition: width .25s; }
+.mcp-summary ul { list-style: none; margin: 0; padding: 0; }
+.mcp-summary li { display: flex; gap: 9px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 11px; line-height: 1.5; }
+.mcp-summary li[data-on=false] { color: var(--muted); text-decoration: line-through; }
+.mcp-summary li > span:first-child { width: 14px; flex: none; }
+.mcp-summary-where { margin: 0; display: grid; gap: 2px; font-size: 11px; }
+.mcp-summary-warn { margin: 0; font-size: 11px; line-height: 1.5; color: var(--warn); }
+
+/* Token list: risk-coloured scope pills and a calmer row hover. */
+.mcp-chips .tag[data-scope=read] { color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, var(--border)); }
+.mcp-chips .tag[data-scope=messages] { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
+.mcp-chips .tag[data-scope=write] { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+.mcp-chips .tag[data-scope=destructive] { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); }
+.mcp-chips .tag { border-radius: 99px; padding: 1px 8px; }
+.mcp-token-table tbody tr { transition: background .15s; }
+.mcp-token-table tbody tr:hover { background: color-mix(in srgb, var(--text) 3%, transparent); }
+.mcp-token-table tr[data-status=revoked] .tag, .mcp-token-table tr[data-status=expired] .tag { opacity: .55; }
+
+@media (max-width: 900px) {
+  .mcp-create-layout { grid-template-columns: 1fr; padding-right: 0; }
+  .mcp-summary { position: static; margin: 0 20px 20px; }
+}
+@media (max-width: 620px) { .mcp-tier-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .mcp-scope, .mcp-scope::before, .mcp-reach span { transition: none; } }

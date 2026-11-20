@@ -30,8 +30,7 @@ export function canManageMcp(session?:Session){return session?.canManageMcp??ses
 export function connectionSnippets(origin:string,secret:string){
   const url=`${origin}/mcp`;
   return {
-    claudeCode:`claude mcp add --transport http kaflux ${url} --header "Authorization: Bearer ${secret}"`,
-    desktop:JSON.stringify({mcpServers:{kaflux:{type:'http',url,headers:{Authorization:`Bearer ${secret}`}}}},null,2),
+    json:JSON.stringify({mcpServers:{kaflux:{type:'http',url,headers:{Authorization:`Bearer ${secret}`}}}},null,2),
     generic:`URL: ${url}\nTransport: Streamable HTTP\nHeader: Authorization: Bearer ${secret}`,
   };
 }
@@ -78,7 +77,7 @@ export function McpAccess({session,clusters}:{session?:Session;clusters:{id:stri
   function dismiss(){setReveal(null);requestAnimationFrame(()=>createHeading.current?.focus())}
   const activeCount=tokens.filter(t=>t.status==='active').length;
   return <div className="mcp-access">
-    <section className="panel mcp-intro"><div className="panel-title"><div><h2>MCP access</h2><p>Personal tokens let AI clients such as Claude use Kaflux through the Model Context Protocol. A token never has more access than its owner, and its scopes and cluster list narrow it further.</p></div><KeyRound size={18} aria-hidden="true" className="mcp-intro-icon"/></div></section>
+    <section className="panel mcp-intro"><div className="panel-title"><div><h2>How access works</h2><p>Personal tokens connect AI clients to Kaflux through the Model Context Protocol. A token never has more access than its owner, and its scopes and cluster list narrow it further.</p></div><KeyRound size={18} aria-hidden="true" className="mcp-intro-icon"/></div></section>
     {query.isLoading?<LoadingPanel label="Loading MCP tokens"/>:query.error?<section className="panel"><div className="inline-error mcp-load-error" role="alert"><span>Unable to load MCP tokens: {query.error.message}</span><button className="button" onClick={()=>query.refetch()}>Retry</button></div></section>:meta&&<>
       {!meta.enabled&&<div className="capability-notice" data-tone="warn" role="note"><TriangleAlert size={16} aria-hidden="true"/><div><strong>MCP is disabled by the administrator.</strong><p>No AI client can connect until MCP is enabled in the Kaflux configuration. Existing tokens are listed below and can still be revoked.</p></div></div>}
       {reveal&&<SecretReveal reveal={reveal} onDismiss={dismiss}/>}
@@ -140,18 +139,19 @@ function CreateToken({meta,clusters,headingRef,onCreated}:{meta:McpMeta;clusters
   }
   return <section className="panel mcp-create" aria-labelledby="mcp-create-title">
     <div className="panel-title"><div><h2 id="mcp-create-title" ref={headingRef} tabIndex={-1}>Create token</h2><p>The secret is shown once after creation. Kaflux keeps only a hash of it.</p></div></div>
+    <div className="mcp-create-layout">
     <form className="mcp-form" onSubmit={submit} noValidate>
       <div className="mcp-field">
         <label htmlFor="mcp-token-name">Token name</label>
-        <input id="mcp-token-name" ref={nameRef} value={name} maxLength={64} autoComplete="off" placeholder="e.g. laptop-claude" aria-invalid={!!errors.name||undefined} aria-describedby={errors.name?'mcp-token-name-error':'mcp-token-name-hint'} onChange={e=>setName(e.target.value)}/>
+        <input id="mcp-token-name" ref={nameRef} value={name} maxLength={64} autoComplete="off" placeholder="e.g. laptop-assistant" aria-invalid={!!errors.name||undefined} aria-describedby={errors.name?'mcp-token-name-error':'mcp-token-name-hint'} onChange={e=>setName(e.target.value)}/>
         {errors.name?<p id="mcp-token-name-error" className="mcp-field-error">{errors.name}</p>:<p id="mcp-token-name-hint" className="mcp-hint">Up to 64 characters, without "/". Unique among your active tokens.</p>}
       </div>
-      <fieldset className="mcp-fieldset" aria-describedby={errors.scopes?'mcp-scopes-error':undefined}>
+      <fieldset className="mcp-fieldset mcp-tiers" aria-describedby={errors.scopes?'mcp-scopes-error':undefined}>
         <legend>Scopes</legend>
-        {SCOPES.map((s,i)=>{const on=scopes.includes(s.id);return <div key={s.id} className="mcp-scope" data-checked={on}>
+        <div className="mcp-tier-grid">{SCOPES.map((s,i)=>{const on=scopes.includes(s.id);return <div key={s.id} className="mcp-scope" data-checked={on} data-scope={s.id}>
           <label className="checkbox-label mcp-scope-label"><input ref={i===0?scopeRef:undefined} type="checkbox" checked={on} onChange={()=>setScopes(toggle(scopes,s.id))}/><span><strong>{s.label}</strong><small>{s.description}</small></span></label>
           {on&&s.warning&&<div className="mcp-scope-warning" role="note"><TriangleAlert size={14} aria-hidden="true"/><p>{s.warning}{!meta.writesEnabled&&<> <em>This scope has no effect until an administrator enables MCP writes.</em></>}</p></div>}
-        </div>})}
+        </div>})}</div>
         {errors.scopes&&<p id="mcp-scopes-error" className="mcp-field-error">{errors.scopes}</p>}
       </fieldset>
       {clusters.length>0&&<fieldset className="mcp-fieldset">
@@ -167,7 +167,29 @@ function CreateToken({meta,clusters,headingRef,onCreated}:{meta:McpMeta;clusters
       {submitError&&<p className="inline-error" role="alert">Unable to create the token: {submitError}</p>}
       <div className="mcp-form-actions"><button type="submit" className="button primary" disabled={busy}>{busy?'Creating…':'Create token'}</button></div>
     </form>
+    <TokenSummary name={name} scopes={scopes} allowed={allowed} clusters={clusters} days={days} writesEnabled={meta.writesEnabled}/>
+    </div>
   </section>;
+}
+const CAPABILITIES:{id:string;text:string}[]=[
+  {id:'read',text:'Inspect topics, groups, schemas and metrics'},
+  {id:'messages',text:'Read message payloads'},
+  {id:'write',text:'Produce messages and change configuration'},
+  {id:'destructive',text:'Delete data and reset offsets'},
+];
+/** Live preview of what the token being created can do, so the grant is visible before it exists. */
+function TokenSummary({name,scopes,allowed,clusters,days,writesEnabled}:{name:string;scopes:string[];allowed:string[];clusters:{id:string;name:string}[];days:string;writesEnabled:boolean}){
+  const n=Number(days);const label=name.trim();const reach=CAPABILITIES.filter(c=>scopes.includes(c.id)).length;
+  const where=allowed.length?clusters.filter(c=>allowed.includes(c.id)).map(c=>c.name).join(', '):'Every cluster you can access';
+  return <aside className="mcp-summary" aria-label="Token summary">
+    <h3>This token can</h3>
+    <div className="mcp-summary-who"><span className="mcp-avatar" aria-hidden="true">{(label||'··').slice(0,2).toLowerCase()}</span><div><strong>{label||'Unnamed token'}</strong><small>{Number.isInteger(n)&&n>0?`Expires in ${n} ${n===1?'day':'days'}`:'Choose an expiry'}</small></div></div>
+    <div className="mcp-reach" role="img" aria-label={`${reach} of ${CAPABILITIES.length} capability groups granted`}><span style={{width:`${reach*25}%`}}/></div>
+    <ul>{CAPABILITIES.map(c=>{const on=scopes.includes(c.id);return <li key={c.id} data-on={on}><span aria-hidden="true">{on?'✓':'–'}</span><span>{c.text}<span className="visually-hidden">{on?' (granted)':' (not granted)'}</span></span></li>})}</ul>
+    <p className="mcp-summary-where"><small>Clusters</small>{where}</p>
+    {scopes.includes('destructive')&&<p className="mcp-summary-warn" role="note">Includes changes that cannot be undone.</p>}
+    {!writesEnabled&&(scopes.includes('write')||scopes.includes('destructive'))&&<p className="mcp-summary-warn" role="note">Write scopes have no effect until MCP writes are enabled.</p>}
+  </aside>;
 }
 
 function SecretReveal({reveal,onDismiss}:{reveal:Reveal;onDismiss:()=>void}){
@@ -181,8 +203,7 @@ function SecretReveal({reveal,onDismiss}:{reveal:Reveal;onDismiss:()=>void}){
     <div className="mcp-reveal-body">
       <div className="mcp-scope-warning" role="note"><TriangleAlert size={14} aria-hidden="true"/><p>This secret is shown once. Kaflux stores only a hash, so it cannot show it again. If you lose it, revoke the token and create a new one. Treat it like a password.</p></div>
       <div className="mcp-secret"><code data-testid="mcp-secret">{reveal.secret}</code><button type="button" className="button" aria-label="Copy secret" onClick={()=>copy('secret',reveal.secret)}><Copy size={13} aria-hidden="true"/>Copy</button></div>
-      {block('claude-code','Claude Code','Claude Code command',snippets.claudeCode)}
-      {block('desktop','Claude Desktop and other JSON clients','Claude Desktop configuration',snippets.desktop)}
+      {block('json','JSON configuration','JSON configuration',snippets.json)}
       {block('generic','Any MCP client (streamable HTTP)','generic settings',snippets.generic)}
       <p className={`mcp-copy-status${copied&&!copied.ok?' failed':''}`} role="status">{copied?(copied.ok?<><Check size={13} aria-hidden="true"/>{copied.label==='secret'?'Secret':copied.label[0].toUpperCase()+copied.label.slice(1)} copied.</>:'Copy failed. Select the text and copy it manually.'):''}</p>
       <div className="mcp-form-actions"><button type="button" className="button primary" onClick={onDismiss}>I have saved the token</button></div>

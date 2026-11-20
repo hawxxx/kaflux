@@ -78,7 +78,7 @@ it('defaults expiry to 30 days and posts the chosen scopes and clusters',async()
   expect(JSON.parse(String(post?.[1]?.body))).toEqual({name:'laptop-2',scopes:['read','messages'],clusters:['prod'],expiresInDays:30});
 });
 
-it('shows the secret once with copy and the three connection snippets',async()=>{
+it('shows the secret once with copy and the connection snippets',async()=>{
   const writeText=vi.fn(async()=>{});vi.stubGlobal('navigator',{...navigator,clipboard:{writeText}});
   const log=vi.spyOn(console,'log');const info=vi.spyOn(console,'info');
   mount();await fillAndCreate();
@@ -86,14 +86,13 @@ it('shows the secret once with copy and the three connection snippets',async()=>
   expect(within(panel).getByText(/shown once/i)).toBeVisible();
   expect(within(panel).getByTestId('mcp-secret')).toHaveTextContent(SECRET);
   const origin=window.location.origin;
-  expect(within(panel).getByText(`claude mcp add --transport http kaflux ${origin}/mcp --header "Authorization: Bearer ${SECRET}"`)).toBeVisible();
-  expect(within(panel).getByTestId('snippet-desktop').textContent).toContain(`"url": "${origin}/mcp"`);
+  expect(within(panel).getByTestId('snippet-json').textContent).toContain(`"url": "${origin}/mcp"`);
   expect(within(panel).getByTestId('snippet-generic').textContent).toContain(`Authorization: Bearer ${SECRET}`);
   fireEvent.click(within(panel).getByRole('button',{name:'Copy secret'}));
   await waitFor(()=>expect(writeText).toHaveBeenCalledWith(SECRET));
   expect(await within(panel).findByText('Secret copied.')).toBeVisible();
-  fireEvent.click(within(panel).getByRole('button',{name:'Copy Claude Code command'}));
-  await waitFor(()=>expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('claude mcp add')));
+  fireEvent.click(within(panel).getByRole('button',{name:'Copy JSON configuration'}));
+  await waitFor(()=>expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('"url"')));
   expect(await screen.findByText('workstation')).toBeVisible();
   expect(localStorage.length+sessionStorage.length).toBe(0);
   expect(window.location.href).not.toContain(SECRET);
@@ -202,8 +201,7 @@ it('falls back to session permissions when canManageMcp is absent',async()=>{
 
 it('builds connection snippets from the origin',()=>{
   const s=connectionSnippets('https://kaflux.example','abc');
-  expect(s.claudeCode).toBe('claude mcp add --transport http kaflux https://kaflux.example/mcp --header "Authorization: Bearer abc"');
-  expect(JSON.parse(s.desktop)).toEqual({mcpServers:{kaflux:{type:'http',url:'https://kaflux.example/mcp',headers:{Authorization:'Bearer abc'}}}});
+  expect(JSON.parse(s.json)).toEqual({mcpServers:{kaflux:{type:'http',url:'https://kaflux.example/mcp',headers:{Authorization:'Bearer abc'}}}});
   expect(s.generic).toContain('URL: https://kaflux.example/mcp');
   expect(s.generic).toContain('Authorization: Bearer abc');
 });
