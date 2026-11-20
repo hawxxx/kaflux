@@ -62,13 +62,19 @@ func newEnv(t *testing.T, cfg envConfig) *testEnv {
 	if cfg.integrations {
 		ext = fakeIntegrations(t)
 	}
-	e.api = api.New(api.Options{Demo: cfg.demo, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: []model.Cluster{{ID: "demo"}}, Grants: cfg.grants, Integrations: ext, ExtraMetrics: WriteMetrics})
+	e.api = api.New(api.Options{Demo: cfg.demo, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Clusters: []model.Cluster{{ID: "demo"}}, Grants: cfg.grants, Integrations: ext, ExtraMetrics: WriteMetrics, Metrics: fakeMetrics, ClusterMetrics: func(string) http.Handler { return fakeMetrics }})
 	e.h = NewHandler(Options{Store: s, Handler: e.api, Grants: e.grants, Writes: cfg.writes, AllowedOrigins: cfg.origins, Limits: cfg.limits, ConfirmKey: []byte("test-confirmation-key-0123456789"), Demo: cfg.demo})
 	e.api.SetMCP(e.h)
 	e.srv = httptest.NewServer(e.api)
 	t.Cleanup(e.srv.Close)
 	return e
 }
+
+// fakeMetrics stands in for the metrics backend.
+var fakeMetrics = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"data":[]}`))
+})
 
 // fakeIntegrations serves minimal schema registry and Connect answers.
 func fakeIntegrations(t *testing.T) map[string]*integrations.Client {
@@ -222,11 +228,12 @@ func errorOf(t *testing.T, r *sdk.CallToolResult) toolErr {
 	return env.Error
 }
 
+const initBody = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"raw","version":"1"}}}`
+
 // rawPost sends one JSON-RPC initialize to /mcp with the given headers.
 func (e *testEnv) rawPost(t *testing.T, hdr http.Header) (*http.Response, string) {
 	t.Helper()
-	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"raw","version":"1"}}}`
-	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/mcp", strings.NewReader(body))
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/mcp", strings.NewReader(initBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	for k, v := range hdr {
@@ -421,20 +428,73 @@ func TestPrepareThenCommitCreatesTopicInDemo(t *testing.T) {
 }
 
 func TestOriginRejected(t *testing.T) {
-	e := newEnv(t, envConfig{demo: true, origins: []string{"https://console.example"}})
+	e := newEnv(t, envConfig{demo: true, origins: []string{"https://Console.Example", "http://localhost:8080/"}})
 	secret := e.token(t, tokenSpec{})
-	auth := []string{"Bearer " + secret}
-	if resp, _ := e.rawPost(t, http.Header{"Authorization": auth, "Origin": {"https://evil.example"}}); resp.StatusCode != 403 {
-		t.Fatalf("foreign origin: %d", resp.StatusCode)
+	authz := []string{"Bearer " + secret}
+	host := strings.TrimPrefix(e.srv.URL, "http://")
+	for _, c := range []struct {
+		name, origin, host string
+		want               int
+	}{
+		{"no origin", "", "", 200},
+		{"allowlisted", "https://console.example", "", 200},
+		{"allowlisted default port", "https://console.example:443", "", 200},
+		{"allowlisted case and slash", "http://LOCALHOST:8080", "", 200},
+		{"foreign", "https://evil.example", "", 403},
+		{"rebinding: Host matches Origin", "http://evil.example", "evil.example", 403},
+		{"same host as request", e.srv.URL, "", 403},
+		{"scheme mismatch", "http://console.example", "", 403},
+		{"port mismatch", "https://console.example:8443", "", 403},
+		{"null", "null", "", 403},
+		{"with path", "https://console.example/app", "", 403},
+	} {
+		hdr := http.Header{"Authorization": authz}
+		if c.origin != "" {
+			hdr.Set("Origin", c.origin)
+		}
+		req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/mcp", strings.NewReader(initBody))
+		req.Header = hdr
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Host = host
+		if c.host != "" {
+			req.Host = c.host
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != c.want {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.want)
+		}
 	}
-	if resp, body := e.rawPost(t, http.Header{"Authorization": auth, "Origin": {"https://console.example"}}); resp.StatusCode != 200 {
-		t.Fatalf("allowed origin: %d %s", resp.StatusCode, body)
+	// With no configured origins every browser request is refused.
+	bare := newEnv(t, envConfig{demo: true})
+	if resp, _ := bare.rawPost(t, http.Header{"Authorization": {"Bearer " + bare.token(t, tokenSpec{})}, "Origin": {bare.srv.URL}}); resp.StatusCode != 403 {
+		t.Fatalf("origin with empty allowlist: %d", resp.StatusCode)
 	}
-	if resp, body := e.rawPost(t, http.Header{"Authorization": auth, "Origin": {e.srv.URL}}); resp.StatusCode != 200 {
-		t.Fatalf("same-host origin: %d %s", resp.StatusCode, body)
+}
+
+func TestFailedAuthRateLimited(t *testing.T) {
+	e := newEnv(t, envConfig{demo: true})
+	secret := e.token(t, tokenSpec{})
+	for i := 0; i < MaxAuthFailuresPerMinute; i++ {
+		if resp, _ := e.rawPost(t, http.Header{"Authorization": {"Bearer kfx_wrong"}}); resp.StatusCode != 401 {
+			t.Fatalf("failure %d: %d", i, resp.StatusCode)
+		}
 	}
-	if resp, _ := e.rawPost(t, http.Header{"Authorization": auth}); resp.StatusCode != 200 {
-		t.Fatalf("no origin: %d", resp.StatusCode)
+	resp, _ := e.rawPost(t, http.Header{"Authorization": {"Bearer kfx_wrong"}})
+	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("flood not limited: %d", resp.StatusCode)
+	}
+	// The client stays refused, even with a valid token, until the window passes.
+	if resp, _ := e.rawPost(t, http.Header{"Authorization": {"Bearer " + secret}}); resp.StatusCode != 429 {
+		t.Fatalf("limited client: %d", resp.StatusCode)
+	}
+	l := e.h.authFail
+	if l.blocked("127.0.0.1", time.Now().Add(61*time.Second)) || l.blocked("10.0.0.9", time.Now()) {
+		t.Fatal("limit outlived its window or spilled to another IP")
 	}
 }
 
@@ -604,14 +664,63 @@ var matrixValues = map[string]any{
 	"job": "job-1", "metric": "bytes-in", "subject": "orders-value", "task": "0", "version": "1",
 }
 
+// adminCannotSucceed lists tools the admin persona cannot complete against
+// the demo cluster with matrix arguments, and why.
+var adminCannotSucceed = map[string]string{
+	"kaflux_topic_bulk_delete":         "needs per-topic fingerprints returned by kaflux_topic_unused in the same run",
+	"kaflux_rebalance_get":             matrixNoJob,
+	"kaflux_rebalance_events":          matrixNoJob,
+	"kaflux_rebalance_dry_run":         matrixNoJob,
+	"kaflux_rebalance_pause":           matrixNoJob,
+	"kaflux_rebalance_resume":          matrixNoJob,
+	"kaflux_rebalance_cancel":          matrixNoJob,
+	"kaflux_rebalance_cancel_rollback": matrixNoJob,
+	"kaflux_rebalance_throttle":        matrixNoJob,
+	"kaflux_rebalance_execute":         matrixNoJob,
+	"kaflux_rebalance_rollback":        matrixNoJob,
+}
+
+const matrixNoJob = "needs a rebalance job id generated earlier in the same run (and, for lifecycle steps, a job in the matching state); the fixed matrix job id does not exist"
+
 // matrixBodies are valid request bodies for tools whose REST route rejects
 // an empty body before it authorizes.
 var matrixBodies = map[string]map[string]any{
-	"kaflux_topic_copy":            {"name": "orders.copy", "partitions": 3, "replicationFactor": 3},
-	"kaflux_schema_subject_delete": {"confirmation": true},
-	"kaflux_schema_version_delete": {"confirmation": true},
-	"kaflux_connector_delete":      {"confirmation": true},
-	"kaflux_acl_delete":            {"acl": map[string]any{"resourceType": "TOPIC", "resourceName": "orders.created", "patternType": "LITERAL", "principal": "User:alice", "host": "*", "operation": "READ", "permission": "ALLOW"}, "confirmation": true},
+	"kaflux_topic_copy":                 {"name": "orders.copy", "partitions": 3, "replicationFactor": 3},
+	"kaflux_schema_compatibility_check": {"confirmation": true, "payload": map[string]any{"schema": "{}"}},
+	"kaflux_message_search":             {"topic": "orders.created", "match": map[string]any{"text": "ORD"}, "maxMatches": 5},
+	"kaflux_topic_create":               {"name": "matrix.created", "partitions": 3, "replicationFactor": 3},
+	"kaflux_topic_config_update":        {"config": map[string]any{"retention.ms": "86400000"}, "confirmation": true},
+	"kaflux_topic_partitions_add":       {"count": 24, "confirmation": true},
+	"kaflux_topic_delete":               {"confirmation": "shipping.dispatched"},
+	"kaflux_topic_truncate":             {"confirmation": "notifications.email"},
+	"kaflux_topic_recreate":             {"confirmation": "events.audit"},
+	"kaflux_group_reset_offsets":        {"mode": "earliest", "topics": []any{"orders.created"}, "preview": true},
+	"kaflux_acl_create":                 {"acl": map[string]any{"resourceType": "TOPIC", "resourceName": "orders.created", "patternType": "LITERAL", "principal": "User:alice", "host": "*", "operation": "READ", "permission": "ALLOW"}, "confirmation": true},
+	"kaflux_schema_register":            {"confirmation": true, "payload": map[string]any{"schemaType": "AVRO", "schema": `"string"`}},
+	"kaflux_schema_config_update":       {"confirmation": true, "payload": map[string]any{"compatibility": "BACKWARD"}},
+	"kaflux_connector_upsert":           {"confirmation": true, "payload": map[string]any{"connector.class": "FileStreamSink", "topics": "orders.created"}},
+	"kaflux_connector_config_update":    {"confirmation": true, "payload": map[string]any{"connector.class": "FileStreamSink", "topics": "orders.created"}},
+	"kaflux_connector_pause":            {"confirmation": true},
+	"kaflux_connector_resume":           {"confirmation": true},
+	"kaflux_connector_restart":          {"confirmation": true},
+	"kaflux_connector_task_restart":     {"confirmation": true},
+	"kaflux_message_produce":            {"topic": "orders.created", "key": "42", "value": `{"id":42}`},
+	"kaflux_rebalance_plan":             {"topics": []any{"orders.created"}, "brokers": []any{1, 2, 3, 4, 5, 6}, "rackAware": true, "throttleBytesPerSec": 10485760},
+	"kaflux_schema_subject_delete":      {"confirmation": true},
+	"kaflux_schema_version_delete":      {"confirmation": true},
+	"kaflux_connector_delete":           {"confirmation": true},
+	"kaflux_acl_delete":                 {"acl": map[string]any{"resourceType": "TOPIC", "resourceName": "orders.created", "patternType": "LITERAL", "principal": "User:alice", "host": "*", "operation": "READ", "permission": "ALLOW"}, "confirmation": true},
+}
+
+// matrixOverrides replace or add arguments, so destructive tools act on
+// their own targets and need not run in a particular order.
+var matrixOverrides = map[string]map[string]any{
+	"kaflux_message_consume":     {"topic": "orders.created", "partition": 0, "offset": 0},
+	"kaflux_metrics_query":       {"metric": "bytes-in"},
+	"kaflux_topic_delete":        {"topic": "shipping.dispatched"},
+	"kaflux_topic_truncate":      {"topic": "notifications.email"},
+	"kaflux_topic_recreate":      {"topic": "events.audit"},
+	"kaflux_group_reset_offsets": {"group": "demo-inactive"},
 }
 
 func matrixArgs(t *testing.T, tool Tool) map[string]any {
@@ -641,6 +750,9 @@ func matrixArgs(t *testing.T, tool Tool) map[string]any {
 			t.Fatalf("%s: no matrix value for required %q", tool.Name, name)
 		}
 		args[name] = v
+	}
+	for k, v := range matrixOverrides[tool.Name] {
+		args[k] = v
 	}
 	return args
 }
@@ -697,6 +809,9 @@ func TestAuthMatrix(t *testing.T) {
 			// Each side gets its own demo cluster; both see the same call
 			// sequence, so their states evolve alike.
 			viaMCP := newEnv(t, envConfig{writes: true, grants: p.grants, integrations: true})
+			// The REST side's expected grants come from production Narrow,
+			// which has its own tests (scopes_test.go); this matrix checks
+			// that MCP applies them exactly as REST does.
 			effective := Narrow(p.grants, p.scopes, p.clusters)
 			if len(effective) == 0 {
 				effective = []auth.Grant{{Role: "nobody", Cluster: "*", Action: "read", Pattern: "*"}}
@@ -721,6 +836,12 @@ func TestAuthMatrix(t *testing.T) {
 				mcpNo, code := mcpDenied(t, cs, tool, args)
 				if restNo != mcpNo {
 					t.Errorf("tool %s persona %s: REST denied=%v (HTTP %d), MCP denied=%v (%s)", tool.Name, p.name, restNo, status, mcpNo, code)
+				}
+				// The admin must succeed, so agreement cannot rest on both
+				// sides rejecting placeholder arguments alike.
+				_, excused := adminCannotSucceed[tool.Name]
+				if p.name == "admin" && (code == "ok") == excused {
+					t.Errorf("tool %s persona admin: MCP %s, REST HTTP %d; want success unless listed in adminCannotSucceed", tool.Name, code, status)
 				}
 			}
 		})

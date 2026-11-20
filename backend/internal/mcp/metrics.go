@@ -27,6 +27,7 @@ const (
 	deniedToolset         = "toolset"
 	deniedPermission      = "permission"
 	deniedRateLimited     = "rate_limited"
+	deniedAuthRateLimited = "auth_rate_limited"
 )
 
 // callBuckets are the latency histogram bounds in seconds.

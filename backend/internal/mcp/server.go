@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -38,8 +39,9 @@ type Options struct {
 	Grants func() []auth.Grant
 	// Writes exposes write and destructive tools (mcp.writes: enabled).
 	Writes bool
-	// AllowedOrigins lists the browser origins accepted besides the request's
-	// own host; requests without an Origin header are not origin-checked.
+	// AllowedOrigins lists the browser origins (scheme://host[:port]) that
+	// may call /mcp. A request with any other Origin, or with an Origin when
+	// the list is empty, is refused; requests without Origin are not checked.
 	AllowedOrigins []string
 	Limits         Limits
 	// ConfirmKey keys write confirmations; nil draws a per-process key.
@@ -50,10 +52,11 @@ type Options struct {
 
 // Handler serves POST /mcp: streamable HTTP, stateless, JSON responses.
 type Handler struct {
-	o       Options
-	d       *Dispatcher
-	sdk     http.Handler
-	metrics *metrics
+	o        Options
+	d        *Dispatcher
+	sdk      http.Handler
+	metrics  *metrics
+	authFail *failureLimiter
 }
 
 // NewHandler returns the /mcp handler. It authenticates each request with a
@@ -66,7 +69,7 @@ func NewHandler(o Options) *Handler {
 	if o.Store != nil {
 		d.SetAudit(o.Store.Audit)
 	}
-	h := &Handler{o: o, d: d, metrics: defaultMetrics}
+	h := &Handler{o: o, d: d, metrics: defaultMetrics, authFail: newFailureLimiter(MaxAuthFailuresPerMinute)}
 	h.sdk = sdk.NewStreamableHTTPHandler(h.server, &sdk.StreamableHTTPOptions{
 		Stateless:    true,
 		JSONResponse: true,
@@ -106,14 +109,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusServiceUnavailable, "mcp_unavailable", "MCP is not configured")
 		return
 	}
+	// A client that keeps failing authentication is refused before the
+	// token store is consulted.
+	ip := clientIP(r.RemoteAddr)
+	if h.authFail.blocked(ip, time.Now()) {
+		h.metrics.deny(deniedAuthRateLimited)
+		w.Header().Set("Retry-After", "60")
+		httpError(w, http.StatusTooManyRequests, "rate_limited", "Too many failed authentication attempts; retry later")
+		return
+	}
 	secret, ok := bearer(r)
 	if !ok {
-		h.unauthenticated(w)
+		h.unauthenticated(w, ip)
 		return
 	}
 	tok, err := h.o.Store.MCPTokenByHash(r.Context(), store.HashMCPSecret(secret))
 	if errors.Is(err, store.ErrMCPTokenNotFound) {
-		h.unauthenticated(w)
+		h.unauthenticated(w, ip)
 		return
 	}
 	if err != nil {
@@ -128,7 +140,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.sdk.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, c)))
 }
 
-func (h *Handler) unauthenticated(w http.ResponseWriter) {
+func (h *Handler) unauthenticated(w http.ResponseWriter, ip string) {
+	h.authFail.record(ip, time.Now())
 	h.metrics.deny(deniedUnauthenticated)
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	httpError(w, http.StatusUnauthorized, "unauthenticated", "Valid MCP token required")
@@ -150,20 +163,113 @@ func bearer(r *http.Request) (string, bool) {
 	return secret, true
 }
 
-// originAllowed accepts requests without Origin (non-browser clients), from
-// the request's own host, or from a configured origin.
+// originAllowed accepts requests without Origin (non-browser clients) and
+// browser requests whose Origin exactly matches a configured origin by
+// scheme, host and port. The request's Host is never trusted: under DNS
+// rebinding it matches the attacker's Origin.
 func (h *Handler) originAllowed(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
 	}
+	got, ok := normalizeOrigin(origin)
+	if !ok {
+		return false
+	}
 	for _, o := range h.o.AllowedOrigins {
-		if strings.EqualFold(strings.TrimRight(o, "/"), origin) {
+		if want, ok := normalizeOrigin(o); ok && want == got {
 			return true
 		}
 	}
-	u, err := url.Parse(origin)
-	return err == nil && u.Host != "" && strings.EqualFold(u.Host, r.Host)
+	return false
+}
+
+// normalizeOrigin reduces an http(s) origin to scheme://host:port with the
+// scheme and host lowercased and the default port made explicit. Anything
+// else, including "null" and origins with a path, query or credentials, is
+// not an origin.
+func normalizeOrigin(o string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(o))
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return "", false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	port := u.Port()
+	switch {
+	case scheme != "http" && scheme != "https":
+		return "", false
+	case port == "" && scheme == "http":
+		port = "80"
+	case port == "":
+		port = "443"
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return "", false
+	}
+	return scheme + "://" + net.JoinHostPort(host, port), true
+}
+
+// MaxAuthFailuresPerMinute bounds failed /mcp authentications per client IP.
+const MaxAuthFailuresPerMinute = 120
+
+// maxFailureClients bounds the IPs the failure limiter tracks.
+const maxFailureClients = 10000
+
+// failureLimiter counts failed authentications per client IP over a sliding
+// minute, in the manner of the API's login limiter.
+type failureLimiter struct {
+	mu        sync.Mutex
+	max       int
+	hits      map[string][]time.Time
+	lastPrune time.Time
+}
+
+func newFailureLimiter(max int) *failureLimiter {
+	return &failureLimiter{max: max, hits: map[string][]time.Time{}}
+}
+
+func (l *failureLimiter) recent(ip string, now time.Time) []time.Time {
+	kept := l.hits[ip][:0]
+	for _, at := range l.hits[ip] {
+		if now.Sub(at) < time.Minute {
+			kept = append(kept, at)
+		}
+	}
+	if len(kept) == 0 {
+		delete(l.hits, ip)
+		return nil
+	}
+	l.hits[ip] = kept
+	return kept
+}
+
+func (l *failureLimiter) blocked(ip string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.recent(ip, now)) >= l.max
+}
+
+func (l *failureLimiter) record(ip string, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if now.Sub(l.lastPrune) >= time.Minute {
+		for k := range l.hits {
+			l.recent(k, now)
+		}
+		l.lastPrune = now
+	}
+	if _, tracked := l.hits[ip]; !tracked && len(l.hits) >= maxFailureClients {
+		return // full of active offenders; do not evict them for a newcomer
+	}
+	l.hits[ip] = append(l.recent(ip, now), now)
+}
+
+func clientIP(remote string) string {
+	if ip, _, err := net.SplitHostPort(remote); err == nil {
+		return ip
+	}
+	return remote
 }
 
 func toolsets(q string) []string {
@@ -299,6 +405,7 @@ func (h *Handler) toolHandler(t Tool, c *caller) sdk.ToolHandler {
 		if why := h.visibility(t, c); why != "" {
 			h.metrics.deny(why)
 			h.metrics.call(t.Name, resultDenied, time.Since(start))
+			h.log(c, t, resultDenied, time.Since(start))
 			return errorResult(hiddenError(t, why)), nil
 		}
 		res, result := h.call(ctx, t, c, req.Params.Arguments)
