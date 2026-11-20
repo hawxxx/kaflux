@@ -41,7 +41,10 @@ it('approves with the chosen scopes and clusters, then follows the redirect',asy
   fireEvent.click(await screen.findByRole('checkbox',{name:/^Messages/}));
   fireEvent.click(screen.getByRole('checkbox',{name:/Production/}));
   fireEvent.click(screen.getByRole('button',{name:'Allow access'}));
-  await waitFor(()=>expect(assign).toHaveBeenCalledWith('https://atlas.example.com/cb?code=c1&state=s'));
+  expect(await screen.findByText('successful.')).toBeVisible();
+  expect(screen.getByText(/You can close this page/)).toBeVisible();
+  expect(screen.getByRole('link',{name:/Continue to Atlas Assistant/})).toHaveAttribute('href','https://atlas.example.com/cb?code=c1&state=s');
+  await waitFor(()=>expect(assign).toHaveBeenCalledWith('https://atlas.example.com/cb?code=c1&state=s'),{timeout:4000});
   const call=fetcher.mock.calls.find(([u])=>u.endsWith('/approve'));
   expect(JSON.parse(String(call?.[1]?.body))).toEqual({scopes:['read','write'],clusters:['prod']});
   expect((call?.[1]?.headers as Record<string,string>)['X-CSRF-Token']).toBe('csrf');
@@ -51,7 +54,7 @@ it('sends the session CSRF token even when nothing set it beforehand',async()=>{
   setCsrf('');
   mount();
   fireEvent.click(await screen.findByRole('button',{name:'Allow access'}));
-  await waitFor(()=>expect(assign).toHaveBeenCalled());
+  await waitFor(()=>expect(fetcher.mock.calls.some(([u])=>u.endsWith('/approve'))).toBe(true));
   const call=fetcher.mock.calls.find(([u])=>u.endsWith('/approve'));
   expect((call?.[1]?.headers as Record<string,string>)['X-CSRF-Token']).toBe('csrf');
 });
@@ -59,7 +62,8 @@ it('sends the session CSRF token even when nothing set it beforehand',async()=>{
 it('denies without sending scopes',async()=>{
   mount();
   fireEvent.click(await screen.findByRole('button',{name:'Deny'}));
-  await waitFor(()=>expect(assign).toHaveBeenCalled());
+  expect(await screen.findByText('denied.')).toBeVisible();
+  await waitFor(()=>expect(assign).toHaveBeenCalled(),{timeout:4000});
   const call=fetcher.mock.calls.find(([u])=>u.endsWith('/deny'));
   expect(JSON.parse(String(call?.[1]?.body))).toEqual({});
 });

@@ -1,6 +1,6 @@
-import {useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
-import {ArrowRight,Check,CircleAlert,ShieldCheck} from 'lucide-react';
+import {ArrowRight,Check,CircleAlert,ShieldCheck,X} from 'lucide-react';
 import '@fontsource-variable/geist';
 import '@fontsource/newsreader/400-italic.css';
 import {api,ApiError,setCsrf,type Session} from './api';
@@ -16,6 +16,7 @@ export type ConsentRequest={client:{name:string;host:string};scopes:string[];clu
 type Outcome={redirect:string};
 
 /** The first two letters of the client name, for the avatar tile. */
+const REDIRECT_DELAY_MS=1800;
 function initials(name:string){return (name.trim().slice(0,2)||'··').toLowerCase()}
 
 /**
@@ -30,6 +31,9 @@ export function McpConsent({requestId}:{requestId:string}){
   if(session.data)setCsrf(session.data.data.csrfToken);
   const [scopes,setScopes]=useState<string[]|null>(null);const [allowed,setAllowed]=useState<string[]>([]);
   const [busy,setBusy]=useState<''|'allow'|'deny'>('');const [error,setError]=useState('');
+  // Once decided, say so here and hand the browser back to the client a moment later.
+  const [done,setDone]=useState<{kind:'allow'|'deny';redirect:string}|null>(null);
+  useEffect(()=>{if(!done)return;const t=window.setTimeout(()=>window.location.assign(done.redirect),REDIRECT_DELAY_MS);return()=>window.clearTimeout(t)},[done]);
   const card=useRef<HTMLDivElement>(null);
   const data=request.data?.data;
   const blocked=request.error instanceof ApiError&&request.error.status===403;
@@ -42,10 +46,27 @@ export function McpConsent({requestId}:{requestId:string}){
     try{
       const body=kind==='allow'?{scopes:SCOPES.map(s=>s.id).filter(s=>chosen.includes(s)),clusters:allowed}:{};
       const result=await api<Outcome>(`/mcp/oauth/requests/${encodeURIComponent(requestId)}/${kind==='allow'?'approve':'deny'}`,{method:'POST',body:JSON.stringify(body)});
-      window.location.assign(result.data.redirect);
+      setDone({kind,redirect:result.data.redirect});
     }catch(e){setError(e instanceof Error?e.message:'Unable to complete the request');setBusy('')}
   }
   const user=session.data?.data.user;const who=user?.name||user?.username;
+  if(done){
+    const allowed=done.kind==='allow';const name=data?.client.name??'your client';
+    return <div className="login-page consent-page">
+      <LoginBackdrop/>
+      <main className="login-stage">
+        <div className="login-card consent-card consent-done" role="status">
+          <div className="login-head">
+            <div className="brand"><Logo/><span>kaflux<i>.</i></span></div>
+            <span className="consent-mark" data-outcome={done.kind} aria-hidden="true">{allowed?<Check size={22}/>:<X size={22}/>}</span>
+            <h1><span className="login-shine">{allowed?'Authentication':'Request'}</span> <span className="login-serif">{allowed?'successful.':'denied.'}</span></h1>
+            <p>{allowed?<>{name} is now connected to Kaflux. You can close this page and return to it.</>:<>{name} was not given access. You can close this page.</>}</p>
+          </div>
+          <a className="consent-continue" href={done.redirect}>Continue to {name}</a>
+        </div>
+      </main>
+    </div>;
+  }
   const offered=SCOPES.filter(s=>data?.scopes.includes(s.id));
   return <div className="login-page consent-page">
     <LoginBackdrop/>

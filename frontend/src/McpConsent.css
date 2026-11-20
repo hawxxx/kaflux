@@ -38,3 +38,11 @@
 .consent-clusters label { position: relative; padding: 8px 12px; border: 1px solid var(--l-line); border-radius: 10px; cursor: pointer; }
 .consent-clusters label input[type=checkbox] { accent-color: rgb(var(--l-accent)); margin: 0; }
 .consent-clusters label:has(input:checked) { border-color: rgba(var(--l-accent), .55); background: rgba(var(--l-accent), .08); }
+
+.consent-done { text-align: left; }
+.consent-mark { display: grid; place-items: center; width: 48px; height: 48px; margin-top: 26px; border-radius: 50%; color: #0b0c10; background: #62d6ac; box-shadow: 0 0 0 8px rgba(98,214,172,.14); }
+.consent-mark[data-outcome=deny] { background: #f38a91; box-shadow: 0 0 0 8px rgba(243,138,145,.14); }
+.consent-done .login-head h1 { margin-top: 22px; }
+.consent-continue { align-self: flex-start; font-size: 13px; color: rgb(var(--l-accent)); text-decoration: none; border-bottom: 1px solid rgba(var(--l-accent), .4); }
+.consent-continue:hover { border-bottom-color: rgb(var(--l-accent)); }
+.consent-continue:focus-visible { outline: 2px solid rgb(var(--l-accent)); outline-offset: 3px; border-radius: 3px; }
