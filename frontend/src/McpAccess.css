@@ -88,8 +88,6 @@
 .mcp-scope[data-checked=true]::before { opacity: 1; }
 .mcp-scope:has(input:focus-visible) { outline: 2px solid var(--purple); outline-offset: 2px; }
 .mcp-scope-warning { grid-column: 1 / -1; }
-.mcp-scope-label { cursor: pointer; }
-.mcp-scope-label input { accent-color: var(--tier); }
 
 /* Live summary of the token being created. */
 .mcp-summary { position: sticky; top: 16px; display: grid; gap: 12px; padding: 18px; border: 1px solid var(--glass-border, var(--border)); border-radius: 12px; background: var(--glass, var(--raised)); box-shadow: var(--glass-edge, none); }
@@ -124,3 +122,21 @@
 }
 @media (max-width: 620px) { .mcp-tier-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .mcp-scope, .mcp-scope::before, .mcp-reach span { transition: none; } }
+
+/* Round check at the top right of each card; the native checkbox stays in the DOM for keyboard and screen readers. */
+.mcp-scope-label { position: static; display: block; flex-direction: row; font-size: 12px; color: var(--text); cursor: pointer; padding-right: 30px; }
+.mcp-scope-label input[type=checkbox] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.mcp-scope-label span { display: grid; gap: 5px; }
+.mcp-scope-label strong { font-size: 13px; font-weight: 600; }
+.mcp-scope-label::after { content: ''; position: absolute; top: 13px; right: 14px; width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--text) 25%, transparent); display: grid; place-items: center; font-size: 11px; line-height: 1; transition: background .18s, border-color .18s; }
+.mcp-scope[data-checked=true] .mcp-scope-label::after { content: '✓'; background: var(--tier); border-color: var(--tier); color: var(--bg); }
+.mcp-scope-warning { position: relative; z-index: 2; }
+
+.mcp-cluster-list label { position: relative; display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 9px 12px 9px 14px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; background: color-mix(in srgb, var(--text) 2%, transparent); transition: border-color .18s, background .18s; }
+.mcp-cluster-list label input[type=checkbox] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.mcp-cluster-list label::after { content: ''; flex: none; width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--text) 25%, transparent); display: grid; place-items: center; font-size: 11px; line-height: 1; }
+.mcp-cluster-list label:has(input:checked) { border-color: color-mix(in srgb, var(--purple) 55%, transparent); background: color-mix(in srgb, var(--purple) 8%, transparent); }
+.mcp-cluster-list label:has(input:checked)::after { content: '✓'; background: var(--purple); border-color: var(--purple); color: var(--bg); }
+.mcp-cluster-list label:has(input:focus-visible) { outline: 2px solid var(--purple); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .mcp-scope-label::after, .mcp-cluster-list label { transition: none; } }
+.mcp-cluster-list label::before, .mcp-scope-label::before { display: none; }
