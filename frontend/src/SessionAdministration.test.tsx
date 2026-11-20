@@ -99,11 +99,11 @@ it('aligns each revoke button of an expanded user under the action column',async
  expect(screen.getByRole('button',{name:'Revoke other sessions for alice'}).closest('td')).not.toBeNull();
 });
 it('shortens long user identifiers in the middle and keeps the full value in the tooltip',async()=>{
- const id='authentik:f1f92a1c6002c8e169862b138bca9fe82a445facca4d94ddef58481679dc5f98';
+ const id='authentik:'+'a'.repeat(32)+'b'.repeat(32);
  expect(shortUser('alice')).toBe('alice');
- expect(shortUser(id)).toBe('authentik:f1f92a…dc5f98');
+ expect(shortUser(id)).toBe('authentik:aaaaaa…bbbbbb');
  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({data:[{...row,userId:id,current:true}],meta:{limit:25,offset:0,hasMore:false}}))));mount();
- const name=await screen.findByText('authentik:f1f92a…dc5f98');
+ const name=await screen.findByText('authentik:aaaaaa…bbbbbb');
  expect(name).toHaveAttribute('title',id);
  expect(screen.getByRole('button',{name:`Revoke session for ${id}`})).toBeVisible();
 });
