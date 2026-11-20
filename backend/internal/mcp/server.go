@@ -333,12 +333,14 @@ func (h *Handler) server(r *http.Request) *sdk.Server {
 		if h.o.Demo {
 			instructions = "DEMO MODE: all data is simulated. " + instructions
 		}
-		s := sdk.NewServer(&sdk.Implementation{Name: "kaflux", Title: "Kaflux", Version: buildinfo.Current()}, &sdk.ServerOptions{Instructions: instructions, HasTools: true})
+		s := sdk.NewServer(&sdk.Implementation{Name: "kaflux", Title: "Kaflux", Version: buildinfo.Current()}, &sdk.ServerOptions{Instructions: instructions, HasTools: true, HasResources: true, HasPrompts: true})
 		for _, t := range Catalog() {
 			if h.visibility(t, c) == "" {
 				s.AddTool(sdkTools()[t.Name], h.toolHandler(t, c))
 			}
 		}
+		h.addResources(s, c)
+		addPrompts(s)
 		s.AddReceivingMiddleware(h.hiddenGuard(c))
 		c.server = s
 	})
