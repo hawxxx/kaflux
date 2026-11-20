@@ -67,7 +67,9 @@ func decodeRawFields(messages []model.Message, d *RawDecoder, target string) {
 	}
 	for i := range messages {
 		m := &messages[i]
-		if target == "" || target == "value" || target == "both" {
+		// An absent key or a tombstone value has no bytes to decode. An empty buffer would
+		// otherwise decode as a valid empty message and show a misleading {}.
+		if (target == "" || target == "value" || target == "both") && m.ValueBase64 != "" {
 			m.DecodedValue, m.DecodeError = nil, ""
 			if out, problem := one(m.ValueBase64, m.Truncated); problem != "" {
 				m.DecodeError = problem
@@ -75,7 +77,7 @@ func decodeRawFields(messages []model.Message, d *RawDecoder, target string) {
 				m.DecodedValue, m.DecodedFormat = out, "protobuf-raw"
 			}
 		}
-		if target == "key" || target == "both" {
+		if (target == "key" || target == "both") && m.KeyBase64 != "" {
 			m.DecodedKey, m.KeyDecodeError = nil, ""
 			if out, problem := one(m.KeyBase64, m.Truncated); problem != "" {
 				m.KeyDecodeError = problem

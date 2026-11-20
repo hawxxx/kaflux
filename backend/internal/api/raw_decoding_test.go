@@ -56,6 +56,20 @@ func TestDecodeRawFieldsValueKeyAndFailures(t *testing.T) {
 	}
 }
 
+func TestDecodeRawFieldsSkipsEmptyKeysAndTombstones(t *testing.T) {
+	msgs := []model.Message{{ValueBase64: wireReport("n"), KeyBase64: ""}, {ValueBase64: "", KeyBase64: wireReport("k")}}
+	decodeRawFields(msgs, testRawDecoder(t), "both")
+	if msgs[0].DecodedKey != nil || msgs[0].KeyDecodedFormat != "" || msgs[0].KeyDecodeError != "" {
+		t.Fatalf("absent key was decoded: %+v", msgs[0])
+	}
+	if msgs[1].DecodedValue != nil || msgs[1].DecodedFormat != "" || msgs[1].DecodeError != "" {
+		t.Fatalf("tombstone was decoded: %+v", msgs[1])
+	}
+	if msgs[0].DecodedValue == nil || msgs[1].DecodedKey == nil {
+		t.Fatal("present bytes were not decoded")
+	}
+}
+
 func TestRawDecoderLookup(t *testing.T) {
 	a := &API{o: Options{RawDecoders: []RawDecoder{*testRawDecoder(t)}}}
 	if a.rawDecoder("stats") == nil || a.rawDecoder("nope") != nil {

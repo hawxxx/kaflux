@@ -627,6 +627,16 @@ paths:
         "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /clusters/{cluster}/decoders:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+    get:
+      summary: List configured Protobuf decoders for values without a registry header
+      operationId: listDecoders
+      responses:
+        "200": { description: "Data envelope; each item has id, name, message and topics (glob hints)", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1055,7 +1065,7 @@ paths:
             in: query,
             description:
               "Opt-in schema value decoding; raw bytes are preserved and failures are per record",
-            schema: { type: string, enum: [avro, protobuf] },
+            schema: { type: string, enum: [avro, protobuf, protobuf-raw] },
           }
         - {
             name: decoderTarget,
@@ -1069,6 +1079,12 @@ paths:
             name: registry,
             in: query,
             description: "Configured cluster schema registry ID; required when decoder is set",
+            schema: { type: string },
+          }
+        - {
+            name: rawDecoder,
+            in: query,
+            description: "Configured Protobuf decoder ID from GET /clusters/{cluster}/decoders; required when decoder is protobuf-raw",
             schema: { type: string },
           }
       responses:
@@ -1785,9 +1801,9 @@ components:
         keyBase64: { type: string, description: Original key bytes encoded as Base64 }
         truncated: { type: boolean, readOnly: true }
         decodedValue: { readOnly: true, description: JSON preview of an opt-in decoded value }
-        decodedFormat: { type: string, enum: [avro, protobuf], readOnly: true }
+        decodedFormat: { type: string, enum: [avro, protobuf, protobuf-raw], readOnly: true }
         decodedKey: { readOnly: true, description: JSON preview of an opt-in decoded message key }
-        keyDecodedFormat: { type: string, enum: [avro, protobuf], readOnly: true }
+        keyDecodedFormat: { type: string, enum: [avro, protobuf, protobuf-raw], readOnly: true }
         keySchemaId: { type: integer, format: int32, minimum: 1, maximum: 2147483647, readOnly: true }
         keyDecodeError:
           {
