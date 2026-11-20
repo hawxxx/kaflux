@@ -175,7 +175,13 @@ func (a *API) session(r *http.Request) (auth.Session, error) {
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	securityHeaders(w)
 	path := r.URL.Path
-	if path == "/mcp" && a.o.MCP != nil {
+	if path == "/mcp" {
+		// Unmounted (mcp.enabled: false) /mcp is a plain 404, never the SPA
+		// fallback or a sign-in prompt.
+		if a.o.MCP == nil {
+			fail(w, 404, "not_found", "Not found")
+			return
+		}
 		a.o.MCP.ServeHTTP(w, r)
 		return
 	}

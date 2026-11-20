@@ -15,6 +15,27 @@ runtime:
   adminUserEnv: KAFLUX_ADMIN_USER
   adminPasswordHashEnv: KAFLUX_ADMIN_PASSWORD_HASH # bcrypt
   prometheusURLEnv: KAFLUX_PROMETHEUS_URL
+  # MCP server for AI agents at POST /mcp, authenticated by scoped kfx_ tokens
+  # (Administration > MCP tokens). Off by default; while off, /mcp answers 404.
+  # Settings are validated even while disabled.
+  # mcp:
+  #   enabled: false # KAFLUX_MCP_ENABLED
+  #   # disabled | enabled (KAFLUX_MCP_WRITES). Write and destructive tools need
+  #   # "enabled" and a token with the write/destructive scope; every write is
+  #   # previewed and needs a confirmation from the same token within 5 minutes.
+  #   writes: disabled
+  #   # Browser origins allowed to call /mcp, as scheme://host[:port] with no
+  #   # path (KAFLUX_MCP_ALLOWED_ORIGINS, comma-separated). Requests without an
+  #   # Origin header (CLI and desktop MCP clients) are always accepted; leave
+  #   # this empty to refuse every browser-originated request.
+  #   allowedOrigins: []
+  #   maxResponseBytes: 262144 # KAFLUX_MCP_MAX_RESPONSE_BYTES; 4096-16777216
+  #   callTimeoutSeconds: 30 # KAFLUX_MCP_CALL_TIMEOUT_SECONDS; 1-300
+  #   rateLimitPerMinute: 120 # KAFLUX_MCP_RATE_LIMIT_PER_MINUTE per token; 1-6000
+  #   concurrencyPerToken: 4 # KAFLUX_MCP_CONCURRENCY_PER_TOKEN; 1-64
+  #   # Write confirmations are keyed per process. With several replicas
+  #   # (postgres), route /mcp so one token's calls reach one replica, e.g. hash
+  #   # on the Authorization header at the ingress.
 clusters:
   - id: local
     name: Local integration

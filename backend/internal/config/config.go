@@ -47,22 +47,23 @@ type Cluster struct {
 }
 
 type Runtime struct {
-	StorageBackend        string `yaml:"storageBackend"`
-	SQLitePath            string `yaml:"sqlitePath"`
-	SessionLifetime       string `yaml:"sessionLifetime"`
-	Listen                string `yaml:"listen"`
-	StaticDirectory       string `yaml:"staticDirectory"`
-	Demo                  bool   `yaml:"demo"`
-	HideVersion           bool   `yaml:"hideVersion"`
-	DatabaseURLEnv        string `yaml:"databaseURLEnv"`
-	AdminUserEnv          string `yaml:"adminUserEnv"`
-	AdminPasswordHashEnv  string `yaml:"adminPasswordHashEnv"`
-	PrometheusURLEnv      string `yaml:"prometheusURLEnv"`
-	ClustersFile          string `yaml:"clustersFile"`
-	AmpURL                string `yaml:"ampURL"`
-	CloudWatchRegion      string `yaml:"cloudWatchRegion"`
-	AWSRoleARN            string `yaml:"awsRoleARN"`
-	CloudWatchClusterName string `yaml:"cloudWatchClusterName"`
+	StorageBackend        string     `yaml:"storageBackend"`
+	SQLitePath            string     `yaml:"sqlitePath"`
+	SessionLifetime       string     `yaml:"sessionLifetime"`
+	Listen                string     `yaml:"listen"`
+	StaticDirectory       string     `yaml:"staticDirectory"`
+	Demo                  bool       `yaml:"demo"`
+	HideVersion           bool       `yaml:"hideVersion"`
+	DatabaseURLEnv        string     `yaml:"databaseURLEnv"`
+	AdminUserEnv          string     `yaml:"adminUserEnv"`
+	AdminPasswordHashEnv  string     `yaml:"adminPasswordHashEnv"`
+	PrometheusURLEnv      string     `yaml:"prometheusURLEnv"`
+	ClustersFile          string     `yaml:"clustersFile"`
+	AmpURL                string     `yaml:"ampURL"`
+	CloudWatchRegion      string     `yaml:"cloudWatchRegion"`
+	AWSRoleARN            string     `yaml:"awsRoleARN"`
+	CloudWatchClusterName string     `yaml:"cloudWatchClusterName"`
+	MCP                   MCPRuntime `yaml:"mcp"`
 }
 
 type Config struct {
@@ -88,6 +89,7 @@ type Config struct {
 	CloudWatchRegion      string                `yaml:"-"`
 	AWSRoleARN            string                `yaml:"-"`
 	CloudWatchClusterName string                `yaml:"-"`
+	MCP                   MCP                   `yaml:"-"`
 }
 
 type Grant struct {
@@ -182,6 +184,9 @@ func Load(path string) (Config, error) {
 			}
 			*entry.dest = value
 		}
+	}
+	if c.MCP, err = resolveMCP(c.Runtime.MCP); err != nil {
+		return c, err
 	}
 	c.StorageBackend = override("KAFLUX_STORAGE_BACKEND", c.Runtime.StorageBackend)
 	c.SQLitePath = override("KAFLUX_SQLITE_PATH", c.Runtime.SQLitePath)
