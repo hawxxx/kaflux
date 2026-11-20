@@ -17,7 +17,7 @@ type Scope={id:string;label:string;description:string;warning?:string};
 const SCOPES:Scope[]=[
   {id:'read',label:'Read',description:'Inspect topics, brokers, consumer groups, configuration, schemas, connectors, metrics and the audit log. No message contents.'},
   {id:'messages',label:'Messages',description:"Read message payloads. Payloads are sent to your AI client's model, so grant this only for data you may share with it."},
-  {id:'write',label:'Write',description:'Produce messages and change topics, configuration, ACLs, quotas, schemas and connectors.',warning:'Write access means your AI client can change your clusters. Every change is prepared, shown to you and confirmed before it runs, and it is audited.'},
+  {id:'write',label:'Write',description:'Produce messages and change topics, configuration, ACLs, schemas and connectors.',warning:'Write access means your AI client can change your clusters. Every change is prepared, shown to you and confirmed before it runs, and it is audited.'},
   {id:'destructive',label:'Destructive',description:'Delete topics, records and consumer groups, reset offsets, and run or roll back rebalance plans.',warning:'Destructive access means your AI client can delete data and move partitions. Grant it only for short-lived tokens you watch closely.'},
 ];
 const DEFAULT_DAYS='30';

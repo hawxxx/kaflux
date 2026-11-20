@@ -42,7 +42,7 @@ var MCPScopes = []string{"read", "messages", "write", "destructive"}
 var MCPScopeActions = map[string][]string{
 	"read":        {"read", "schema-read", "connector-read", "audit"},
 	"messages":    {"consume"},
-	"write":       {"produce", "create", "alter-config", "rename", "plan", "manage-acls", "manage-quotas", "manage-users", "manage-tokens", "manage-cluster", "schema-update", "connector-update"},
+	"write":       {"produce", "create", "alter-config", "rename", "plan", "manage-acls", "schema-update", "connector-update"},
 	"destructive": {"delete", "reset-offsets", "execute", "rollback"},
 }
 

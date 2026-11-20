@@ -106,7 +106,7 @@ grant on the selected clusters.
 | ------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `read`        | `read`, `schema-read`, `connector-read`, `audit`                                                                     |
 | `messages`    | `consume`                                                                                                            |
-| `write`       | `produce`, `create`, `alter-config`, `rename`, `plan`, `manage-acls`, `manage-quotas`, `manage-users`, `manage-tokens`, `manage-cluster`, `schema-update`, `connector-update` |
+| `write`       | `produce`, `create`, `alter-config`, `rename`, `plan`, `manage-acls`, `schema-update`, `connector-update` |
 | `destructive` | `delete`, `reset-offsets`, `execute`, `rollback`                                                                     |
 
 `manage-sessions` and `manage-mcp` belong to no scope. Session and token administration are not
