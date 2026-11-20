@@ -27,6 +27,22 @@ it('disables topic mutations for a viewer',()=>{
 });
 const session=(role:string)=>({user:{username:role,role},csrfToken:'test',demo:true,...(role==='administrator'?{permissions:allPermissions('demo','west','east','k')}:{})});
 const clusterFixture=(id:string,name:string,configuredName=name)=>({id,name,configuredName,environment:'development',kind:'Kafka',mode:'demo',state:'healthy',brokerCount:3,topicCount:1,partitionCount:1});
+it('paginates and filters cluster names only from ten clusters',async()=>{
+  const many=(n:number)=>Array.from({length:n},(_,i)=>clusterFixture(`c${i}`,`Cluster ${i}`));
+  const mount=async(n:number)=>{vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>({data:url.endsWith('/clusters')?many(n):{}})}) as Response));
+    return render(<QueryClientProvider client={new QueryClient()}><ClusterSettings clusterId="c0" session={session('administrator')}/></QueryClientProvider>)};
+  const small=await mount(9);
+  expect((await screen.findAllByRole('listitem')).length).toBe(9);
+  expect(screen.queryByLabelText('Filter clusters')).toBeNull();
+  small.unmount();
+  await mount(12);
+  await waitFor(()=>expect(screen.getAllByRole('listitem').length).toBe(5));
+  fireEvent.click(screen.getByRole('button',{name:'Next'}));
+  expect(screen.getByText('Page 2 / 3')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Filter clusters'),{target:{value:'cluster 11'}});
+  expect(screen.getAllByRole('listitem').length).toBe(1);
+});
+
 it('lists every cluster and renames any of them through the backend',async()=>{
   let clusters=[clusterFixture('west','West'),clusterFixture('east','East')];
   const fetch=vi.fn(async(url:string,init?:RequestInit)=>{

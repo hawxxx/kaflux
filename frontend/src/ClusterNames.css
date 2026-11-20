@@ -1,11 +1,26 @@
 .cluster-names { list-style: none; margin: 0; padding: 0; }
-.cluster-names li { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
-.cluster-names li.current { background: var(--raised); }
+.cluster-names li { position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; transition: background-color .12s ease; }
+.cluster-names li:hover { background: var(--hover); }
+.cluster-names li.current { background: linear-gradient(90deg, color-mix(in srgb, var(--purple) 12%, transparent), transparent 70%); }
+.cluster-names li.current::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 2px; background: var(--purple); box-shadow: 0 0 10px var(--purple); }
 .cluster-name-label { display: grid; gap: 3px; min-width: 0; flex: 1; }
 .cluster-name-label strong { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 .cluster-name-label strong .tiny-badge { margin-left: 0; }
 .cluster-name-label small { color: var(--muted); font: 11px 'IBM Plex Mono', monospace; overflow-wrap: anywhere; }
 .cluster-name-actions { display: flex; gap: 8px; margin-left: auto; }
-.cluster-names form { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; align-items: center; }
-.cluster-names form input { flex: 1; min-width: 200px; }
+/* Rename happens in place: the input takes the name's slot, the id stays underneath. */
+.cluster-names form { display: flex; gap: 12px; flex: 1; align-items: center; flex-wrap: wrap; }
+.cluster-names form input { width: 100%; max-width: 360px; font-weight: 600; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--purple); background: var(--bg); color: var(--text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--purple) 18%, transparent); outline: none; }
 .cluster-names .inline-error, .cluster-names .inline-notice { flex-basis: 100%; padding: 0; }
+.cluster-names-tools { display: flex; gap: 12px; align-items: center; padding: 10px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+.cluster-names-tools input { flex: 1; max-width: 320px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.cluster-names-empty { margin: 0; padding: 14px 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+.cluster-names-pager { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+.cluster-names-pager div { display: flex; gap: 10px; align-items: center; }
+
+/* Cluster settings page rhythm: one gap between every panel, compact config tiles. */
+.cluster-settings { display: grid; gap: 16px; }
+.cluster-settings > .panel { margin: 0; }
+.cluster-settings .detail-grid { padding: 14px 20px; gap: 12px; }
+.cluster-settings .detail-grid > div { padding: 10px 14px; }
+.cluster-names-panel .cluster-names { max-height: 320px; overflow: auto; }
