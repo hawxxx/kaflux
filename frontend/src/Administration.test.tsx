@@ -52,7 +52,7 @@ it('shows the MSK Express capability fields, the rebalancing badge and the reaso
   expect(screen.getByText('Active')).toHaveClass('rebalancing-status');
   expect(screen.getByText('2026-11-20T00:40:49Z')).toBeInTheDocument();
   expect(screen.getByText(reason)).toBeInTheDocument();
-  expect(screen.getByText('manual reassignment allowed')).toBeInTheDocument();
+  expect(screen.getByText('manual Reassignment Allowed')).toBeInTheDocument();
 });
 it('runs the connection check with one action and shows the result',async()=>{
   const fetch=vi.fn(async(url:string,init?:RequestInit)=>({ok:true,json:async()=>({data:url.endsWith('/test')?{status:'connected',brokerCount:3}:url.endsWith('/clusters')?[]:{kind:'Kafka'}})}) as Response);
