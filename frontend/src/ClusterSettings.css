@@ -20,26 +20,54 @@
 
 .reason-callout { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 11px; border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent); background: color-mix(in srgb, var(--warn) 6%, transparent); color: var(--warn); font-size: 11.5px; line-height: 1.5; }
 .reason-callout svg { flex: none; margin-top: 2px; }
-.reason-callout span { flex: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.reason-callout span[data-expanded="true"] { -webkit-line-clamp: unset; display: block; }
+.reason-callout span { flex: 1; position: relative; overflow: hidden; max-height: 3em; transition: max-height .28s ease; }
+.reason-callout span::after { content: ""; position: absolute; inset: auto 0 0; height: 1em; background: linear-gradient(transparent, color-mix(in srgb, var(--warn) 9%, var(--panel))); transition: opacity .2s ease; pointer-events: none; }
+.reason-callout span[data-expanded="true"] { max-height: 20em; }
+.reason-callout span[data-expanded="true"]::after { opacity: 0; }
 .reason-callout button { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; font-weight: 500; }
 
-.diagnostic { overflow: visible; }
-.diag-strip { display: flex; align-items: center; gap: 22px; padding: 12px 20px; flex-wrap: wrap; }
-.diag-steps { display: flex; gap: 14px; }
-.diag-steps span { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
-.diag-steps b { width: 17px; height: 17px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; font-size: 9px; font-weight: 500; }
-.diag-steps span.active { color: var(--text); }
-.diag-steps span.active b { border-color: var(--purple); color: var(--purple); }
-.diag-steps span.complete { color: var(--text); }
-.diag-steps span.complete b { background: var(--green); border-color: var(--green); color: #0a1a12; }
-.diag-body { flex: 1; min-width: 220px; }
-.diag-body p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
-.diag-body p strong { color: var(--text); font-weight: 500; }
+.diagnostic { position: relative; overflow: hidden; }
+.diag-strip { display: flex; align-items: center; gap: 14px; padding: 14px 20px; min-height: 68px; }
+.diag-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); transition: background-color .3s ease, box-shadow .3s ease; }
+.diagnostic[data-phase="testing"] .diag-dot { background: var(--purple); animation: diag-pulse 1.1s ease-in-out infinite; }
+.diagnostic[data-phase="done"] .diag-dot { background: var(--green); box-shadow: 0 0 10px var(--green); }
+.diagnostic[data-phase="failed"] .diag-dot { background: var(--bad); box-shadow: 0 0 10px var(--bad); }
+.diag-body { flex: 1; min-width: 0; }
+.diag-text { animation: settings-in .3s ease both; }
+.diag-text strong { display: block; font-size: 13px; font-weight: 600; }
+.diag-text p { margin: 2px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
 .diag-error { color: var(--bad); }
-.diag-metrics { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
-.diag-metrics div { min-width: 0; }
+.diag-metrics { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; }
+.diag-metrics div { min-width: 0; animation: settings-in .35s ease both; }
 .diag-metrics dt { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .diag-metrics dd { margin: 2px 0 0; font: 500 12.5px 'IBM Plex Mono', monospace; }
-.diag-actions { display: flex; gap: 8px; margin-left: auto; }
-@media (max-width: 950px) { .diag-actions { margin-left: 0; } }
+.diag-actions { margin-left: auto; flex: none; }
+.diag-actions .button { transition: transform .15s ease, filter .15s ease, background-color .15s ease, opacity .2s ease; }
+.diag-actions .button:not(:disabled):hover { transform: translateY(-1px); filter: brightness(1.08); }
+.diag-actions .button:not(:disabled):active { transform: translateY(0); }
+.diag-spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor; animation: diag-spin .7s linear infinite; }
+.diag-progress { position: absolute; inset: auto 0 0; height: 2px; overflow: hidden; opacity: 0; transition: opacity .2s ease; }
+.diag-progress::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 35%; background: linear-gradient(90deg, transparent, var(--purple), transparent); animation: diag-sweep 1.2s ease-in-out infinite; }
+.diagnostic[data-phase="testing"] .diag-progress { opacity: 1; }
+
+/* Entrance and hover motion for the rest of the page. */
+.cluster-settings > .panel { animation: settings-in .4s ease both; }
+.cluster-settings > .panel:nth-child(2) { animation-delay: 60ms; }
+.cluster-settings > .panel:nth-child(3) { animation-delay: 120ms; }
+.cluster-settings .detail-grid > div { transition: transform .18s ease, border-color .18s ease; animation: settings-in .4s ease both; }
+.cluster-settings .detail-grid > div:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--purple) 55%, var(--border)); }
+.cluster-settings .detail-grid > div:nth-child(2) { animation-delay: 40ms; }
+.cluster-settings .detail-grid > div:nth-child(3) { animation-delay: 80ms; }
+.cluster-settings .detail-grid > div:nth-child(4) { animation-delay: 120ms; }
+.cluster-settings .detail-grid > div:nth-child(5) { animation-delay: 160ms; }
+.cluster-settings .detail-grid > div:nth-child(6) { animation-delay: 200ms; }
+.cluster-names form { animation: settings-in .2s ease both; }
+.reason-callout button { transition: opacity .15s ease; }
+.reason-callout button:hover { opacity: .75; }
+
+@keyframes settings-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes diag-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--purple) 55%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+@keyframes diag-spin { to { transform: rotate(360deg); } }
+@keyframes diag-sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (max-width: 950px) { .diag-strip { flex-wrap: wrap; } .diag-actions { margin-left: 0; } }
+@media (prefers-reduced-motion: reduce) { .cluster-settings *, .cluster-settings > .panel { animation: none !important; transition: none !important; } }
