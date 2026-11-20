@@ -119,12 +119,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r.RemoteAddr)
 	secret, ok := bearer(r)
 	if !ok {
-		h.unauthenticated(w, ip)
+		h.unauthenticated(w, r, ip)
 		return
 	}
 	tok, err := h.lookup(r.Context(), store.HashMCPSecret(secret))
 	if errors.Is(err, store.ErrMCPTokenNotFound) {
-		h.unauthenticated(w, ip)
+		h.unauthenticated(w, r, ip)
 		return
 	}
 	if err != nil {
@@ -141,7 +141,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // unauthenticated records a failed authentication and answers 401, or 429
 // once the client has failed too often in the last minute.
-func (h *Handler) unauthenticated(w http.ResponseWriter, ip string) {
+func (h *Handler) unauthenticated(w http.ResponseWriter, r *http.Request, ip string) {
 	if over := h.authFail.record(ip, time.Now()); over {
 		h.metrics.deny(deniedAuthRateLimited)
 		w.Header().Set("Retry-After", "60")
@@ -149,7 +149,12 @@ func (h *Handler) unauthenticated(w http.ResponseWriter, ip string) {
 		return
 	}
 	h.metrics.deny(deniedUnauthenticated)
-	w.Header().Set("WWW-Authenticate", "Bearer")
+	// Point OAuth-capable clients at the discovery document so they can sign in instead of needing a token.
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+scheme+"://"+r.Host+`/.well-known/oauth-protected-resource"`)
 	httpError(w, http.StatusUnauthorized, "unauthenticated", "Valid MCP token required")
 }
 

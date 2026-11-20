@@ -40,7 +40,20 @@ type MCPToken struct {
 	Created    time.Time
 	LastUsed   *time.Time
 	Revoked    *time.Time
+	// Kind is empty for a personal token. An OAuth connection is a pair of rows
+	// sharing Grant: a long-lived MCPKindRefresh row (the connection a user sees
+	// and revokes) and short-lived MCPKindAccess rows that authenticate /mcp.
+	Kind       string
+	Grant      string
+	ClientID   string
+	ClientName string
 }
+
+// Token kinds other than a personal token.
+const (
+	MCPKindAccess  = "oauth-access"
+	MCPKindRefresh = "oauth-refresh"
+)
 
 // NewMCPSecret returns a fresh secret and the hex SHA-256 hash to persist.
 func NewMCPSecret() (secret, hash string) {
@@ -70,10 +83,14 @@ type mcpStatic struct {
 	Clusters      []string  `json:"clusters"`
 	Expires       time.Time `json:"expires"`
 	Created       time.Time `json:"created"`
+	Kind          string    `json:"kind,omitempty"`
+	Grant         string    `json:"grant,omitempty"`
+	ClientID      string    `json:"clientId,omitempty"`
+	ClientName    string    `json:"clientName,omitempty"`
 }
 
 func mcpPayload(t MCPToken) ([]byte, error) {
-	return json.Marshal(mcpStatic{t.ID, t.Name, t.OwnerID, t.OwnerProvider, nonNil(t.OwnerRoles), nonNil(t.Scopes), nonNil(t.Clusters), t.Expires.UTC(), t.Created.UTC()})
+	return json.Marshal(mcpStatic{t.ID, t.Name, t.OwnerID, t.OwnerProvider, nonNil(t.OwnerRoles), nonNil(t.Scopes), nonNil(t.Clusters), t.Expires.UTC(), t.Created.UTC(), t.Kind, t.Grant, t.ClientID, t.ClientName})
 }
 
 func nonNil(v []string) []string {
@@ -88,7 +105,7 @@ func mcpFromPayload(b []byte, lastUsed, revoked *time.Time) (MCPToken, error) {
 	if e := json.Unmarshal(b, &p); e != nil {
 		return MCPToken{}, e
 	}
-	return MCPToken{ID: p.ID, Name: p.Name, OwnerID: p.OwnerID, OwnerProvider: p.OwnerProvider, OwnerRoles: nonNil(p.OwnerRoles), Scopes: p.Scopes, Clusters: p.Clusters, Expires: p.Expires, Created: p.Created, LastUsed: lastUsed, Revoked: revoked}, nil
+	return MCPToken{ID: p.ID, Name: p.Name, OwnerID: p.OwnerID, OwnerProvider: p.OwnerProvider, OwnerRoles: nonNil(p.OwnerRoles), Scopes: p.Scopes, Clusters: p.Clusters, Expires: p.Expires, Created: p.Created, LastUsed: lastUsed, Revoked: revoked, Kind: p.Kind, Grant: p.Grant, ClientID: p.ClientID, ClientName: p.ClientName}, nil
 }
 
 func sortMCP(out []MCPToken) {

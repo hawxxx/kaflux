@@ -30,7 +30,7 @@ function SsoButton({provider}:{provider:Provider}){
   </a>;
 }
 
-export function Login({onSuccess}:{onSuccess:()=>void}){
+export function Login({onSuccess,heading,lead}:{onSuccess:()=>void;heading?:{plain:string;serif:string};lead?:string}){
   const providers=useQuery({queryKey:['/auth/providers'],queryFn:()=>api<Provider[]>('/auth/providers'),retry:1});
   // Absent when the operator sets hideVersion; the footer then simply omits it.
   const version=useQuery({queryKey:['/version'],queryFn:()=>api<{version:string}>('/version'),retry:false,staleTime:Infinity});
@@ -56,8 +56,8 @@ export function Login({onSuccess}:{onSuccess:()=>void}){
       <div className="login-card" ref={card} onPointerMove={spotlight}>
         <div className="login-head">
           <div className="brand"><Logo/><span>kaflux<i>.</i></span></div>
-          <h1><span className="login-shine">Every stream,</span> <span className="login-serif">one console.</span></h1>
-          <p>Sign in to continue.</p>
+          <h1><span className="login-shine">{heading?.plain??'Every stream,'}</span> <span className="login-serif">{heading?.serif??'one console.'}</span></h1>
+          <p>{lead??'Sign in to continue.'}</p>
         </div>
         {error&&<div className="login-error" role="alert"><CircleAlert size={15} aria-hidden="true"/>{error}</div>}
         {providers.isPending&&<div className="login-pending" aria-busy="true" aria-label="Loading sign-in options"/>}

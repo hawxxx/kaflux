@@ -121,6 +121,32 @@ content.
 select them. Rebalance pause, cancel, throttle and cancel-rollback need `destructive` because the
 REST API authorizes them with `execute`.
 
+## Sign in with OAuth
+
+Clients that support the MCP authorization flow can sign in instead of being given a token. Point the
+client at `https://HOST/mcp`. Its first call is refused with `401` and a `WWW-Authenticate` header that
+names the discovery document, and the client does the rest:
+
+1. It reads `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`.
+2. It registers itself at `POST /oauth/register` (dynamic client registration, public clients only).
+3. It opens `/oauth/authorize` in the browser with a PKCE `S256` challenge. Kaflux shows its usual
+   sign-in screen if you have no session, then a consent screen naming the client.
+4. You choose which of the requested scopes and clusters to allow, then allow or deny. Scopes your own
+   grants do not cover are shown but cannot be granted.
+5. The client exchanges the code at `POST /oauth/token` for an access token (1 hour) and a refresh token
+   (30 days) that rotates on every use.
+
+Only a user holding the global `manage-mcp` grant can approve, the same rule as creating a token. A pending request belongs to the first user who opens it; anyone else sees it as expired. The
+connection appears in MCP access marked **Signed in**, and revoking it ends its access tokens at once.
+Approval, denial, issue and refresh are audited as `mcp.oauth.approve`, `mcp.oauth.deny`,
+`mcp.oauth.token` and `mcp.oauth.refresh`.
+
+Registrations, pending requests and authorization codes live in memory, so a restart makes a client
+register again, which compliant clients do on their own. Run one replica or route `/oauth/*` and `/mcp`
+with sticky sessions. Behind a proxy, forward the original `Host` and `X-Forwarded-Proto` so the
+discovery document names the address clients use. Personal tokens remain the way to connect CI and other
+headless clients.
+
 ## Connect a client
 
 The endpoint is `https://HOST/mcp`. It speaks streamable HTTP in stateless mode with JSON responses
@@ -401,8 +427,10 @@ to `/api/v1`. "Read-only" tools never change state; "changes state" and "destruc
 - Some operations are deliberately not tools: session and token administration, sign-in and identity
   flows, and a few others. The registry lists each exclusion with its reason.
 - Transport is streamable HTTP only. There is no stdio server.
-- Authentication is by Kaflux-issued bearer tokens. MCP-native OAuth (authorization-server
-  discovery, dynamic client registration) is not implemented, so clients must be given a token.
+- Authentication is by Kaflux-issued bearer tokens, either created in the console or issued through the
+  OAuth sign-in flow. OAuth supports public clients with PKCE only; there are no client secrets, and
+  role changes at the identity provider reach a connection only after it is revoked or its refresh
+  token expires.
 - There is no per-tool allowlist beyond scopes, clusters and `toolsets`.
 
 See [Security](security.md), [Authentication](authentication.md) and
