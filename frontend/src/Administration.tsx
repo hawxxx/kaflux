@@ -6,6 +6,7 @@ import {api,can,pretty,type Session} from './api';
 import {TopicConfigEdit,type ConfigChange} from './TopicConfiguration';
 import {RebalancingStatus} from './CapabilityNotice';
 import {ClusterNames} from './ClusterNames';
+import './ClusterSettings.css';
 
 export function Modal({open,onClose,title,description,wide,children}:{open:boolean;onClose:()=>void;title:string;description:string;wide?:boolean;children:React.ReactNode}){
   return <Dialog.Root open={open} onOpenChange={value=>{if(!value)onClose()}}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className={wide?'dialog dialog-wide':'dialog'}><Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description><Dialog.Close className="dialog-close" aria-label="Close"><X size={18}/></Dialog.Close>{children}</Dialog.Content></Dialog.Portal></Dialog.Root>
