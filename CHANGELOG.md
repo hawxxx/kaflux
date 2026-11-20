@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/hawxxx/kaflux/compare/v0.9.0...v0.9.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **ui:** move Cluster settings to Administration and apply the Aurora header ([#97](https://github.com/hawxxx/kaflux/issues/97)) ([45eef13](https://github.com/hawxxx/kaflux/commit/45eef136bdc705a06897f1fc5ee72f498f1afdaa))
+
 ## [0.9.0](https://github.com/hawxxx/kaflux/compare/v0.8.0...v0.9.0) (2026-11-20)
 
 
