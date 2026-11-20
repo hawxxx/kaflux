@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/hawxxx/kaflux/compare/v0.7.2...v0.8.0) (2026-11-19)
+
+
+### Features
+
+* **messages:** decode Protobuf values without a registry ([#84](https://github.com/hawxxx/kaflux/issues/84)) ([888e784](https://github.com/hawxxx/kaflux/commit/888e7847c675b9486163d47496cf20634f801eea))
+* **unused:** evaluate topics concurrently with live progress ([#86](https://github.com/hawxxx/kaflux/issues/86)) ([8c86f1b](https://github.com/hawxxx/kaflux/commit/8c86f1bd78562c5edec4361e61f4c31266e9b730))
+
 ## [0.7.2](https://github.com/hawxxx/kaflux/compare/v0.7.1...v0.7.2) (2026-11-19)
 
 
