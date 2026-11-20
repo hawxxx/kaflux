@@ -53,6 +53,9 @@ type Options struct {
 	// MCP serves /mcp ahead of the cookie session check; it authenticates
 	// its own callers. Nil leaves /mcp an ordinary unauthenticated path.
 	MCP http.Handler
+	// MCPEnabled and MCPWritesEnabled report the MCP configuration to the token
+	// management endpoints so the console can warn when tokens are inert.
+	MCPEnabled, MCPWritesEnabled bool
 	// ExtraMetrics appends Prometheus text-format series to /metrics.
 	ExtraMetrics func(io.Writer)
 }
@@ -68,6 +71,8 @@ type API struct {
 	unusedDeadline time.Duration
 	// bulkDeadline overrides the 60 s cap on one bulk topic delete request.
 	bulkDeadline time.Duration
+	// mcpTokenMu serializes MCP token creation so the per-owner limit holds.
+	mcpTokenMu sync.Mutex
 }
 
 func New(o Options) *API {
@@ -237,6 +242,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if a.adminSessions(w, r, s) {
+		return
+	}
+	if a.mcpTokens(w, r, s) {
 		return
 	}
 	if path == "/api/v1/auth/session" {

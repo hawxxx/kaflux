@@ -65,6 +65,7 @@ topic, consumer group, subject or connector name.
 | `connector-read`, `connector-update` | Kafka Connect |
 | `audit` | The audit log (global grant: `cluster: "*"`) |
 | `manage-sessions` | Session administration (global grant; `pattern` matches the user ID) |
+| `manage-mcp` | Creating MCP access tokens and listing or revoking every user's tokens (global grant: `cluster: "*"`). Any signed-in user can list and revoke their own tokens. No token scope includes it |
 | `*` | Everything |
 
 A read-only role:

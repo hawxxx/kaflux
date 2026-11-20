@@ -125,6 +125,117 @@ paths:
         "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /admin/mcp-tokens:
+    get:
+      summary: List MCP access tokens
+      operationId: listMcpTokens
+      description:
+        Console sessions only; requests made with an MCP token are refused. Every signed-in user
+        sees their own tokens; global manage-mcp permission shows every user's tokens. Revoked and
+        expired tokens are included with their status. Never returns a secret or its hash. meta
+        reports whether MCP and MCP writes are enabled, since tokens are inert while MCP is off.
+      responses:
+        "200":
+          description: Token inventory, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/McpToken" } }
+                  meta:
+                    type: object
+                    required: [enabled, writesEnabled, maxActive, maxExpiryDays]
+                    properties:
+                      enabled: { type: boolean, description: Whether the /mcp endpoint is enabled }
+                      writesEnabled: { type: boolean, description: "Whether write and destructive scopes take effect (mcp.writes)" }
+                      maxActive: { type: integer, format: int32, description: Active tokens allowed per user }
+                      maxExpiryDays: { type: integer, format: int32 }
+        "401": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    post:
+      summary: Create an MCP access token and return its secret once
+      operationId: createMcpToken
+      description:
+        Console sessions only. Requires global manage-mcp permission and creates a token owned by
+        the caller; the caller's roles are recorded with it. Each scope must be one the caller holds
+        at least one grant for on the selected clusters (403 scope_not_permitted), because a token
+        only narrows its owner's grants. The server applies no default expiry. At most 25 active
+        tokens per user and one active token per name. Creation is audited as mcp.token.create;
+        audit failure blocks it with 503. The secret is in this response only and is never stored.
+      parameters:
+        - { $ref: "#/components/parameters/CSRF" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, scopes, expiresInDays]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 64, pattern: "^[^/\\x00-\\x1f\\x7f]+$", description: "Trimmed; no '/' or control characters" }
+                scopes:
+                  type: array
+                  minItems: 1
+                  items: { type: string, enum: [read, messages, write, destructive] }
+                clusters:
+                  type: array
+                  description: Cluster allowlist of configured cluster IDs; empty or omitted allows every cluster the owner holds
+                  items: { type: string }
+                expiresInDays: { type: integer, format: int32, minimum: 1, maximum: 90 }
+      responses:
+        "201":
+          description: Token created; secret shown once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    allOf:
+                      - { $ref: "#/components/schemas/McpToken" }
+                      - type: object
+                        required: [secret]
+                        properties:
+                          secret: { type: string, pattern: "^kfx_[A-Za-z0-9_-]{43}$", description: Bearer secret for /mcp; store it now }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /admin/mcp-tokens/{id}:
+    delete:
+      summary: Revoke an MCP access token
+      operationId: revokeMcpToken
+      description:
+        Console sessions only. Revokes the caller's own token, or any token with global manage-mcp
+        permission. Other users' tokens are reported as 404 to callers without manage-mcp.
+        Revoking an already revoked token succeeds without change. Audited as mcp.token.revoke;
+        audit failure blocks it with 503. The next MCP call with the token fails.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,128}$" } }
+        - { $ref: "#/components/parameters/CSRF" }
+      responses:
+        "200":
+          description: Token revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/McpToken" }
+        "401": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /version:
     get:
       # Public by design: the sign-in page shows the running build before a session exists.
@@ -1839,6 +1950,21 @@ components:
       properties:
         data: {}
         meta: { type: object, additionalProperties: true }
+    McpToken:
+      type: object
+      required: [id, name, ownerId, ownerProvider, scopes, clusters, created, expires, lastUsed, revoked, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        ownerId: { type: string }
+        ownerProvider: { type: string }
+        scopes: { type: array, items: { type: string, enum: [read, messages, write, destructive] } }
+        clusters: { type: array, items: { type: string }, description: Cluster allowlist; empty means every cluster the owner holds }
+        created: { type: string, format: date-time }
+        expires: { type: string, format: date-time }
+        lastUsed: { type: string, format: date-time, nullable: true }
+        revoked: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [active, expired, revoked] }
     Error:
       type: object
       properties:

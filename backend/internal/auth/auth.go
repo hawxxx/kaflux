@@ -30,7 +30,20 @@ var Actions = []string{
 	"create", "delete", "alter-config", "reset-offsets", "rename",
 	"plan", "execute", "rollback",
 	"manage-acls", "schema-read", "schema-update", "connector-read", "connector-update",
-	"audit", "manage-sessions",
+	"audit", "manage-sessions", "manage-mcp",
+}
+
+// MCPScopes lists the MCP token scopes in canonical order.
+var MCPScopes = []string{"read", "messages", "write", "destructive"}
+
+// MCPScopeActions maps each MCP token scope to the API actions it permits.
+// Session and MCP token administration, and any future administrative action,
+// belong to no scope, so a token can never exercise them.
+var MCPScopeActions = map[string][]string{
+	"read":        {"read", "schema-read", "connector-read", "audit"},
+	"messages":    {"consume"},
+	"write":       {"produce", "create", "alter-config", "rename", "plan", "manage-acls", "manage-quotas", "manage-users", "manage-tokens", "manage-cluster", "schema-update", "connector-update"},
+	"destructive": {"delete", "reset-offsets", "execute", "rollback"},
 }
 
 // Permissions returns the actions the user may perform on at least one resource

@@ -7,15 +7,10 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/auth"
 )
 
-// ScopeActions maps each token scope to the API actions it permits. Session
-// administration and any future administrative action belong to no scope, so
-// a token can never exercise them.
-var ScopeActions = map[string][]string{
-	"read":        {"read", "schema-read", "connector-read", "audit"},
-	"messages":    {"consume"},
-	"write":       {"produce", "create", "alter-config", "rename", "plan", "manage-acls", "manage-quotas", "manage-users", "manage-tokens", "manage-cluster", "schema-update", "connector-update"},
-	"destructive": {"delete", "reset-offsets", "execute", "rollback"},
-}
+// ScopeActions maps each token scope to the API actions it permits. It is
+// auth.MCPScopeActions, which lives in auth so the REST token endpoints can
+// check scopes without importing this package.
+var ScopeActions = auth.MCPScopeActions
 
 // Narrow restricts owner's grants to the actions of scopes and to the cluster
 // allowlist (empty means every cluster the owner holds). A "*" owner action or

@@ -39,3 +39,8 @@ func (a *API) grantsFrom(ctx context.Context) []auth.Grant {
 	}
 	return a.o.Grants
 }
+
+// configuredGrants returns the configured grants, ignoring any MCP session.
+// Only routes that refuse MCP sessions outright (token management) may use it,
+// to judge what a console user could delegate to a new token.
+func (a *API) configuredGrants() []auth.Grant { return a.o.Grants }

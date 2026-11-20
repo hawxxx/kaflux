@@ -40,6 +40,9 @@ type Call struct {
 var Excluded = map[string]string{
 	"GET /admin/sessions":                                  "session administration is an administrator-only console capability",
 	"POST /admin/sessions/{handle}/revoke":                 "session administration is an administrator-only console capability",
+	"GET /admin/mcp-tokens":                                "token management is console-only; a token must never list, mint or revoke tokens",
+	"POST /admin/mcp-tokens":                               "token management is console-only; a token must never list, mint or revoke tokens",
+	"DELETE /admin/mcp-tokens/{id}":                        "token management is console-only; a token must never list, mint or revoke tokens",
 	"GET /auth/providers":                                  "identity flow; MCP authenticates with bearer tokens only",
 	"GET /auth/session":                                    "identity flow; MCP authenticates with bearer tokens only",
 	"POST /auth/login":                                     "identity flow; a token must never create console sessions",
