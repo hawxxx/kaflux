@@ -18,6 +18,9 @@ import (
 // ErrMCPTokenNotFound is returned when a token is absent, revoked or expired.
 var ErrMCPTokenNotFound = errors.New("mcp token not found")
 
+// ErrMCPTokenInvalid is returned when a token to create lacks an expiry.
+var ErrMCPTokenInvalid = errors.New("mcp token requires an expiry")
+
 const mcpTouchInterval = time.Minute
 
 // MCPToken is a bearer token for the MCP endpoint. Only the SHA-256 hash of
@@ -104,7 +107,13 @@ func cloneMCP(t MCPToken) MCPToken {
 	return t
 }
 
+// CreateMCPToken stores a new token. Last-used and revoked state always start
+// empty, whatever the caller passes, and an expiry is mandatory.
 func (s *Store) CreateMCPToken(ctx context.Context, t MCPToken, hash string) error {
+	if t.Expires.IsZero() {
+		return ErrMCPTokenInvalid
+	}
+	t.LastUsed, t.Revoked = nil, nil
 	b, e := mcpPayload(t)
 	if e != nil {
 		return e

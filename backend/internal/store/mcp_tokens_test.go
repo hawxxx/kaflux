@@ -165,3 +165,64 @@ func TestMCPPayloadWithoutOwnerRoles(t *testing.T) {
 		t.Fatalf("old payload: %+v %v", got, e)
 	}
 }
+
+func TestCreateMCPTokenRejectsZeroExpiry(t *testing.T) {
+	for _, b := range mcpBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			s := b.make(t)
+			_, hash := NewMCPSecret()
+			if e := s.CreateMCPToken(context.Background(), newMCPToken("t1", "alice", time.Time{}), hash); e == nil {
+				t.Fatal("token without expiry was stored")
+			}
+			list, _ := s.ListMCPTokens(context.Background(), "", true)
+			if len(list) != 0 {
+				t.Fatalf("stored %+v", list)
+			}
+		})
+	}
+}
+
+func TestCreateMCPTokenRejectsDuplicates(t *testing.T) {
+	for _, b := range mcpBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := b.make(t)
+			_, hash := NewMCPSecret()
+			_, other := NewMCPSecret()
+			exp := time.Now().Add(time.Hour)
+			if e := s.CreateMCPToken(ctx, newMCPToken("t1", "alice", exp), hash); e != nil {
+				t.Fatal(e)
+			}
+			if e := s.CreateMCPToken(ctx, newMCPToken("t1", "alice", exp), other); e == nil {
+				t.Fatal("duplicate id accepted")
+			}
+			if e := s.CreateMCPToken(ctx, newMCPToken("t2", "bob", exp), hash); e == nil {
+				t.Fatal("duplicate hash accepted")
+			}
+			list, _ := s.ListMCPTokens(ctx, "", true)
+			if len(list) != 1 || list[0].OwnerID != "alice" {
+				t.Fatalf("list %+v", list)
+			}
+		})
+	}
+}
+
+func TestCreateMCPTokenIgnoresMutableState(t *testing.T) {
+	for _, b := range mcpBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := b.make(t)
+			secret, hash := NewMCPSecret()
+			now := time.Now().UTC()
+			tok := newMCPToken("t1", "alice", now.Add(time.Hour))
+			tok.LastUsed, tok.Revoked = &now, &now
+			if e := s.CreateMCPToken(ctx, tok, hash); e != nil {
+				t.Fatal(e)
+			}
+			got, e := s.MCPTokenByHash(ctx, HashMCPSecret(secret))
+			if e != nil || got.LastUsed != nil || got.Revoked != nil {
+				t.Fatalf("created token carries caller state: %+v %v", got, e)
+			}
+		})
+	}
+}
