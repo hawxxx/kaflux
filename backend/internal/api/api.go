@@ -77,6 +77,8 @@ type API struct {
 	mcpTokenMu sync.Mutex
 	// unusedJobs holds background unused-topic evaluations, guarded by mu.
 	unusedJobs map[string]*unusedJob
+	// oauth holds the MCP OAuth sign-in state (see mcpoauth.go).
+	oauth oauthState
 }
 
 func New(o Options) *API {
@@ -189,6 +191,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.o.MCP.ServeHTTP(w, r)
 		return
 	}
+	if a.mcpOAuthPublic(w, r) {
+		return
+	}
 	if a.identity(w, r) {
 		return
 	}
@@ -255,6 +260,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.mcpTokens(w, r, s) {
+		return
+	}
+	if a.mcpOAuthConsole(w, r, s) {
 		return
 	}
 	if path == "/api/v1/auth/session" {

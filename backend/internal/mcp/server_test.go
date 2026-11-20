@@ -258,7 +258,7 @@ func TestNoTokenIs401(t *testing.T) {
 		"empty-auth": {"Authorization": {"Bearer "}},
 	} {
 		resp, body := e.rawPost(t, hdr)
-		if resp.StatusCode != 401 || resp.Header.Get("WWW-Authenticate") != "Bearer" {
+		if resp.StatusCode != 401 || !strings.HasPrefix(resp.Header.Get("WWW-Authenticate"), "Bearer resource_metadata=") {
 			t.Errorf("%s: status %d auth %q", name, resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
 		}
 		if !strings.Contains(body, `"unauthenticated"`) || strings.Contains(body, "expired") || strings.Contains(body, "revoked") {

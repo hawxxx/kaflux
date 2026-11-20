@@ -42,6 +42,7 @@ type mcpTokenView struct {
 	LastUsed      *time.Time `json:"lastUsed"`
 	Revoked       *time.Time `json:"revoked"`
 	Status        string     `json:"status"`
+	Source        string     `json:"source"`
 	Secret        string     `json:"secret,omitempty"`
 }
 
@@ -57,7 +58,11 @@ func mcpTokenStatus(t store.MCPToken, now time.Time) string {
 }
 
 func viewMCPToken(t store.MCPToken, now time.Time) mcpTokenView {
-	return mcpTokenView{ID: t.ID, Name: t.Name, OwnerID: t.OwnerID, OwnerProvider: t.OwnerProvider, Scopes: nonNilStrings(t.Scopes), Clusters: nonNilStrings(t.Clusters), Created: t.Created, Expires: t.Expires, LastUsed: t.LastUsed, Revoked: t.Revoked, Status: mcpTokenStatus(t, now)}
+	source := "token"
+	if t.Kind != "" {
+		source = "oauth"
+	}
+	return mcpTokenView{Source: source, ID: t.ID, Name: t.Name, OwnerID: t.OwnerID, OwnerProvider: t.OwnerProvider, Scopes: nonNilStrings(t.Scopes), Clusters: nonNilStrings(t.Clusters), Created: t.Created, Expires: t.Expires, LastUsed: t.LastUsed, Revoked: t.Revoked, Status: mcpTokenStatus(t, now)}
 }
 
 func nonNilStrings(v []string) []string {
@@ -131,8 +136,21 @@ func (a *API) listMCPTokens(w http.ResponseWriter, r *http.Request, s auth.Sessi
 		return
 	}
 	now := time.Now()
+	// An OAuth connection is listed once, by its refresh row, and reports the latest use of any of its access tokens.
+	lastUsed := map[string]*time.Time{}
+	for _, t := range tokens {
+		if t.Kind == store.MCPKindAccess && t.LastUsed != nil && (lastUsed[t.Grant] == nil || t.LastUsed.After(*lastUsed[t.Grant])) {
+			lastUsed[t.Grant] = t.LastUsed
+		}
+	}
 	out := make([]mcpTokenView, 0, len(tokens))
 	for _, t := range tokens {
+		if t.Kind == store.MCPKindAccess {
+			continue
+		}
+		if t.Kind == store.MCPKindRefresh && lastUsed[t.Grant] != nil {
+			t.LastUsed = lastUsed[t.Grant]
+		}
 		// A revoked token is finished: it stays stored so a replayed secret is still refused and the audit
 		// trail keeps its history, but the inventory no longer lists it.
 		if t.Revoked != nil {
@@ -236,7 +254,7 @@ func (a *API) createMCPToken(w http.ResponseWriter, r *http.Request, s auth.Sess
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	active := 0
 	for _, t := range own {
-		if mcpTokenStatus(t, now) != "active" {
+		if t.Kind != "" || mcpTokenStatus(t, now) != "active" {
 			continue
 		}
 		active++
@@ -315,6 +333,10 @@ func (a *API) revokeMCPToken(w http.ResponseWriter, r *http.Request, s auth.Sess
 		return
 	}
 	revokeErr := a.o.Store.RevokeMCPToken(r.Context(), id)
+	if revokeErr == nil && tok.Kind == store.MCPKindRefresh {
+		// Revoking an OAuth connection also ends the access tokens it issued.
+		revokeErr = a.revokeGrant(r.Context(), tok)
+	}
 	result := "success"
 	if revokeErr != nil {
 		result = "failed"
@@ -346,4 +368,20 @@ func (a *API) revokeMCPToken(w http.ResponseWriter, r *http.Request, s auth.Sess
 func (a *API) mcpTokenAudit(r *http.Request, u auth.User, action string, t store.MCPToken, result string, details any) error {
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	return a.o.Store.Audit(r.Context(), store.Audit{Actor: u.ID, Provider: u.Provider, ClusterID: "*", Action: action, Resource: t.ID + " (" + t.Name + ")", Result: result, RequestID: requestID(r), SourceIP: ip, AdminAfter: details})
+}
+
+// revokeGrant revokes every access token issued under the OAuth connection of refresh.
+func (a *API) revokeGrant(ctx context.Context, refresh store.MCPToken) error {
+	all, e := a.o.Store.ListMCPTokens(ctx, refresh.OwnerID, false)
+	if e != nil {
+		return e
+	}
+	for _, t := range all {
+		if t.Grant == refresh.Grant && t.ID != refresh.ID && t.Revoked == nil {
+			if e := a.o.Store.RevokeMCPToken(ctx, t.ID); e != nil && !errors.Is(e, store.ErrMCPTokenNotFound) {
+				return e
+			}
+		}
+	}
+	return nil
 }
