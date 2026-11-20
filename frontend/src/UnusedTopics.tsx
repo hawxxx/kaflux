@@ -4,6 +4,7 @@ import {ArrowDownToLine,ArrowRight,ChevronDown,RefreshCw,Shield,Trash2} from 'lu
 import {api,bytes,can,type Session} from './api';
 import {Modal} from './Administration';
 import {EvaluatingLoader,type EvalProgress} from './EvaluatingLoader';
+import {ExcludeRules,rulesParam,type Rule} from './ExcludeRules';
 
 type Unused={name:string;classification:'unused'|'likely-unused'|'idle';reasons:string[];partitions:number;emptyPartitions:number[];records:number;sizeBytes:number|null;lastRecordAt:string|null;consumerGroups:string[];activeConsumers:number;internal:boolean;ageKnown:boolean;fingerprint:string};
 type Report={topics:Unused[];evaluatedAt:string;partial:boolean;partialReason?:string};
@@ -55,7 +56,7 @@ function DaysCombo({value,onChange}:{value:string;onChange:(v:string)=>void}){
 }
 /** Finds topics nobody reads or writes and deletes the chosen ones safely: the server re-checks each at delete time. */
 export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Session}){
-  const [days,setDays]=useState('30');const [internal,setInternal]=useState(false);const [exclude,setExclude]=useState('');
+  const [days,setDays]=useState('30');const [internal,setInternal]=useState(false);const [exclude,setExclude]=useState('');const [rules,setRules]=useState<Rule[]>([]);const [regexOpen,setRegexOpen]=useState(false);
   const [filter,setFilter]=useState('');const [sort,setSort]=useState<typeof sorts[number][0]>('name');const [dropped,setDropped]=useState(0);
   const [kind,setKind]=useState<typeof kinds[number][0]>('all');const [selected,setSelected]=useState<string[]>([]);
   const [open,setOpen]=useState(false);const [confirmation,setConfirmation]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [outcome,setOutcome]=useState<BulkResult|null>(null);const [emptyUnknown,setEmptyUnknown]=useState(false);
@@ -63,10 +64,12 @@ export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Sess
   const n=Number(days);const validDays=Number.isInteger(n)&&n>=1&&n<=3650;
   const [debounced,setDebounced]=useState('');
   useEffect(()=>{const t=setTimeout(()=>setDebounced(exclude.trim()),350);return()=>clearTimeout(t)},[exclude]);
+  const rulesJson=rulesParam(rules);const [debouncedRules,setDebouncedRules]=useState('');
+  useEffect(()=>{const t=setTimeout(()=>setDebouncedRules(rulesJson),350);return()=>clearTimeout(t)},[rulesJson]);
   const excludeValid=validRegex(exclude);
   const effectiveExclude=excludeValid?debounced:'';
   const [progress,setProgress]=useState<EvalProgress>();
-  const query=useQuery({queryKey:['unused-topics',clusterId,n,internal,effectiveExclude],enabled:validDays,retry:false,placeholderData:keepPreviousData,queryFn:({signal})=>{setProgress(undefined);return evaluateUnused(clusterId,new URLSearchParams({minAgeDays:String(n),includeInternal:String(internal),exclude:effectiveExclude}),signal,setProgress)}});
+  const query=useQuery({queryKey:['unused-topics',clusterId,n,internal,effectiveExclude,debouncedRules],enabled:validDays,retry:false,placeholderData:keepPreviousData,queryFn:({signal})=>{setProgress(undefined);return evaluateUnused(clusterId,new URLSearchParams({minAgeDays:String(n),includeInternal:String(internal),exclude:effectiveExclude,...(debouncedRules?{rules:debouncedRules}:{})}),signal,setProgress)}});
   const rows=query.data?.topics??[];
   const needle=filter.trim().toLowerCase();
   const shown=useMemo(()=>{const out=rows.filter(r=>(kind==='all'||r.classification===kind)&&(!needle||r.name.toLowerCase().includes(needle)));
@@ -95,7 +98,11 @@ export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Sess
     <div className="panel-title"><div><h2>Topic cleanup</h2><p>Topics with no consumers and no recent writes. Review the reasons, then delete in bulk.</p></div></div>
     <div className="panel-body unused-controls">
       <div className="field"><span>Unused for at least (days)</span><DaysCombo value={days} onChange={setDays}/></div>
-      <label>Exclude names matching (regex)<input value={exclude} onChange={e=>setExclude(e.target.value)} maxLength={200} autoComplete="off" placeholder="^(tmp|test)\." aria-invalid={!excludeValid} aria-describedby={excludeValid?undefined:'exclude-error'}/>{!excludeValid&&<small id="exclude-error" className="bad-text" role="alert">Not a valid regular expression; the last valid filter is still applied.</small>}</label>
+      <ExcludeRules rules={rules} onChange={setRules}/>
+      <details className="exclude-advanced" open={regexOpen||exclude!==''} onToggle={e=>setRegexOpen((e.currentTarget as HTMLDetailsElement).open)}>
+        <summary>Regular expression (optional)</summary>
+        <label>Exclude names matching (regex)<input value={exclude} onChange={e=>setExclude(e.target.value)} maxLength={200} autoComplete="off" placeholder="^(tmp|test)\." aria-invalid={!excludeValid} aria-describedby={excludeValid?undefined:'exclude-error'}/>{!excludeValid&&<small id="exclude-error" className="bad-text" role="alert">Not a valid regular expression; the last valid filter is still applied.</small>}</label>
+      </details>
       <label className="check-row"><input type="checkbox" checked={internal} onChange={e=>setInternal(e.target.checked)}/> Show internal topics</label>
     </div>
     <div className="unused-status" role="status" aria-live="polite"><span className="muted">{query.isFetching?(progress&&progress.total>0?`Evaluating topics… ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}`:'Evaluating topics…'):query.data?`Evaluated ${new Date(query.data.evaluatedAt).toLocaleTimeString()} · ${rows.length} candidate${rows.length===1?'':'s'}`:''}{selected.length>0&&<span> · {selected.length} selected, {bytes(selectedBytes)} reclaimable</span>}</span><button type="button" className="button" onClick={()=>query.refetch()} disabled={!validDays||query.isFetching}><RefreshCw size={14} className={query.isFetching?'spin':undefined}/>Refresh</button></div>

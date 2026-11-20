@@ -1588,6 +1588,16 @@ paths:
         - { name: minAgeDays, in: query, schema: { type: integer, minimum: 1, maximum: 3650, default: 30 } }
         - { name: includeInternal, in: query, schema: { type: boolean, default: false } }
         - { name: exclude, in: query, description: Regular expression of topic names to skip, schema: { type: string, maxLength: 200 } }
+        - {
+            name: rules,
+            in: query,
+            description:
+              "JSON list of at most 20 name rules, each an object with op, value, not and join. op is
+              starts, ends, contains, equals or regex (RE2). join (and, or) connects a rule to the one
+              before it and is required from the second rule on; AND binds tighter than OR. Topics for
+              which the expression is true are skipped, and so are topics matching exclude.",
+            schema: { type: string, maxLength: 16384 },
+          }
       responses:
         "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
         "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
@@ -1607,6 +1617,16 @@ paths:
         - { name: minAgeDays, in: query, schema: { type: integer, minimum: 1, maximum: 3650, default: 30 } }
         - { name: includeInternal, in: query, schema: { type: boolean, default: false } }
         - { name: exclude, in: query, description: Regular expression of topic names to skip, schema: { type: string, maxLength: 200 } }
+        - {
+            name: rules,
+            in: query,
+            description:
+              "JSON list of at most 20 name rules, each an object with op, value, not and join. op is
+              starts, ends, contains, equals or regex (RE2). join (and, or) connects a rule to the one
+              before it and is required from the second rule on; AND binds tighter than OR. Topics for
+              which the expression is true are skipped, and so are topics matching exclude.",
+            schema: { type: string, maxLength: 16384 },
+          }
       responses:
         "200": { description: "Data envelope", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
         "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }

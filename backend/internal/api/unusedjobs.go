@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
-	"regexp"
 	"sort"
 	"sync"
 	"time"
@@ -146,7 +145,7 @@ func (a *API) startUnusedJob(w http.ResponseWriter, r *http.Request, u auth.User
 	respond(w, a.unusedJobView(j, u))
 }
 
-func (a *API) runUnusedJob(ctx context.Context, j *unusedJob, p kafka.Provider, now time.Time, minAge time.Duration, internal bool, exclude *regexp.Regexp) {
+func (a *API) runUnusedJob(ctx context.Context, j *unusedJob, p kafka.Provider, now time.Time, minAge time.Duration, internal bool, exclude *nameExcluder) {
 	defer j.cancel()
 	defer func() {
 		if rec := recover(); rec != nil {

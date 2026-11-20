@@ -91,6 +91,29 @@ describe('unused topics',()=>{
     await waitFor(()=>expect(calls.some(c=>c.path.includes('exclude=%5Etmp'))).toBe(true));
     expect(screen.queryByText(/Not a valid regular expression/)).toBeNull();
   });
+  it('sends name rules as one JSON parameter next to the optional regex',async()=>{
+    const calls:Call[]=[];stub(calls,()=>({data:report()}));
+    wrap(<UnusedTopics clusterId="demo" session={session}/>);
+    await screen.findByText('a.empty');
+    expect(calls.every(c=>!c.path.includes('rules='))).toBe(true);
+    fireEvent.click(screen.getByRole('button',{name:/Add rule/}));
+    fireEvent.change(screen.getByLabelText('Value for rule 1'),{target:{value:'tmp'}});
+    fireEvent.click(screen.getByRole('button',{name:/Add rule/}));
+    fireEvent.change(screen.getByLabelText('Value for rule 2'),{target:{value:'keep'}});
+    fireEvent.change(screen.getByLabelText('Match type for rule 2'),{target:{value:'contains'}});
+    fireEvent.click(screen.getByRole('button',{name:'Negate rule 2'}));
+    fireEvent.click(screen.getByRole('button',{name:/Rule 2 joins the previous rule with OR/}));
+    fireEvent.change(screen.getByLabelText(/Exclude names/),{target:{value:'^scratch'}});
+    await waitFor(()=>{
+      const hit=calls.map(c=>new URL(c.path,'http://x').searchParams).find(p=>p.has('rules'));
+      expect(hit).toBeDefined();
+      expect(JSON.parse(hit!.get('rules')!)).toEqual([{op:'starts',value:'tmp',not:false,join:'or'},{op:'contains',value:'keep',not:true,join:'and'}]);
+    });
+    await waitFor(()=>{
+      const last=calls.map(c=>new URL(c.path,'http://x').searchParams).filter(p=>p.has('rules')&&p.get('exclude')==='^scratch');
+      expect(last.length).toBeGreaterThan(0);
+    });
+  });
   it('filters by name, caps the selection at 100 and keeps hidden selections when deselecting shown rows',async()=>{
     const many=Array.from({length:120},(_,i)=>row(`t${String(i).padStart(3,'0')}`,'likely-unused'));
     stub([],()=>({data:report(many)}));
