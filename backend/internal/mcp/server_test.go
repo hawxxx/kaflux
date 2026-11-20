@@ -469,6 +469,16 @@ func TestOriginRejected(t *testing.T) {
 			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.want)
 		}
 	}
+	// A repeated or blank Origin is malformed, not absent.
+	for name, values := range map[string][]string{
+		"repeated": {"https://console.example", "https://console.example"},
+		"empty":    {""},
+		"blank":    {"   "},
+	} {
+		if resp, _ := e.rawPost(t, http.Header{"Authorization": authz, "Origin": values}); resp.StatusCode != 403 {
+			t.Errorf("%s Origin: %d", name, resp.StatusCode)
+		}
+	}
 	// With no configured origins every browser request is refused.
 	bare := newEnv(t, envConfig{demo: true})
 	if resp, _ := bare.rawPost(t, http.Header{"Authorization": {"Bearer " + bare.token(t, tokenSpec{})}, "Origin": {bare.srv.URL}}); resp.StatusCode != 403 {
@@ -479,21 +489,47 @@ func TestOriginRejected(t *testing.T) {
 func TestFailedAuthRateLimited(t *testing.T) {
 	e := newEnv(t, envConfig{demo: true})
 	secret := e.token(t, tokenSpec{})
+	var mu sync.Mutex
+	lookups := 0
+	inner := e.h.lookup
+	e.h.lookup = func(ctx context.Context, hash string) (store.MCPToken, error) {
+		mu.Lock()
+		lookups++
+		mu.Unlock()
+		return inner(ctx, hash)
+	}
+	count := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return lookups
+	}
+	good := http.Header{"Authorization": {"Bearer " + secret}}
+	bad := http.Header{"Authorization": {"Bearer kfx_wrong"}}
 	for i := 0; i < MaxAuthFailuresPerMinute; i++ {
-		if resp, _ := e.rawPost(t, http.Header{"Authorization": {"Bearer kfx_wrong"}}); resp.StatusCode != 401 {
+		if resp, _ := e.rawPost(t, bad); resp.StatusCode != 401 {
 			t.Fatalf("failure %d: %d", i, resp.StatusCode)
 		}
 	}
-	resp, _ := e.rawPost(t, http.Header{"Authorization": {"Bearer kfx_wrong"}})
-	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" {
-		t.Fatalf("flood not limited: %d", resp.StatusCode)
+	resp, _ := e.rawPost(t, bad)
+	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") != "60" {
+		t.Fatalf("flood not limited: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
 	}
-	// The client stays refused, even with a valid token, until the window passes.
-	if resp, _ := e.rawPost(t, http.Header{"Authorization": {"Bearer " + secret}}); resp.StatusCode != 429 {
-		t.Fatalf("limited client: %d", resp.StatusCode)
+	// A valid token from the same (possibly shared proxy) address still
+	// authenticates, with exactly one store lookup per request.
+	before := count()
+	for i := 0; i < 3; i++ {
+		if resp, body := e.rawPost(t, good); resp.StatusCode != 200 {
+			t.Fatalf("valid token from limited IP: %d %s", resp.StatusCode, body)
+		}
+	}
+	if got := count() - before; got != 3 {
+		t.Fatalf("valid tokens took %d lookups, want 3", got)
+	}
+	if resp, _ := e.rawPost(t, bad); resp.StatusCode != 429 {
+		t.Fatalf("bad token after valid ones: %d", resp.StatusCode)
 	}
 	l := e.h.authFail
-	if l.blocked("127.0.0.1", time.Now().Add(61*time.Second)) || l.blocked("10.0.0.9", time.Now()) {
+	if l.record("127.0.0.1", time.Now().Add(61*time.Second)) || l.record("10.0.0.9", time.Now()) {
 		t.Fatal("limit outlived its window or spilled to another IP")
 	}
 }

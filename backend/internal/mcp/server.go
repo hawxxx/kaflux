@@ -57,6 +57,8 @@ type Handler struct {
 	sdk      http.Handler
 	metrics  *metrics
 	authFail *failureLimiter
+	// lookup resolves a token hash; tests wrap it to count store lookups.
+	lookup func(context.Context, string) (store.MCPToken, error)
 }
 
 // NewHandler returns the /mcp handler. It authenticates each request with a
@@ -66,10 +68,11 @@ func NewHandler(o Options) *Handler {
 	if len(o.ConfirmKey) > 0 {
 		d.SetConfirmer(NewConfirmer(o.ConfirmKey, DefaultConfirmTTL, nil))
 	}
+	h := &Handler{o: o, d: d, metrics: defaultMetrics, authFail: newFailureLimiter(MaxAuthFailuresPerMinute)}
 	if o.Store != nil {
 		d.SetAudit(o.Store.Audit)
+		h.lookup = o.Store.MCPTokenByHash
 	}
-	h := &Handler{o: o, d: d, metrics: defaultMetrics, authFail: newFailureLimiter(MaxAuthFailuresPerMinute)}
 	h.sdk = sdk.NewStreamableHTTPHandler(h.server, &sdk.StreamableHTTPOptions{
 		Stateless:    true,
 		JSONResponse: true,
@@ -109,21 +112,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusServiceUnavailable, "mcp_unavailable", "MCP is not configured")
 		return
 	}
-	// A client that keeps failing authentication is refused before the
-	// token store is consulted.
+	// The failed-auth limiter keys on the direct peer (RemoteAddr). Behind a
+	// reverse proxy that is the proxy's address, so a valid token is never
+	// refused by it: only failures are counted and answered with 429. If the
+	// API gains a trusted-proxy client-IP helper, use it here.
 	ip := clientIP(r.RemoteAddr)
-	if h.authFail.blocked(ip, time.Now()) {
-		h.metrics.deny(deniedAuthRateLimited)
-		w.Header().Set("Retry-After", "60")
-		httpError(w, http.StatusTooManyRequests, "rate_limited", "Too many failed authentication attempts; retry later")
-		return
-	}
 	secret, ok := bearer(r)
 	if !ok {
 		h.unauthenticated(w, ip)
 		return
 	}
-	tok, err := h.o.Store.MCPTokenByHash(r.Context(), store.HashMCPSecret(secret))
+	tok, err := h.lookup(r.Context(), store.HashMCPSecret(secret))
 	if errors.Is(err, store.ErrMCPTokenNotFound) {
 		h.unauthenticated(w, ip)
 		return
@@ -140,8 +139,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.sdk.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, c)))
 }
 
+// unauthenticated records a failed authentication and answers 401, or 429
+// once the client has failed too often in the last minute.
 func (h *Handler) unauthenticated(w http.ResponseWriter, ip string) {
-	h.authFail.record(ip, time.Now())
+	if over := h.authFail.record(ip, time.Now()); over {
+		h.metrics.deny(deniedAuthRateLimited)
+		w.Header().Set("Retry-After", "60")
+		httpError(w, http.StatusTooManyRequests, "rate_limited", "Too many failed authentication attempts; retry later")
+		return
+	}
 	h.metrics.deny(deniedUnauthenticated)
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	httpError(w, http.StatusUnauthorized, "unauthenticated", "Valid MCP token required")
@@ -168,11 +174,15 @@ func bearer(r *http.Request) (string, bool) {
 // scheme, host and port. The request's Host is never trusted: under DNS
 // rebinding it matches the attacker's Origin.
 func (h *Handler) originAllowed(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
+	values := r.Header.Values("Origin")
+	if len(values) == 0 {
 		return true
 	}
-	got, ok := normalizeOrigin(origin)
+	// A present but repeated or blank Origin is malformed, never "absent".
+	if len(values) > 1 || strings.TrimSpace(values[0]) == "" {
+		return false
+	}
+	got, ok := normalizeOrigin(values[0])
 	if !ok {
 		return false
 	}
@@ -244,13 +254,9 @@ func (l *failureLimiter) recent(ip string, now time.Time) []time.Time {
 	return kept
 }
 
-func (l *failureLimiter) blocked(ip string, now time.Time) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return len(l.recent(ip, now)) >= l.max
-}
-
-func (l *failureLimiter) record(ip string, now time.Time) {
+// record counts one failure and reports whether the client has now failed
+// more than max times within the minute.
+func (l *failureLimiter) record(ip string, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if now.Sub(l.lastPrune) >= time.Minute {
@@ -259,10 +265,15 @@ func (l *failureLimiter) record(ip string, now time.Time) {
 		}
 		l.lastPrune = now
 	}
-	if _, tracked := l.hits[ip]; !tracked && len(l.hits) >= maxFailureClients {
-		return // full of active offenders; do not evict them for a newcomer
+	hits := l.recent(ip, now)
+	if hits == nil && len(l.hits) >= maxFailureClients {
+		return false // full of active offenders; do not evict them for a newcomer
 	}
-	l.hits[ip] = append(l.recent(ip, now), now)
+	if len(hits) >= l.max {
+		return true // already over: keep the window bounded at max entries
+	}
+	l.hits[ip] = append(hits, now)
+	return false
 }
 
 func clientIP(remote string) string {
