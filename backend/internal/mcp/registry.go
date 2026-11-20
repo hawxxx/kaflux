@@ -53,6 +53,10 @@ var Excluded = map[string]string{
 	"GET /clusters/{cluster}/rebalances/{job}/events.txt":  "file download; same data via kaflux_rebalance_events",
 	"GET /clusters/{cluster}/rebalances/{job}/backup.json": "file download; same data via kaflux_rebalance_get",
 	"GET /clusters/{cluster}/rebalances/{job}/report.csv":  "file download; same data via kaflux_rebalance_get",
+	"POST /clusters/{cluster}/unused-topics":               "console background job; same data via kaflux_topic_unused",
+	"GET /clusters/{cluster}/unused-topics/jobs/{job}":     "console background job; same data via kaflux_topic_unused",
+	"DELETE /clusters/{cluster}/unused-topics/jobs/{job}":  "console background job; same data via kaflux_topic_unused",
+	"GET /clusters/{cluster}/decoders":                     "console message-viewer option list, not an operation",
 }
 
 // Catalog returns every tool, reads first, in a stable order.

@@ -9,6 +9,7 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"github.com/hawxxx/kaflux/backend/internal/store"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -139,6 +140,27 @@ func TestUnusedTopicsExcludeRegex(t *testing.T) {
 	}
 	if got["inventory.updated"] == "" {
 		t.Fatalf("non-matching topic removed %v", got)
+	}
+}
+
+func TestUnusedTopicsExcludeRules(t *testing.T) {
+	_, request := unusedAPI(t)
+	// Leave out scratch* and shipping*, except *.dispatched: that topic stays in the report.
+	rules := url.QueryEscape(`{"include":[{"op":"starts","value":"scratch"},{"op":"starts","value":"shipping"}],"except":[{"op":"ends","value":".dispatched"}]}`)
+	got := unusedGet(t, request, "?rules="+rules)
+	if _, ok := got["scratch.empty"]; ok {
+		t.Fatalf("include term ignored %v", got)
+	}
+	if got["shipping.dispatched"] == "" {
+		t.Fatalf("except term did not keep the topic %v", got)
+	}
+	if got["inventory.updated"] == "" {
+		t.Fatalf("non-matching topic removed %v", got)
+	}
+	for _, q := range []string{"?rules=%7B", "?rules=" + url.QueryEscape(`{"include":[{"op":"like","value":"a"}]}`), "?rules=" + url.QueryEscape(`{"include":[{"op":"starts","value":""}]}`)} {
+		if w := request("GET", "unused-topics"+q, ""); w.Code != 400 {
+			t.Errorf("%s got %d", q, w.Code)
+		}
 	}
 }
 

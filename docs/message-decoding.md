@@ -46,6 +46,34 @@ deadline and 2 MiB decoded response budget. An invalid key does not suppress a v
 default target is `value`, preserving existing API behavior. For mixed serialization formats,
 inspect each field separately using its appropriate decoder.
 
+## Protobuf without a registry
+
+Some producers write plain Protobuf with no Confluent header and no registry. OpenSync router
+telemetry is one: the value is the bare `sts.Report` message. A registry cannot decode these
+records, so Kaflux decodes them with a schema you supply.
+
+Mount the `.proto` files in a directory and list the decoder in the runtime configuration:
+
+```yaml
+decoders:
+  - id: opensync-stats
+    name: OpenSync sts.Report
+    directory: /etc/kaflux/protos
+    file: opensync_stats.proto
+    message: sts.Report
+    topics: ["*aggregated_stats*"]
+```
+
+- `directory` holds the `.proto` files, including imports. It is not searched recursively.
+- `file` is compiled as the root, and `message` is the full name of the value type.
+- `topics` are `*` glob hints. The Messages view selects the decoder when a matching topic is picked.
+
+Schemas are compiled at startup, and a schema that does not compile or exceeds the complexity
+limits stops the process with the decoder's `id`. Choose **Protobuf · name** under **Value
+decoder**, or call the API with `decoder=protobuf-raw&rawDecoder=<id>`. `GET
+/clusters/{cluster}/decoders` lists the configured decoders. Missing required fields in proto2
+schemas are tolerated. A record that does not decode shows its error and keeps its raw bytes.
+
 ## Protobuf values
 
 Choose **Protobuf · registry-ID** to decode a `.proto` schema registered with type `PROTOBUF`,

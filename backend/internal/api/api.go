@@ -58,6 +58,8 @@ type Options struct {
 	MCPEnabled, MCPWritesEnabled bool
 	// ExtraMetrics appends Prometheus text-format series to /metrics.
 	ExtraMetrics func(io.Writer)
+	// RawDecoders are the configured unframed Protobuf decoders, in display order.
+	RawDecoders []RawDecoder
 }
 type API struct {
 	o                  Options
@@ -73,6 +75,8 @@ type API struct {
 	bulkDeadline time.Duration
 	// mcpTokenMu serializes MCP token creation so the per-owner limit holds.
 	mcpTokenMu sync.Mutex
+	// unusedJobs holds background unused-topic evaluations, guarded by mu.
+	unusedJobs map[string]*unusedJob
 }
 
 func New(o Options) *API {
@@ -448,13 +452,28 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if !a.allowed(r, s.User, id, action, resource, w) {
 		return
 	}
+	if endpoint == "decoders" {
+		a.rawDecoders(w)
+		return
+	}
 	if endpoint == "metrics" && a.o.ClusterMetrics != nil {
 		http.StripPrefix("/api/v1/clusters/"+id+"/metrics", a.o.ClusterMetrics(id)).ServeHTTP(w, r)
 		return
 	}
 	if endpoint == "capabilities" || endpoint == "configuration" {
 		cap, _ := jobs.Capabilities(r.Context(), provider, false)
-		respond(w, cap)
+		if endpoint == "configuration" {
+			authentication := ""
+			if configured, ok := provider.(interface{ BrokerAuthentication() string }); ok {
+				authentication = configured.BrokerAuthentication()
+			}
+			respond(w, struct {
+				msk.Capabilities
+				BrokerAuthentication string `json:"brokerAuthentication,omitempty"`
+			}{cap, authentication})
+		} else {
+			respond(w, cap)
+		}
 		return
 	}
 	if endpoint == "rebalances" {
@@ -828,7 +847,14 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		return
 	}
 	var registry *integrations.Client
-	if decoder != "" {
+	var rawDec *RawDecoder
+	if decoder == "protobuf-raw" {
+		if rawDec = a.rawDecoder(q.Get("rawDecoder")); rawDec == nil {
+			fail(w, 422, "decoder_unavailable", "Choose a configured Protobuf decoder")
+			return
+		}
+	}
+	if decoder != "" && rawDec == nil {
 		if decoder != "avro" && decoder != "protobuf" {
 			fail(w, 422, "unsupported_decoder", "Choose Avro or Protobuf decoding")
 			return
@@ -840,7 +866,7 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		}
 	}
 	if raw := q.Get("offsets"); raw != "" {
-		a.messagesAcross(w, r, u, id, p, raw, registry, decoder, target)
+		a.messagesAcross(w, r, u, id, p, raw, registry, rawDec, decoder, target)
 		return
 	}
 	part, e := strconv.ParseInt(q.Get("partition"), 10, 32)
@@ -878,7 +904,9 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 		failCause(w, r, 503, "consume_failed", "Unable to read messages", e)
 		return
 	}
-	if registry != nil {
+	if rawDec != nil {
+		decodeRawFields(m, rawDec, target)
+	} else if registry != nil {
 		a.decodeMessageFields(r.Context(), u, id, registry, m, decoder, target)
 	}
 	respond(w, m)
@@ -894,7 +922,7 @@ func readLimit(q url.Values) int {
 // messagesAcross reads several partitions of one topic in a single request. offsets lists
 // "partition:offset" pairs; with a timestamp the offsets are ignored and each listed partition
 // starts at the first record at or after that time.
-func (a *API) messagesAcross(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider, raw string, registry *integrations.Client, decoder, target string) {
+func (a *API) messagesAcross(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider, raw string, registry *integrations.Client, rawDec *RawDecoder, decoder, target string) {
 	reader, ok := p.(kafka.MultiReader)
 	if !ok {
 		fail(w, 422, "unsupported", "Reading several partitions is unavailable")
@@ -947,7 +975,9 @@ func (a *API) messagesAcross(w http.ResponseWriter, r *http.Request, u auth.User
 		failCause(w, r, 503, "consume_failed", "Unable to read messages", e)
 		return
 	}
-	if registry != nil {
+	if rawDec != nil {
+		decodeRawFields(m, rawDec, target)
+	} else if registry != nil {
 		a.decodeMessageFields(r.Context(), u, id, registry, m, decoder, target)
 	}
 	respond(w, m)

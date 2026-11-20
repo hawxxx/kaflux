@@ -1,7 +1,7 @@
 import {fireEvent,render,screen,within} from '@testing-library/react';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {Messages} from './Messages';
+import {Messages,topicMatches} from './Messages';
 
 const detail={name:'orders',partitions:[{id:0,leader:1,replicas:[1],isr:[1],startOffset:10,endOffset:200,sizeBytes:null},{id:1,leader:1,replicas:[1],isr:[1],startOffset:0,endOffset:5,sizeBytes:null}],replicationFactor:1,sizeBytes:null,urp:0,cleanupPolicy:'delete',retentionMs:null,observedAt:''};
 const records=[
@@ -132,5 +132,29 @@ describe('topic messages',()=>{
     await vi.waitFor(()=>expect(screen.queryByText('Scanning orders for “needle”…')).toBeNull());
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByText('No returned records match this search.')).toBeVisible();
+  });
+  it('offers a configured Protobuf decoder and sends it with the read',async()=>{
+    const decoders=[{id:'opensync-stats',name:'OpenSync sts.Report',message:'sts.Report',topics:['*aggregated_stats*']}];
+    const fetch=vi.fn(async(url:string)=>String(url).endsWith('/decoders')?({ok:true,json:async()=>({data:decoders})} as Response):respond(url));
+    mount(fetch);
+    await screen.findByText('order-1');
+    const select=await screen.findByRole('combobox',{name:'Value decoder'});
+    expect(await within(select).findByRole('option',{name:'Protobuf · OpenSync sts.Report'})).toBeInTheDocument();
+    fireEvent.change(select,{target:{value:'raw:opensync-stats'}});
+    await vi.waitFor(()=>{
+      const read=fetch.mock.calls.map(c=>String(c[0])).filter(u=>u.includes('/messages?')).map(u=>new URL(u,'http://x').searchParams).find(p=>p.get('decoder')==='protobuf-raw');
+      expect(read?.get('rawDecoder')).toBe('opensync-stats');
+      expect(read?.has('registry')).toBe(false);
+    });
+  });
+});
+
+describe('topicMatches',()=>{
+  it('matches * globs against the whole topic name',()=>{
+    expect(topicMatches(['*aggregated_stats*'],'prod-tau-opensync.aggregated_stats-64659ac0')).toBe(true);
+    expect(topicMatches(['orders'],'orders')).toBe(true);
+    expect(topicMatches(['orders'],'orders-2')).toBe(false);
+    expect(topicMatches(['a.b*'],'axb')).toBe(false);
+    expect(topicMatches([],'orders')).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Kaflux API
-  version: 0.7.2 # x-release-please-version
+  version: 0.8.0 # x-release-please-version
   license:
     name: MIT
     url: https://opensource.org/license/mit/
@@ -369,8 +369,8 @@ paths:
     get:
       summary: Get sanitized cluster capability configuration
       description:
-        Returns capability status; broker credentials and mutable broker configuration are not
-        exposed.
+        Returns capability status and the configured broker authentication mechanism. Broker
+        credentials and mutable broker configuration are not exposed.
       operationId: getClusterConfiguration
       responses:
         "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
@@ -737,6 +737,16 @@ paths:
         "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
         "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "422": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /clusters/{cluster}/decoders:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+    get:
+      summary: List configured Protobuf decoders for values without a registry header
+      operationId: listDecoders
+      responses:
+        "200": { description: "Data envelope; each item has id, name, message and topics (glob hints)", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         default: { description: Unexpected error with machine code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/schemas:
     parameters:
@@ -1166,7 +1176,7 @@ paths:
             in: query,
             description:
               "Opt-in schema value decoding; raw bytes are preserved and failures are per record",
-            schema: { type: string, enum: [avro, protobuf] },
+            schema: { type: string, enum: [avro, protobuf, protobuf-raw] },
           }
         - {
             name: decoderTarget,
@@ -1180,6 +1190,12 @@ paths:
             name: registry,
             in: query,
             description: "Configured cluster schema registry ID; required when decoder is set",
+            schema: { type: string },
+          }
+        - {
+            name: rawDecoder,
+            in: query,
+            description: "Configured Protobuf decoder ID from GET /clusters/{cluster}/decoders; required when decoder is protobuf-raw",
             schema: { type: string },
           }
       responses:
@@ -1683,11 +1699,72 @@ paths:
         - { name: minAgeDays, in: query, schema: { type: integer, minimum: 1, maximum: 3650, default: 30 } }
         - { name: includeInternal, in: query, schema: { type: boolean, default: false } }
         - { name: exclude, in: query, description: Regular expression of topic names to skip, schema: { type: string, maxLength: 200 } }
+        - {
+            name: rules,
+            in: query,
+            description:
+              "JSON object {include, except}, each a list of at most 20 terms {op, value} with op
+              starts, ends, contains or equals. A topic is skipped when any include term (or the
+              exclude regular expression) matches and no except term does; except terms alone skip
+              nothing.",
+            schema: { type: string, maxLength: 16384 },
+          }
       responses:
         "200": { description: "Data envelope; nullable telemetry retains unknown values", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
         "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    post:
+      summary: Start an unused topic evaluation job
+      description: >-
+        Same query and semantics as GET, but evaluated in the background so large clusters are not
+        limited by the 10 second request deadline or the 500 topic cap (3 minute deadline, 10000
+        topics). Topics are read concurrently by a small worker pool. Returns the job (id, status,
+        done, total, evaluatedAt); poll the job for progress. An identical running job of the same user
+        is returned instead of starting another. At most 8 jobs run at once (429 too_many_jobs).
+        Requires read.
+      operationId: startUnusedTopicsJob
+      parameters:
+        - { name: minAgeDays, in: query, schema: { type: integer, minimum: 1, maximum: 3650, default: 30 } }
+        - { name: includeInternal, in: query, schema: { type: boolean, default: false } }
+        - { name: exclude, in: query, description: Regular expression of topic names to skip, schema: { type: string, maxLength: 200 } }
+        - {
+            name: rules,
+            in: query,
+            description:
+              "JSON object {include, except}, each a list of at most 20 terms {op, value} with op
+              starts, ends, contains or equals. A topic is skipped when any include term (or the
+              exclude regular expression) matches and no except term does; except terms alone skip
+              nothing.",
+            schema: { type: string, maxLength: 16384 },
+          }
+      responses:
+        "200": { description: "Data envelope", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /clusters/{cluster}/unused-topics/jobs/{job}:
+    parameters:
+      - { $ref: "#/components/parameters/Cluster" }
+      - { name: job, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Read an unused topic evaluation job
+      description: >-
+        Returns id, status (running, done, failed or canceled), done and total topics evaluated, and
+        evaluatedAt. When done it also carries topics, partial and partialReason as GET
+        unused-topics does, filtered by read permission; when failed, error.code and error.message.
+        Only the user who started a job can read it; jobs expire 10 minutes after they finish (404).
+      operationId: unusedTopicsJob
+      responses:
+        "200": { description: "Data envelope", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    delete:
+      summary: Cancel an unused topic evaluation job
+      description: Stops a running job and returns it with status canceled. A finished job is returned unchanged.
+      operationId: cancelUnusedTopicsJob
+      responses:
+        "200": { description: "Data envelope", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "404": { description: "Sanitized error with machine code", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /clusters/{cluster}/topics/bulk-delete:
     parameters:
       - { $ref: "#/components/parameters/Cluster" }
@@ -1855,9 +1932,9 @@ components:
         keyBase64: { type: string, description: Original key bytes encoded as Base64 }
         truncated: { type: boolean, readOnly: true }
         decodedValue: { readOnly: true, description: JSON preview of an opt-in decoded value }
-        decodedFormat: { type: string, enum: [avro, protobuf], readOnly: true }
+        decodedFormat: { type: string, enum: [avro, protobuf, protobuf-raw], readOnly: true }
         decodedKey: { readOnly: true, description: JSON preview of an opt-in decoded message key }
-        keyDecodedFormat: { type: string, enum: [avro, protobuf], readOnly: true }
+        keyDecodedFormat: { type: string, enum: [avro, protobuf, protobuf-raw], readOnly: true }
         keySchemaId: { type: integer, format: int32, minimum: 1, maximum: 2147483647, readOnly: true }
         keyDecodeError:
           {

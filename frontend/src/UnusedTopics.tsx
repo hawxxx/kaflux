@@ -3,14 +3,33 @@ import {keepPreviousData,useQuery,useQueryClient} from '@tanstack/react-query';
 import {ArrowDownToLine,ArrowRight,ChevronDown,RefreshCw,Shield,Trash2} from 'lucide-react';
 import {api,bytes,can,type Session} from './api';
 import {Modal} from './Administration';
+import {EvaluatingLoader,type EvalProgress} from './EvaluatingLoader';
+import {NameFilter} from './NameFilter';
+import {filterParam,parseFilter,type Op} from './filter-query';
 
 type Unused={name:string;classification:'unused'|'likely-unused'|'idle';reasons:string[];partitions:number;emptyPartitions:number[];records:number;sizeBytes:number|null;lastRecordAt:string|null;consumerGroups:string[];activeConsumers:number;internal:boolean;ageKnown:boolean;fingerprint:string};
 type Report={topics:Unused[];evaluatedAt:string;partial:boolean;partialReason?:string};
+type Job={id:string;status:'running'|'done'|'failed'|'canceled';done:number;total:number;evaluatedAt:string;topics?:Unused[];partial?:boolean;partialReason?:string;error?:{code:string;message:string}};
 type BulkResult={deleted:string[];skipped:{topic:string;reason:string}[]};
 const kinds=[['all','All'],['unused','Unused'],['likely-unused','Likely unused'],['idle','Idle']] as const;
 const MAX_BULK=100;
+const pause=(ms:number,signal:AbortSignal)=>new Promise<void>((resolve,reject)=>{if(signal.aborted)return reject(signal.reason);const t=setTimeout(()=>{signal.removeEventListener('abort',stop);resolve()},ms);const stop=()=>{clearTimeout(t);reject(signal.reason)};signal.addEventListener('abort',stop,{once:true})});
+/** Runs the evaluation as a server job and polls it, reporting real progress. Aborting (new settings, unmount) cancels the job. */
+export async function evaluateUnused(clusterId:string,params:URLSearchParams,signal:AbortSignal,onProgress:(p:EvalProgress)=>void):Promise<Report>{
+  let job=(await api<Job>(`/clusters/${clusterId}/unused-topics?${params}`,{method:'POST',signal})).data;
+  const base=`/clusters/${clusterId}/unused-topics/jobs/${job.id}`;
+  signal.addEventListener('abort',()=>{void api(base,{method:'DELETE'}).catch(()=>{})},{once:true});
+  for(let poll=0;job.status==='running';poll++){
+    onProgress({done:job.done,total:job.total});
+    await pause(poll<5?200:500,signal);
+    job=(await api<Job>(base,{signal})).data;
+  }
+  if(job.status==='failed')throw new Error(job.error?.message??'Topics could not be evaluated');
+  if(job.status==='canceled')throw new Error('Evaluation was canceled');
+  onProgress({done:job.total,total:job.total});
+  return {topics:job.topics??[],evaluatedAt:job.evaluatedAt,partial:!!job.partial,partialReason:job.partialReason};
+}
 const sorts=[['name','Name'],['size','Largest first'],['oldest','Oldest write first']] as const;
-export function validRegex(pattern:string){if(pattern.length>200)return false;try{new RegExp(pattern);return true}catch{return false}}
 export function ageLabel(iso:string|null,now=Date.now()){if(!iso)return '';const days=Math.floor((now-new Date(iso).getTime())/86400000);return days<1?'today':days===1?'1 day ago':days<60?`${days} days ago`:`${Math.floor(days/30)} months ago`}
 const csvCell=(v:unknown)=>{const s=String(v??'');return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s};
 export function unusedCsv(rows:Unused[]){
@@ -37,17 +56,16 @@ function DaysCombo({value,onChange}:{value:string;onChange:(v:string)=>void}){
 }
 /** Finds topics nobody reads or writes and deletes the chosen ones safely: the server re-checks each at delete time. */
 export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Session}){
-  const [days,setDays]=useState('30');const [internal,setInternal]=useState(false);const [exclude,setExclude]=useState('');
+  const [days,setDays]=useState('30');const [internal,setInternal]=useState(false);const [filterOp,setFilterOp]=useState<Op>('starts');const [filterText,setFilterText]=useState('');
   const [filter,setFilter]=useState('');const [sort,setSort]=useState<typeof sorts[number][0]>('name');const [dropped,setDropped]=useState(0);
   const [kind,setKind]=useState<typeof kinds[number][0]>('all');const [selected,setSelected]=useState<string[]>([]);
   const [open,setOpen]=useState(false);const [confirmation,setConfirmation]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [outcome,setOutcome]=useState<BulkResult|null>(null);const [emptyUnknown,setEmptyUnknown]=useState(false);
   const queryClient=useQueryClient();
   const n=Number(days);const validDays=Number.isInteger(n)&&n>=1&&n<=3650;
-  const [debounced,setDebounced]=useState('');
-  useEffect(()=>{const t=setTimeout(()=>setDebounced(exclude.trim()),350);return()=>clearTimeout(t)},[exclude]);
-  const excludeValid=validRegex(exclude);
-  const effectiveExclude=excludeValid?debounced:'';
-  const query=useQuery({queryKey:['unused-topics',clusterId,n,internal,effectiveExclude],enabled:validDays,retry:false,placeholderData:keepPreviousData,queryFn:async()=>(await api<Report>(`/clusters/${clusterId}/unused-topics?${new URLSearchParams({minAgeDays:String(n),includeInternal:String(internal),exclude:effectiveExclude})}`)).data});
+  const rulesJson=filterParam(parseFilter(filterText,filterOp));const [debouncedRules,setDebouncedRules]=useState('');
+  useEffect(()=>{const t=setTimeout(()=>setDebouncedRules(rulesJson),350);return()=>clearTimeout(t)},[rulesJson]);
+  const [progress,setProgress]=useState<EvalProgress>();
+  const query=useQuery({queryKey:['unused-topics',clusterId,n,internal,debouncedRules],enabled:validDays,retry:false,placeholderData:keepPreviousData,queryFn:({signal})=>{setProgress(undefined);return evaluateUnused(clusterId,new URLSearchParams({minAgeDays:String(n),includeInternal:String(internal),...(debouncedRules?{rules:debouncedRules}:{})}),signal,setProgress)}});
   const rows=query.data?.topics??[];
   const needle=filter.trim().toLowerCase();
   const shown=useMemo(()=>{const out=rows.filter(r=>(kind==='all'||r.classification===kind)&&(!needle||r.name.toLowerCase().includes(needle)));
@@ -76,10 +94,11 @@ export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Sess
     <div className="panel-title"><div><h2>Topic cleanup</h2><p>Topics with no consumers and no recent writes. Review the reasons, then delete in bulk.</p></div></div>
     <div className="panel-body unused-controls">
       <div className="field"><span>Unused for at least (days)</span><DaysCombo value={days} onChange={setDays}/></div>
-      <label>Exclude names matching (regex)<input value={exclude} onChange={e=>setExclude(e.target.value)} maxLength={200} autoComplete="off" placeholder="^(tmp|test)\." aria-invalid={!excludeValid} aria-describedby={excludeValid?undefined:'exclude-error'}/>{!excludeValid&&<small id="exclude-error" className="bad-text" role="alert">Not a valid regular expression; the last valid filter is still applied.</small>}</label>
+      <NameFilter op={filterOp} onOp={setFilterOp} text={filterText} onText={setFilterText}/>
       <label className="check-row"><input type="checkbox" checked={internal} onChange={e=>setInternal(e.target.checked)}/> Show internal topics</label>
     </div>
-    <div className="unused-status" role="status" aria-live="polite"><span className="muted">{query.isFetching?'Evaluating topics…':query.data?`Evaluated ${new Date(query.data.evaluatedAt).toLocaleTimeString()} · ${rows.length} candidate${rows.length===1?'':'s'}`:''}{selected.length>0&&<span> · {selected.length} selected, {bytes(selectedBytes)} reclaimable</span>}</span><button type="button" className="button" onClick={()=>query.refetch()} disabled={!validDays||query.isFetching}><RefreshCw size={14} className={query.isFetching?'spin':undefined}/>Refresh</button></div>
+    <div className="unused-status" role="status" aria-live="polite"><span className="muted">{query.isFetching?(progress&&progress.total>0?`Evaluating topics… ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}`:'Evaluating topics…'):query.data?`Evaluated ${new Date(query.data.evaluatedAt).toLocaleTimeString()} · ${rows.length} candidate${rows.length===1?'':'s'}`:''}{selected.length>0&&<span> · {selected.length} selected, {bytes(selectedBytes)} reclaimable</span>}</span><button type="button" className="button" onClick={()=>query.refetch()} disabled={!validDays||query.isFetching}><RefreshCw size={14} className={query.isFetching?'spin':undefined}/>Refresh</button></div>
+    {query.isFetching&&!query.isLoading&&<div className={progress&&progress.total>0?'eval-bar eval-determinate':'eval-bar'} aria-hidden="true"><span style={progress&&progress.total>0?{width:`${Math.min(100,Math.round(progress.done/progress.total*100))}%`}:undefined}/></div>}
     {!validDays&&<div className="inline-error" role="alert">Days must be a whole number between 1 and 3650.</div>}
     {internal&&<div className="mutation-warning"><Shield size={16}/><p>Internal topics are listed for review only. Kaflux never deletes them from this page.</p></div>}
     {query.error&&<div className="inline-error" role="alert">{query.error.message} <button type="button" className="link-button" onClick={()=>query.refetch()}>Retry</button></div>}
@@ -95,7 +114,7 @@ export function UnusedTopics({clusterId,session}:{clusterId:string;session?:Sess
         <button type="button" className="button danger-button" disabled={!canDelete||selected.length===0} onClick={show}><Trash2 size={14}/>Delete selected ({selected.length})</button>
       </div></div>
     {!canDelete&&<p className="muted">Deleting needs the delete permission.</p>}
-    {query.isLoading?<p className="muted" role="status">Evaluating topics…</p>:<div className="table-scroll" aria-busy={query.isFetching}><table aria-label="Unused topics"><thead><tr><th><input ref={headRef} type="checkbox" aria-label="Select all shown" disabled={shownDeletable.length===0} checked={shownDeletable.length>0&&shownSelected===shownDeletable.length} onChange={e=>toggleShown(e.target.checked)}/></th><th>Topic</th><th>Reasons</th><th>Records</th><th>Size</th><th>Last write</th><th>Groups</th></tr></thead>
+    {query.isLoading?<EvaluatingLoader progress={progress}/>:<div className="table-scroll" aria-busy={query.isFetching}><table aria-label="Unused topics"><thead><tr><th><input ref={headRef} type="checkbox" aria-label="Select all shown" disabled={shownDeletable.length===0} checked={shownDeletable.length>0&&shownSelected===shownDeletable.length} onChange={e=>toggleShown(e.target.checked)}/></th><th>Topic</th><th>Reasons</th><th>Records</th><th>Size</th><th>Last write</th><th>Groups</th></tr></thead>
       <tbody>{shown.map(r=><tr key={r.name}>
         <td><input type="checkbox" aria-label={`Select ${r.name}`} disabled={!deletable(r)||(!selected.includes(r.name)&&selected.length>=MAX_BULK)} checked={selected.includes(r.name)} onChange={()=>toggle(r.name)}/></td>
         <td><span className="mono">{r.name}</span> <span className={`tag tag-${r.classification}`}>{r.classification}</span>{r.internal&&<span className="tag tag-internal">INTERNAL</span>}{!r.ageKnown&&<span className="tag" title="The topic has no records, so nothing shows how old it is.">age unknown — may be brand new</span>}{r.emptyPartitions.length>0&&<span className="tag" title={`Partitions ${r.emptyPartitions.join(', ')} hold no records. Kafka cannot delete partitions: recreate the topic with fewer partitions instead.`}>{r.emptyPartitions.length} empty partition{r.emptyPartitions.length===1?'':'s'}</span>}</td>

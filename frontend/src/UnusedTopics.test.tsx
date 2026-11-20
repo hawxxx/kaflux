@@ -9,7 +9,14 @@ afterEach(()=>vi.restoreAllMocks());
 const row=(name:string,classification:string,extra:object={})=>({name,classification,reasons:[`why ${name}`],partitions:3,emptyPartitions:[],records:10,sizeBytes:2048,lastRecordAt:'2026-09-01T00:00:00Z',consumerGroups:[],activeConsumers:0,internal:false,ageKnown:true,fingerprint:`fp-${name}`,...extra});
 const topics=[row('a.empty','unused',{records:0,lastRecordAt:null,ageKnown:false}),row('b.old','likely-unused',{emptyPartitions:[1,2]}),row('c.idle','idle',{consumerGroups:['g1']}),row('_int','unused',{internal:true})];
 type Call={path:string;method?:string;body:any};
-function stub(calls:Call[],handler:(path:string,method?:string)=>{ok?:boolean;data?:unknown;error?:{code:string;message:string}}){vi.stubGlobal('fetch',vi.fn(async(path:string,o?:RequestInit)=>{calls.push({path,method:o?.method,body:o?.body?JSON.parse(String(o.body)):null});const r=handler(path,o?.method);return {ok:r.ok!==false,status:r.ok===false?400:200,json:async()=>r.ok===false?{error:r.error}:{data:r.data}} as Response}))}
+type Reply={ok?:boolean;data?:unknown;error?:{code:string;message:string}};
+// The report is served as a background job: POST starts it, the first poll finishes it.
+function stub(calls:Call[],handler:(path:string,method?:string)=>Reply){vi.stubGlobal('fetch',vi.fn(async(path:string,o?:RequestInit)=>{calls.push({path,method:o?.method,body:o?.body?JSON.parse(String(o.body)):null});
+  const reply=(r:Reply)=>({ok:r.ok!==false,status:r.ok===false?400:200,json:async()=>r.ok===false?{error:r.error}:{data:r.data}} as Response);
+  const isJobStart=o?.method==='POST'&&/\/unused-topics\?/.test(path);const isJobPoll=/\/unused-topics\/jobs\//.test(path);
+  if(isJobStart){const r=handler(path.replace('?','?start&'),'GET');return reply(r.ok===false?r:{data:{id:'job1',status:'running',done:0,total:4,evaluatedAt:'2026-11-13T00:00:00Z'}})}
+  if(isJobPoll){const r=handler(path,'GET');return reply(r.ok===false?r:{data:{id:'job1',status:'done',done:4,total:4,...(r.data as object)}})}
+  return reply(handler(path,o?.method))}))}
 const report=(t=topics)=>({topics:t,evaluatedAt:'2026-11-13T00:00:00Z',partial:false});
 describe('unused topics',()=>{
   it('filters rows with classification chips and shows counts',async()=>{
@@ -51,7 +58,7 @@ describe('unused topics',()=>{
     fireEvent.click(box);
     fireEvent.change(screen.getByLabelText(/to confirm/),{target:{value:'delete 1 topics'}});
     fireEvent.click(screen.getByRole('button',{name:'Confirm deletion'}));
-    await waitFor(()=>expect(calls.some(c=>c.method==='POST'&&c.body.includeEmptyUnknownAge===true&&c.body.fingerprints['a.empty']==='fp-a.empty')).toBe(true));
+    await waitFor(()=>expect(calls.some(c=>c.method==='POST'&&c.path.endsWith('/topics/bulk-delete')&&c.body.includeEmptyUnknownAge===true&&c.body.fingerprints['a.empty']==='fp-a.empty')).toBe(true));
   });
   it('shows the partial reason and a 503 from the report',async()=>{
     stub([],()=>({data:{...report(),partial:true,partialReason:'evaluation deadline reached: 4 topics not evaluated'}}));
@@ -70,19 +77,40 @@ describe('unused topics',()=>{
     expect(screen.getByRole('button',{name:'Delete selected (1)'})).toBeDisabled();
     expect(screen.getByLabelText('Select _int')).toBeDisabled();
   });
-  it('sends the threshold, internal flag and exclude pattern, and blocks invalid regexes locally',async()=>{
+  it('sends the threshold and internal flag',async()=>{
     const calls:Call[]=[];stub(calls,()=>({data:report()}));
     wrap(<UnusedTopics clusterId="demo" session={session}/>);
     await screen.findByText('a.empty');
     fireEvent.change(screen.getByLabelText('Unused for at least (days)'),{target:{value:'90'}});
     await waitFor(()=>expect(calls.some(c=>c.path.includes('minAgeDays=90'))).toBe(true));
-    fireEvent.change(screen.getByLabelText(/Exclude names/),{target:{value:'('}});
-    expect(await screen.findByText(/Not a valid regular expression/)).toBeInTheDocument();
-    await new Promise(r=>setTimeout(r,500));
-    expect(calls.some(c=>c.path.includes('exclude=%28'))).toBe(false);
-    fireEvent.change(screen.getByLabelText(/Exclude names/),{target:{value:'^tmp'}});
-    await waitFor(()=>expect(calls.some(c=>c.path.includes('exclude=%5Etmp'))).toBe(true));
-    expect(screen.queryByText(/Not a valid regular expression/)).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Show internal topics/));
+    await waitFor(()=>expect(calls.some(c=>c.path.includes('includeInternal=true'))).toBe(true));
+    expect(calls.every(c=>!c.path.includes('exclude='))).toBe(true);
+  });
+  it('turns the keyword bar into include and except terms for the server',async()=>{
+    const calls:Call[]=[];stub(calls,()=>({data:report()}));
+    wrap(<UnusedTopics clusterId="demo" session={session}/>);
+    await screen.findByText('a.empty');
+    expect(calls.every(c=>!c.path.includes('rules='))).toBe(true);
+    fireEvent.change(screen.getByLabelText('Topic name filter'),{target:{value:'tmp OR test *-dlq NOT keep*'}});
+    await waitFor(()=>{
+      const hit=calls.map(c=>new URL(c.path,'http://x').searchParams).find(p=>p.has('rules'));
+      expect(hit).toBeDefined();
+      expect(JSON.parse(hit!.get('rules')!)).toEqual({include:[{op:'starts',value:'tmp'},{op:'starts',value:'test'},{op:'ends',value:'-dlq'}],except:[{op:'starts',value:'keep'}]});
+    });
+    expect(screen.getByLabelText('How the filter is read')).toHaveTextContent('Leaves outstarts with tmpORstarts with testORends with -dlq');
+  });
+  it('uses the match type menu for bare words and sends nothing for words it cannot read',async()=>{
+    const calls:Call[]=[];stub(calls,()=>({data:report()}));
+    wrap(<UnusedTopics clusterId="demo" session={session}/>);
+    await screen.findByText('a.empty');
+    fireEvent.change(screen.getByLabelText('Match type'),{target:{value:'contains'}});
+    fireEvent.change(screen.getByLabelText('Topic name filter'),{target:{value:'scratch AND a*b'}});
+    await waitFor(()=>{
+      const hit=calls.map(c=>new URL(c.path,'http://x').searchParams).find(p=>p.has('rules'));
+      expect(JSON.parse(hit!.get('rules')!)).toEqual({include:[{op:'contains',value:'scratch'}],except:[]});
+    });
+    expect(screen.getAllByRole('alert').length).toBe(2);
   });
   it('filters by name, caps the selection at 100 and keeps hidden selections when deselecting shown rows',async()=>{
     const many=Array.from({length:120},(_,i)=>row(`t${String(i).padStart(3,'0')}`,'likely-unused'));
@@ -101,5 +129,25 @@ describe('unused topics',()=>{
     const csv=unusedCsv([row('x,y','idle',{reasons:['a; b']}) as any]);
     expect(csv.split('\n')[1]).toContain('"x,y",idle');
     expect(csv.split('\n')[0]).toContain('lastRecordAt');
+  });
+  it('shows real progress while the job runs, then the results',async()=>{
+    let polls=0;
+    vi.stubGlobal('fetch',vi.fn(async(path:string,o?:RequestInit)=>{
+      const job=(extra:object)=>({ok:true,status:200,json:async()=>({data:{id:'j',evaluatedAt:'2026-11-13T00:00:00Z',...extra}})} as Response);
+      if(o?.method==='POST')return job({status:'running',done:0,total:0});
+      polls++;return polls<3?job({status:'running',done:40,total:80}):job({status:'done',done:80,total:80,...report()});
+    }));
+    wrap(<UnusedTopics clusterId="demo" session={session}/>);
+    expect(await screen.findByText(/40 of 80 topics/)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar',{name:'Topic evaluation progress'})).toHaveAttribute('aria-valuenow','50');
+    expect(await screen.findByText('a.empty')).toBeInTheDocument();
+  });
+  it('surfaces a failed job and cancels the job when the view goes away',async()=>{
+    const calls:Call[]=[];
+    vi.stubGlobal('fetch',vi.fn(async(path:string,o?:RequestInit)=>{calls.push({path,method:o?.method,body:null});
+      const job=(extra:object)=>({ok:true,status:200,json:async()=>({data:{id:'j',evaluatedAt:'2026-11-13T00:00:00Z',done:0,total:0,...extra}})} as Response);
+      return o?.method==='POST'?job({status:'running'}):job({status:'failed',error:{code:'usage_unavailable',message:'Consumer group state could not be read'}})}));
+    wrap(<UnusedTopics clusterId="demo" session={session}/>);
+    expect(await screen.findByText(/Consumer group state could not be read/)).toBeInTheDocument();
   });
 });

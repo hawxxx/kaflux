@@ -188,3 +188,51 @@ integrations.
 - [Session administration](session-administration.md).
 - [Login screenshot evidence](login-screenshot-evidence.md).
 - [Documentation index](README.md).
+
+## Cloud IAM for broker connections
+
+Each cluster selects its broker authentication mode with `sasl` in server-managed configuration.
+These modes use the Kaflux process identity. Console sign-in and Kaflux RBAC still apply to users.
+
+| Service | `sasl` | Credentials |
+| --- | --- | --- |
+| Amazon MSK | `msk-iam` | AWS default credential chain, with optional `region` and `roleArn` |
+| Google Cloud Managed Service for Apache Kafka | `gcp-iam` | Google Application Default Credentials and the matching Kafka principal |
+| Azure Event Hubs Kafka endpoint | `azure-iam` | Azure DefaultAzureCredential, with an access token scoped to the configured Event Hubs namespace |
+
+Both new modes use SASL/OAUTHBEARER over TLS and acquire refreshed tokens in-process. Configure the
+provider-issued DNS name. Google broker names must be in the configured cluster's
+`<cluster>.<location>.managedkafka.<project>.cloud.goog` domain. Azure connections use the configured
+`<namespace>.servicebus.windows.net` hostname.
+
+```yaml
+clusters:
+  - id: google-kafka
+    name: Google Managed Kafka
+    seeds: [bootstrap.example.us-central1.managedkafka.example-project.cloud.goog:9092]
+    tls: true
+    sasl: gcp-iam
+    gcpPrincipal: kaflux@example-project.iam.gserviceaccount.com
+  - id: azure-events
+    name: Azure Event Hubs
+    seeds: [example.servicebus.windows.net:9093]
+    tls: true
+    sasl: azure-iam
+```
+
+For Google, configure ADC in the Kaflux runtime using an attached service account, Workload Identity
+Federation, or an operator-managed ADC configuration. Set `gcpPrincipal` or
+`GOOGLE_MANAGED_KAFKA_AUTH_PRINCIPAL` to the matching identity. Grant the identity the required
+Managed Kafka access, such as `roles/managedkafka.client`, and any applicable Kafka ACLs.
+See [Google Managed Kafka authentication](https://docs.cloud.google.com/managed-service-for-apache-kafka/docs/authn-types-kafka).
+
+For Azure, assign the runtime identity the Event Hubs data roles required by the operations it will
+perform. For production, pin the credential chain with `AZURE_TOKEN_CREDENTIALS`, for example
+`ManagedIdentityCredential` or `WorkloadIdentityCredential`. For a user-assigned managed identity,
+set `AZURE_CLIENT_ID`. For workload identity, configure the federated token file, client ID, and
+tenant ID in the Kaflux runtime. Event Hubs implements a subset of Kafka operations.
+See [Microsoft Entra authentication for Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/authenticate-application).
+
+Cluster Settings shows the configured broker authentication mode and can run a connection test.
+Live Google Managed Kafka and Azure Event Hubs interoperability still requires verification
+against credentialed deployments.

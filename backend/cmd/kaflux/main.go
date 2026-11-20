@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/hawxxx/kaflux/backend/internal/api"
 	"github.com/hawxxx/kaflux/backend/internal/auth"
 	"github.com/hawxxx/kaflux/backend/internal/awsutil"
@@ -14,12 +15,15 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/kafka"
 	"github.com/hawxxx/kaflux/backend/internal/metrics"
 	"github.com/hawxxx/kaflux/backend/internal/model"
+	"github.com/hawxxx/kaflux/backend/internal/serde"
 	"github.com/hawxxx/kaflux/backend/internal/store"
 	"github.com/hawxxx/kaflux/backend/internal/telemetry"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -185,7 +189,11 @@ func run() error {
 		}
 		external[config.ID] = client
 	}
-	handler := newAPI(cfg, api.Options{SessionLifetime: cfg.SessionLifetime, Demo: cfg.Demo, HideVersion: cfg.HideVersion, Store: s, Providers: providers, Clusters: clusters, AdminUser: cfg.AdminUser, AdminHash: cfg.AdminPasswordHash, Metrics: gateway.Handler(), ClusterMetrics: gateway.HandlerForCluster, StaticDir: cfg.StaticDirectory, OIDC: identityProviders, LDAP: cfg.LDAP, Grants: grants, Integrations: external})
+	rawDecoders, e := loadRawDecoders(ctx, cfg.Decoders)
+	if e != nil {
+		return e
+	}
+	handler := newAPI(cfg, api.Options{SessionLifetime: cfg.SessionLifetime, Demo: cfg.Demo, HideVersion: cfg.HideVersion, Store: s, Providers: providers, Clusters: clusters, AdminUser: cfg.AdminUser, AdminHash: cfg.AdminPasswordHash, Metrics: gateway.Handler(), ClusterMetrics: gateway.HandlerForCluster, StaticDir: cfg.StaticDirectory, OIDC: identityProviders, LDAP: cfg.LDAP, Grants: grants, Integrations: external, RawDecoders: rawDecoders})
 	worker := jobs.Worker{Store: s, Providers: providers}
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); worker.Run(ctx) }()
@@ -239,4 +247,43 @@ func clusterMetricSource(c kafka.Config) (metrics.SourceConfig, bool) {
 		return metrics.SourceConfig{}, false
 	}
 	return metrics.SourceConfig{ID: "prometheus-" + c.ID, ClusterID: c.ID, URL: c.PrometheusURL, Kind: "prometheus", PreferForCluster: true}, true
+}
+
+// loadRawDecoders compiles every configured schema at startup, so a bad schema stops
+// the process with the decoder's ID instead of failing on a user's request.
+func loadRawDecoders(ctx context.Context, configs []config.Decoder) ([]api.RawDecoder, error) {
+	var out []api.RawDecoder
+	seen := map[string]bool{}
+	for _, c := range configs {
+		if c.ID == "" || seen[c.ID] || c.Directory == "" || c.File == "" || c.Message == "" {
+			return nil, errors.New("decoders need a unique id, directory, file and message")
+		}
+		seen[c.ID] = true
+		entries, err := os.ReadDir(c.Directory)
+		if err != nil {
+			return nil, fmt.Errorf("decoder %s: %w", c.ID, err)
+		}
+		sources := map[string]string{}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".proto") {
+				continue
+			}
+			// nosemgrep: gosec.G304-1 -- operator-supplied directory from startup configuration; never derived from a request.
+			b, err := os.ReadFile(filepath.Join(c.Directory, entry.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("decoder %s: %w", c.ID, err)
+			}
+			sources[entry.Name()] = string(b)
+		}
+		d, err := serde.NewRawProtobufDecoder(ctx, c.File, sources, c.Message)
+		if err != nil {
+			return nil, fmt.Errorf("decoder %s: %w", c.ID, err)
+		}
+		name := c.Name
+		if name == "" {
+			name = c.Message
+		}
+		out = append(out, api.RawDecoder{ID: c.ID, Name: name, Message: c.Message, Topics: c.Topics, Decoder: d})
+	}
+	return out, nil
 }
