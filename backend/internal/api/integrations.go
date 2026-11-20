@@ -24,7 +24,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 	if kind == "connect" {
 		action = "connector-read"
 	}
-	authorizer := auth.Authorizer{Grants: a.o.Grants}
+	authorizer := auth.Authorizer{Grants: a.grants(r)}
 	if len(parts) == 5 {
 		if r.Method != "GET" {
 			fail(w, 405, "method_not_allowed", "GET required")
@@ -59,7 +59,10 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 	}
 	method := r.Method
 	path := ""
-	mutation := method != "GET"
+	// A compatibility check only asks the registry a question: it needs
+	// schema-read, takes a confirmed payload like a mutation, and is not audited.
+	check := kind == "schemas" && method == "POST" && len(parts) == 8 && parts[7] == "compatibility"
+	mutation := method != "GET" && !check
 	payload := []byte(nil)
 	if mutation {
 		action = "schema-update"
@@ -81,7 +84,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 			path = "/connectors"
 		}
 	} else {
-		if !a.allowed(user, cluster, action, resource, w) {
+		if !a.allowed(r, user, cluster, action, resource, w) {
 			return true
 		}
 		name := url.PathEscape(resource)
@@ -179,7 +182,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 		fail(w, 400, "invalid_operation", "Unsupported integration operation")
 		return true
 	}
-	if mutation {
+	if mutation || check {
 		var input struct {
 			Confirmation bool            `json:"confirmation"`
 			Payload      json.RawMessage `json:"payload"`
@@ -199,7 +202,7 @@ func (a *API) integrationRoutes(w http.ResponseWriter, r *http.Request, user aut
 				return true
 			}
 		}
-		if !a.audit(w, r, user, action, resource, "intent") {
+		if mutation && !a.audit(w, r, user, action, resource, "intent") {
 			return true
 		}
 	}

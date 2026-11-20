@@ -65,6 +65,7 @@ topic, consumer group, subject or connector name.
 | `connector-read`, `connector-update` | Kafka Connect |
 | `audit` | The audit log (global grant: `cluster: "*"`) |
 | `manage-sessions` | Session administration (global grant; `pattern` matches the user ID) |
+| `manage-mcp` | Creating MCP access tokens and listing or revoking every user's tokens (global grant: `cluster: "*"`). Any signed-in user can list and revoke their own tokens. No token scope includes it |
 | `*` | Everything |
 
 A read-only role:
@@ -150,6 +151,16 @@ Server sessions default to eight hours. Set `runtime.sessionLifetime` in `config
 - Sessions expire at the boundary with no sliding renewal.
 - Changes apply to newly issued sessions; existing stored sessions retain their original expiration.
 - Demo access remains automatic.
+
+## API tokens for MCP
+
+User sessions and MCP tokens are different credentials. A session is a cookie issued after login,
+protected by CSRF checks, and acts with the user's full grants. An MCP token is a `kfx_` bearer secret
+sent in the `Authorization` header to `/mcp`; it is never accepted as a cookie, and it acts with the
+owner's grants narrowed by the token's scopes and cluster allowlist. Only users holding the global
+`manage-mcp` grant create tokens, in Administration, MCP access; no scope includes `manage-mcp`.
+Tokens last 1 to 90 days and record the owner's roles when created, so revoke them when a user's
+access changes. See [MCP server](mcp.md).
 
 ## Kafka connection authentication
 

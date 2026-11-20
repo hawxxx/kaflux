@@ -15,6 +15,11 @@ services:
       KAFLUX_ADMIN_USER: ${KAFLUX_ADMIN_USER:-admin}
       KAFLUX_ADMIN_PASSWORD_HASH: ${KAFLUX_ADMIN_PASSWORD_HASH:?Set KAFLUX_ADMIN_PASSWORD_HASH to a bcrypt hash}
       KAFLUX_PROMETHEUS_URL: ${KAFLUX_PROMETHEUS_URL:-}
+      # MCP server for AI agents at /mcp (off by default; see runtime.mcp in
+      # config.example.yaml). Uncomment to pass settings through from .env.
+      # KAFLUX_MCP_ENABLED: ${KAFLUX_MCP_ENABLED:-false}
+      # KAFLUX_MCP_WRITES: ${KAFLUX_MCP_WRITES:-disabled}
+      # KAFLUX_MCP_ALLOWED_ORIGINS: ${KAFLUX_MCP_ALLOWED_ORIGINS:-}
     volumes:
       - ../config.yaml:/app/config.yaml:ro
       - kaflux-data:/var/lib/kaflux

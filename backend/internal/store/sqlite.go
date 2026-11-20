@@ -127,6 +127,8 @@ func NewSQLite(ctx context.Context, path string) (*Store, error) {
  CREATE TABLE IF NOT EXISTS kaflux_job_throttles(job_id TEXT PRIMARY KEY,payload BLOB NOT NULL);
  CREATE TABLE IF NOT EXISTS oidc_flows(id TEXT PRIMARY KEY,nonce TEXT NOT NULL,verifier TEXT NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS kaflux_cluster_names(cluster_id TEXT PRIMARY KEY,name TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS kaflux_mcp_tokens(id TEXT PRIMARY KEY,hash TEXT NOT NULL,owner_id TEXT NOT NULL,payload BLOB NOT NULL,expires INTEGER NOT NULL,created INTEGER NOT NULL,last_used INTEGER,revoked INTEGER);
+ CREATE UNIQUE INDEX IF NOT EXISTS kaflux_mcp_tokens_hash ON kaflux_mcp_tokens(hash);
  INSERT OR IGNORE INTO kaflux_schema(version) VALUES(2);`)
 	if e == nil {
 		e = tx.Commit()

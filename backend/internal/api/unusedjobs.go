@@ -62,13 +62,13 @@ func (j *unusedJob) finish(status string, now time.Time) {
 }
 
 // unusedJobView is the wire form. Topics are sent once, when the job is done.
-func (a *API) unusedJobView(j *unusedJob, u auth.User) map[string]any {
+func (a *API) unusedJobView(r *http.Request, j *unusedJob, u auth.User) map[string]any {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	v := map[string]any{"id": j.id, "status": j.status, "done": j.done, "total": j.total, "evaluatedAt": j.evaluatedAt}
 	switch j.status {
 	case jobDone:
-		v["topics"] = a.visibleUnused(u, j.cluster, j.topics)
+		v["topics"] = a.visibleUnused(r, u, j.cluster, j.topics)
 		v["partial"] = j.partial
 		v["partialReason"] = j.reason
 	case jobFailed:
@@ -109,7 +109,7 @@ func (a *API) startUnusedJob(w http.ResponseWriter, r *http.Request, u auth.User
 			running++
 			if j.owner == u.ID && j.cluster == id && j.key == key {
 				a.mu.Unlock()
-				respond(w, a.unusedJobView(j, u))
+				respond(w, a.unusedJobView(r, j, u))
 				return
 			}
 		case now.Sub(done) > unusedJobRetention:
@@ -142,7 +142,7 @@ func (a *API) startUnusedJob(w http.ResponseWriter, r *http.Request, u auth.User
 	a.unusedJobs[j.id] = j
 	a.mu.Unlock()
 	go a.runUnusedJob(ctx, j, p, now, time.Duration(days)*24*time.Hour, internal, exclude)
-	respond(w, a.unusedJobView(j, u))
+	respond(w, a.unusedJobView(r, j, u))
 }
 
 func (a *API) runUnusedJob(ctx context.Context, j *unusedJob, p kafka.Provider, now time.Time, minAge time.Duration, internal bool, exclude *nameExcluder) {
@@ -184,13 +184,13 @@ func (a *API) ownedUnusedJob(w http.ResponseWriter, u auth.User, cluster, jobID 
 	return j
 }
 
-func (a *API) unusedJobStatus(w http.ResponseWriter, u auth.User, cluster, jobID string) {
+func (a *API) unusedJobStatus(w http.ResponseWriter, r *http.Request, u auth.User, cluster, jobID string) {
 	if j := a.ownedUnusedJob(w, u, cluster, jobID); j != nil {
-		respond(w, a.unusedJobView(j, u))
+		respond(w, a.unusedJobView(r, j, u))
 	}
 }
 
-func (a *API) cancelUnusedJob(w http.ResponseWriter, u auth.User, cluster, jobID string) {
+func (a *API) cancelUnusedJob(w http.ResponseWriter, r *http.Request, u auth.User, cluster, jobID string) {
 	j := a.ownedUnusedJob(w, u, cluster, jobID)
 	if j == nil {
 		return
@@ -202,5 +202,5 @@ func (a *API) cancelUnusedJob(w http.ResponseWriter, u auth.User, cluster, jobID
 		j.finish(jobCanceled, a.now())
 	}
 	j.mu.Unlock()
-	respond(w, a.unusedJobView(j, u))
+	respond(w, a.unusedJobView(r, j, u))
 }

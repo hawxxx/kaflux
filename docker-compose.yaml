@@ -35,6 +35,11 @@ services:
       KAFLUX_ADMIN_PASSWORD_HASH: ${KAFLUX_ADMIN_PASSWORD_HASH:-}
       KAFLUX_CONFIG: /app/config.yaml
       KAFLUX_PROMETHEUS_URL: ${KAFLUX_PROMETHEUS_URL:-}
+      # MCP server for AI agents at /mcp (off by default; see runtime.mcp in
+      # config.example.yaml). Uncomment to pass settings through from .env.
+      # KAFLUX_MCP_ENABLED: ${KAFLUX_MCP_ENABLED:-false}
+      # KAFLUX_MCP_WRITES: ${KAFLUX_MCP_WRITES:-disabled}
+      # KAFLUX_MCP_ALLOWED_ORIGINS: ${KAFLUX_MCP_ALLOWED_ORIGINS:-}
       # Secrets referenced by oidc[].clientSecretEnv and ldap[].bindPasswordEnv in config.yaml.
       KAFLUX_OIDC_SECRET: ${KAFLUX_OIDC_SECRET:-}
       KAFLUX_LDAP_BIND_PASSWORD: ${KAFLUX_LDAP_BIND_PASSWORD:-}

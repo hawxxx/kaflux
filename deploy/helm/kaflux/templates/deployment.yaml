@@ -108,6 +108,20 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecret }}
                   key: {{ .Values.secrets.adminPasswordHashKey }}
+            - name: KAFLUX_MCP_ENABLED
+              value: {{ .Values.mcp.enabled | quote }}
+            - name: KAFLUX_MCP_WRITES
+              value: {{ .Values.mcp.writes | quote }}
+            - name: KAFLUX_MCP_ALLOWED_ORIGINS
+              value: {{ join "," .Values.mcp.allowedOrigins | quote }}
+            - name: KAFLUX_MCP_MAX_RESPONSE_BYTES
+              value: {{ .Values.mcp.maxResponseBytes | int | quote }}
+            - name: KAFLUX_MCP_CALL_TIMEOUT_SECONDS
+              value: {{ .Values.mcp.callTimeoutSeconds | int | quote }}
+            - name: KAFLUX_MCP_RATE_LIMIT_PER_MINUTE
+              value: {{ .Values.mcp.rateLimitPerMinute | int | quote }}
+            - name: KAFLUX_MCP_CONCURRENCY_PER_TOKEN
+              value: {{ .Values.mcp.concurrencyPerToken | int | quote }}
             {{- with .Values.secrets.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

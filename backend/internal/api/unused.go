@@ -40,9 +40,9 @@ func (a *API) unusedTopics(w http.ResponseWriter, r *http.Request, u auth.User, 
 	case len(parts) == 7 && parts[4] == "unused-topics" && parts[5] == "jobs":
 		switch r.Method {
 		case "GET":
-			a.unusedJobStatus(w, u, id, parts[6])
+			a.unusedJobStatus(w, r, u, id, parts[6])
 		case "DELETE":
-			a.cancelUnusedJob(w, u, id, parts[6])
+			a.cancelUnusedJob(w, r, u, id, parts[6])
 		default:
 			fail(w, 405, "method_not_allowed", "GET or DELETE required")
 		}
@@ -82,7 +82,7 @@ func (a *API) unusedTimeout() time.Duration {
 
 // unusedParams validates the shared query of the report and job endpoints.
 func (a *API) unusedParams(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) (days int, exclude *nameExcluder, ok bool) {
-	if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(u, id, "read") {
+	if !(auth.Authorizer{Grants: a.grants(r)}).AnyAllowed(u, id, "read") {
 		fail(w, 403, "forbidden", "Permission denied")
 		return 0, nil, false
 	}
@@ -105,10 +105,10 @@ func (a *API) unusedParams(w http.ResponseWriter, r *http.Request, u auth.User, 
 }
 
 // visibleUnused keeps the topics the user may read.
-func (a *API) visibleUnused(u auth.User, id string, topics []model.UnusedTopic) []model.UnusedTopic {
+func (a *API) visibleUnused(r *http.Request, u auth.User, id string, topics []model.UnusedTopic) []model.UnusedTopic {
 	visible := make([]model.UnusedTopic, 0, len(topics))
 	for _, t := range topics {
-		if (auth.Authorizer{Grants: a.o.Grants}).Allowed(u, id, "read", t.Name) {
+		if (auth.Authorizer{Grants: a.grants(r)}).Allowed(u, id, "read", t.Name) {
 			visible = append(visible, t)
 		}
 	}
@@ -130,7 +130,7 @@ func (a *API) unusedReport(w http.ResponseWriter, r *http.Request, u auth.User, 
 		adminError(w, e)
 		return
 	}
-	respond(w, map[string]any{"topics": a.visibleUnused(u, id, topics), "evaluatedAt": now, "partial": partial, "partialReason": reason})
+	respond(w, map[string]any{"topics": a.visibleUnused(r, u, id, topics), "evaluatedAt": now, "partial": partial, "partialReason": reason})
 }
 
 var errUsageUnavailable = errors.New("consumer state unavailable")
@@ -377,7 +377,7 @@ type bulkSkip struct {
 }
 
 func (a *API) bulkDelete(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) {
-	if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(u, id, "delete") {
+	if !(auth.Authorizer{Grants: a.grants(r)}).AnyAllowed(u, id, "delete") {
 		fail(w, 403, "forbidden", "Permission denied")
 		return
 	}
@@ -427,7 +427,7 @@ func (a *API) bulkDelete(w http.ResponseWriter, r *http.Request, u auth.User, id
 		return
 	}
 	for _, name := range names {
-		if !a.allowed(u, id, "delete", name, w) {
+		if !a.allowed(r, u, id, "delete", name, w) {
 			return
 		}
 	}

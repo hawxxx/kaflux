@@ -27,6 +27,10 @@ service:
 ingress:
   enabled: false
   className: ""
+  # With mcp.enabled and more than one replica, route each MCP token to one pod
+  # (write confirmations are per-process), for example with ingress-nginx:
+  #   nginx.ingress.kubernetes.io/upstream-hash-by: "$http_authorization"
+  # Cookie affinity does not help: MCP clients send no cookies.
   annotations: {}
   host: kaflux.example.invalid
   tls: []
@@ -43,6 +47,22 @@ configuration:
   ldap: []
   grants: []
   integrations: []
+# MCP server for AI agents at POST /mcp, authenticated by scoped kfx_ tokens.
+# Off by default; while off, /mcp answers 404. See runtime.mcp in
+# config.example.yaml.
+mcp:
+  enabled: false
+  # disabled | enabled. Write tools also need a token with the write or
+  # destructive scope, and every write needs a confirmation call.
+  writes: disabled
+  # Browser origins (scheme://host[:port], no path) allowed to call /mcp.
+  # Non-browser clients send no Origin and are unaffected; empty refuses every
+  # browser-originated request.
+  allowedOrigins: []
+  maxResponseBytes: 262144 # 4096-16777216
+  callTimeoutSeconds: 30 # 1-300
+  rateLimitPerMinute: 120 # per token, 1-6000
+  concurrencyPerToken: 4 # per token, 1-64
 secrets:
   existingSecret: kaflux-runtime
   databaseURLKey: database-url

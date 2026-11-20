@@ -238,3 +238,27 @@ func TestRepeatedLoginsListEachSessionSeparatelyWithoutRevokingPriorOnes(t *test
 		}
 	}
 }
+
+func TestSessionReportsMCPManagement(t *testing.T) {
+	for _, tc := range []struct {
+		grant   auth.Grant
+		allowed bool
+	}{{auth.Grant{Role: "custom", Cluster: "*", Action: "manage-mcp", Pattern: "*"}, true}, {auth.Grant{Role: "custom", Cluster: "*", Action: "manage-sessions", Pattern: "*"}, false}, {auth.Grant{Role: "custom", Cluster: "demo", Action: "*", Pattern: "*"}, false}} {
+		st, _ := store.New(context.Background(), "")
+		a := New(Options{Store: st, Demo: true, Grants: []auth.Grant{tc.grant}})
+		a.demo.User.Roles = []string{"custom"}
+		w := httptest.NewRecorder()
+		a.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/auth/session", nil))
+		var env struct {
+			Data struct {
+				CanManageMcp *bool `json:"canManageMcp"`
+			}
+		}
+		if e := json.Unmarshal(w.Body.Bytes(), &env); e != nil {
+			t.Fatal(e)
+		}
+		if env.Data.CanManageMcp == nil || *env.Data.CanManageMcp != tc.allowed {
+			t.Fatalf("grant %+v: canManageMcp %v, want %v", tc.grant, env.Data.CanManageMcp, tc.allowed)
+		}
+	}
+}

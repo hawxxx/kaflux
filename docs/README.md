@@ -11,6 +11,7 @@ external compatibility that still needs qualification.
 | [Storage](storage.md)                               | SQLite, PostgreSQL, persistence, and deployment limits |
 | [Authentication](authentication.md)                 | Login providers, session lifetime, and access control  |
 | [Session administration](session-administration.md) | Session inventory, permissions, and audited revocation |
+| [MCP server](mcp.md)                                | Agent access: setup, scopes, write protocol, tool catalog |
 | [Kafka OAuth](kafka-oauth.md)                       | Broker-side OAuth credentials and token refresh        |
 
 ## Observe and troubleshoot

@@ -50,6 +50,14 @@ type Options struct {
 	OIDC                 map[string]*auth.OIDC
 	LDAP                 []auth.LDAPConfig
 	Integrations         map[string]*integrations.Client
+	// MCP serves /mcp ahead of the cookie session check; it authenticates
+	// its own callers. Nil leaves /mcp an ordinary unauthenticated path.
+	MCP http.Handler
+	// MCPEnabled and MCPWritesEnabled report the MCP configuration to the token
+	// management endpoints so the console can warn when tokens are inert.
+	MCPEnabled, MCPWritesEnabled bool
+	// ExtraMetrics appends Prometheus text-format series to /metrics.
+	ExtraMetrics func(io.Writer)
 	// RawDecoders are the configured unframed Protobuf decoders, in display order.
 	RawDecoders []RawDecoder
 }
@@ -65,6 +73,8 @@ type API struct {
 	unusedDeadline time.Duration
 	// bulkDeadline overrides the 60 s cap on one bulk topic delete request.
 	bulkDeadline time.Duration
+	// mcpTokenMu serializes MCP token creation so the per-owner limit holds.
+	mcpTokenMu sync.Mutex
 	// unusedJobs holds background unused-topic evaluations, guarded by mu.
 	unusedJobs map[string]*unusedJob
 }
@@ -75,6 +85,11 @@ func New(o Options) *API {
 	}
 	return &API{o: o, demo: auth.NewSession(auth.User{ID: "demo-admin", Username: "Demo operator", Roles: []string{"administrator"}, Provider: "development-simulator"}), attempts: map[string][]time.Time{}, now: time.Now}
 }
+
+// SetMCP installs the /mcp handler after construction, for a handler that
+// itself dispatches into this API. Call it before serving requests.
+func (a *API) SetMCP(h http.Handler) { a.o.MCP = h }
+
 func respond(w http.ResponseWriter, data any, meta ...any) {
 	w.Header().Set("Content-Type", "application/json")
 	v := map[string]any{"data": data}
@@ -149,6 +164,9 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	return false
 }
 func (a *API) session(r *http.Request) (auth.Session, error) {
+	if m, ok := mcpFrom(r.Context()); ok {
+		return m.session, nil
+	}
 	if a.o.Demo {
 		return a.demo, nil
 	}
@@ -161,6 +179,16 @@ func (a *API) session(r *http.Request) (auth.Session, error) {
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	securityHeaders(w)
 	path := r.URL.Path
+	if path == "/mcp" {
+		// Unmounted (mcp.enabled: false) /mcp is a plain 404, never the SPA
+		// fallback or a sign-in prompt.
+		if a.o.MCP == nil {
+			fail(w, 404, "not_found", "Not found")
+			return
+		}
+		a.o.MCP.ServeHTTP(w, r)
+		return
+	}
 	if a.identity(w, r) {
 		return
 	}
@@ -191,6 +219,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path == "/metrics" {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		fmt.Fprintf(w, "# HELP kaflux_configured_clusters Configured Kafka clusters.\n# TYPE kaflux_configured_clusters gauge\nkaflux_configured_clusters %d\n", len(a.o.Clusters))
+		if a.o.ExtraMetrics != nil {
+			a.o.ExtraMetrics(w)
+		}
 		return
 	}
 	if path == "/api/v1/auth/login" {
@@ -210,7 +241,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "unauthenticated", "Sign in required")
 		return
 	}
-	if r.Method != "GET" && r.Method != "HEAD" {
+	// MCP sessions authenticate with a bearer token, not an ambient cookie, so
+	// the cookie CSRF defence does not apply to them.
+	_, viaMCP := mcpFrom(r.Context())
+	if !viaMCP && r.Method != "GET" && r.Method != "HEAD" {
 		token := r.Header.Get("X-CSRF-Token")
 		if subtle.ConstantTimeCompare([]byte(token), []byte(s.CSRF)) != 1 {
 			fail(w, 403, "csrf_failed", "CSRF token required")
@@ -220,8 +254,11 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if a.adminSessions(w, r, s) {
 		return
 	}
+	if a.mcpTokens(w, r, s) {
+		return
+	}
 	if path == "/api/v1/auth/session" {
-		respond(w, a.sessionView(s))
+		respond(w, a.sessionView(r, s))
 		return
 	}
 	if path == "/api/v1/auth/logout" {
@@ -242,7 +279,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, 404, "not_found", "Use cluster-scoped metrics query endpoints")
 			return
 		}
-		if !(auth.Authorizer{Grants: a.o.Grants}).Allowed(s.User, "*", "read", "*") {
+		if !(auth.Authorizer{Grants: a.grants(r)}).Allowed(s.User, "*", "read", "*") {
 			fail(w, 403, "forbidden", "Permission denied")
 			return
 		}
@@ -250,7 +287,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/api/v1/audit" {
-		if !a.allowed(s.User, "*", "audit", "*", w) {
+		if !a.allowed(r, s.User, "*", "audit", "*", w) {
 			return
 		}
 		v, e := a.o.Store.Audits(r.Context())
@@ -266,7 +303,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Name overrides are cosmetic; on store failure fall back to configured names.
 		names, _ := a.o.Store.ClusterNames(r.Context())
 		for _, c := range a.o.Clusters {
-			if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(s.User, c.ID, "read") {
+			if !(auth.Authorizer{Grants: a.grants(r)}).AnyAllowed(s.User, c.ID, "read") {
 				continue
 			}
 			c.ConfiguredName = c.Name
@@ -361,7 +398,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, 405, "method_not_allowed", "GET required")
 			return
 		}
-		if !a.allowed(s.User, id, "audit", "*", w) {
+		if !a.allowed(r, s.User, id, "audit", "*", w) {
 			return
 		}
 		all, e := a.o.Store.Audits(r.Context())
@@ -408,11 +445,11 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	listScope := (endpoint == "topics" && len(parts) == 5) || (endpoint == "consumer-groups" && len(parts) == 5) || (endpoint == "rebalances") || (endpoint == "messages" && r.Method == "POST")
 	if listScope {
-		if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(s.User, id, action) {
+		if !(auth.Authorizer{Grants: a.grants(r)}).AnyAllowed(s.User, id, action) {
 			fail(w, 403, "forbidden", "Permission denied")
 			return
 		}
-	} else if !a.allowed(s.User, id, action, resource, w) {
+	} else if !a.allowed(r, s.User, id, action, resource, w) {
 		return
 	}
 	if endpoint == "decoders" {
@@ -469,7 +506,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		filtered := []model.Group{}
 		for _, x := range g {
-			if (auth.Authorizer{Grants: a.o.Grants}).Allowed(s.User, id, "read", x.ID) {
+			if (auth.Authorizer{Grants: a.grants(r)}).Allowed(s.User, id, "read", x.ID) {
 				filtered = append(filtered, x)
 			}
 		}
@@ -569,7 +606,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "topics":
 		filtered := []model.Topic{}
 		for _, t := range snap.Topics {
-			if (auth.Authorizer{Grants: a.o.Grants}).Allowed(s.User, id, "read", t.Name) {
+			if (auth.Authorizer{Grants: a.grants(r)}).Allowed(s.User, id, "read", t.Name) {
 				filtered = append(filtered, t)
 			}
 		}
@@ -595,17 +632,17 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // sessionView reports the signed-in user and the actions they may attempt per
-// cluster ("*" holds global actions such as audit and manage-sessions).
-func (a *API) sessionView(s auth.Session) map[string]any {
-	authorizer := auth.Authorizer{Grants: a.o.Grants}
+// cluster ("*" holds global actions such as audit, manage-sessions and manage-mcp).
+func (a *API) sessionView(r *http.Request, s auth.Session) map[string]any {
+	authorizer := auth.Authorizer{Grants: a.grants(r)}
 	permissions := map[string][]string{"*": authorizer.Permissions(s.User, "*")}
 	for _, c := range a.o.Clusters {
 		permissions[c.ID] = authorizer.Permissions(s.User, c.ID)
 	}
-	return map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "version": buildinfo.Current(), "canManageSessions": authorizer.Allowed(s.User, "*", "manage-sessions", "*"), "permissions": permissions}
+	return map[string]any{"user": s.User, "csrfToken": s.CSRF, "demo": a.o.Demo, "version": buildinfo.Current(), "canManageSessions": authorizer.Allowed(s.User, "*", "manage-sessions", "*"), "canManageMcp": authorizer.AnyAllowed(s.User, "*", "manage-mcp"), "permissions": permissions}
 }
-func (a *API) allowed(u auth.User, c, action, resource string, w http.ResponseWriter) bool {
-	if (auth.Authorizer{Grants: a.o.Grants}).Allowed(u, c, action, resource) {
+func (a *API) allowed(r *http.Request, u auth.User, c, action, resource string, w http.ResponseWriter) bool {
+	if (auth.Authorizer{Grants: a.grants(r)}).Allowed(u, c, action, resource) {
 		return true
 	}
 	fail(w, 403, "forbidden", "Permission denied")
@@ -653,7 +690,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	respond(w, a.sessionView(s))
+	respond(w, a.sessionView(r, s))
 }
 func topicRow(t model.Topic) map[string]any {
 	return map[string]any{"name": t.Name, "partitions": len(t.Partitions), "replicationFactor": t.ReplicationFactor, "sizeBytes": t.SizeBytes, "urp": t.URP, "cleanupPolicy": t.CleanupPolicy, "retentionMs": t.RetentionMs, "observedAt": t.ObservedAt, "internal": t.IsInternal(), "messages": t.MessageCount()}
@@ -782,7 +819,7 @@ func (a *API) messages(w http.ResponseWriter, r *http.Request, u auth.User, id s
 			fail(w, 400, "invalid_request", "Message exceeds bounds")
 			return
 		}
-		if !a.allowed(u, id, "produce", m.Topic, w) {
+		if !a.allowed(r, u, id, "produce", m.Topic, w) {
 			return
 		}
 		if !a.audit(w, r, u, "produce", m.Topic, "intent") {
@@ -972,7 +1009,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 				if p.ClusterID == id {
 					visible := len(p.Topics) > 0
 					for _, topic := range p.Topics {
-						if !(auth.Authorizer{Grants: a.o.Grants}).Allowed(u, id, "read", topic) {
+						if !(auth.Authorizer{Grants: a.grants(r)}).Allowed(u, id, "read", topic) {
 							visible = false
 							break
 						}
@@ -1001,7 +1038,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 			return
 		}
 		for _, t := range req.Topics {
-			if !a.allowed(u, id, "plan", t, w) {
+			if !a.allowed(r, u, id, "plan", t, w) {
 				return
 			}
 		}
@@ -1052,7 +1089,7 @@ func (a *API) rebalances(w http.ResponseWriter, r *http.Request, u auth.User, id
 		}
 	}
 	for _, t := range p.Topics {
-		if !a.allowed(u, id, planAction, t, w) {
+		if !a.allowed(r, u, id, planAction, t, w) {
 			return
 		}
 	}
@@ -1262,7 +1299,7 @@ func (a *API) searchMessages(w http.ResponseWriter, r *http.Request, u auth.User
 		fail(w, 400, "invalid_request", "topic is required")
 		return
 	}
-	if !a.allowed(u, id, "consume", body.Topic, w) {
+	if !a.allowed(r, u, id, "consume", body.Topic, w) {
 		return
 	}
 	invalid := func(msg string) { fail(w, 400, "invalid_request", msg) }

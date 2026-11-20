@@ -34,7 +34,7 @@ func (a *API) aclAdministration(w http.ResponseWriter, r *http.Request, u auth.U
 	if r.Method != "GET" {
 		action = "manage-acls"
 	}
-	authorize := auth.Authorizer{Grants: a.o.Grants}
+	authorize := auth.Authorizer{Grants: a.grants(r)}
 	if !authorize.AnyAllowed(u, id, action) {
 		fail(w, 403, "forbidden", "Permission denied")
 		return true
@@ -84,7 +84,7 @@ func (a *API) aclAdministration(w http.ResponseWriter, r *http.Request, u auth.U
 		fail(w, 400, "invalid_request", "Invalid ACL resource, pattern, principal, host, operation or permission")
 		return true
 	}
-	if !a.allowed(u, id, "manage-acls", aclScope(acl), w) {
+	if !a.allowed(r, u, id, "manage-acls", aclScope(acl), w) {
 		return true
 	}
 	// Describe first so disabled authorization cannot masquerade as ACL support.

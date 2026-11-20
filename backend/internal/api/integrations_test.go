@@ -106,3 +106,55 @@ func TestOptionalIntegrationFailureDoesNotBlockKafka(t *testing.T) {
 		}
 	}
 }
+
+func TestSchemaCompatibilityCheckNeedsOnlySchemaRead(t *testing.T) {
+	calls := []string{}
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		w.Write([]byte(`{"is_compatible":true}`))
+	}))
+	defer service.Close()
+	s, _ := store.New(context.Background(), "")
+	defer s.Close()
+	schema, e := external.New(external.Config{ID: "sr", ClusterID: "demo", Kind: "schemas", URL: service.URL})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer schema.Close()
+	a := New(Options{Demo: true, Store: s, Providers: map[string]kafka.Provider{"demo": kafka.NewDemo()}, Integrations: map[string]*external.Client{"sr": schema}, Grants: []auth.Grant{{Role: "viewer", Cluster: "demo", Action: "schema-read", Pattern: "orders.*"}, {Role: "outsider", Cluster: "demo", Action: "read", Pattern: "*"}}})
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "/api/v1/clusters/demo/schemas/sr/"+path, strings.NewReader(body))
+		r.Header.Set("X-CSRF-Token", a.demo.CSRF)
+		w := httptest.NewRecorder()
+		a.ServeHTTP(w, r)
+		return w
+	}
+	check := `{"confirmation":true,"payload":{"schema":"{}"}}`
+	a.demo.User.Roles = []string{"viewer"}
+	w := request("POST", "orders.created/compatibility", check)
+	if w.Code != 200 || len(calls) != 1 || calls[0] != "POST /compatibility/subjects/orders.created/versions/latest" {
+		t.Fatalf("viewer compatibility check %d %s %+v", w.Code, w.Body.String(), calls)
+	}
+	if w := request("POST", "orders.created/compatibility", `{"confirmation":false,"payload":{"schema":"{}"}}`); w.Code != 400 || len(calls) != 1 {
+		t.Fatalf("unconfirmed check reached registry %d", w.Code)
+	}
+	if w := request("POST", "orders.created", check); w.Code != 403 || len(calls) != 1 {
+		t.Fatalf("schema-read registered a schema %d", w.Code)
+	}
+	if w := request("POST", "private.secret/compatibility", check); w.Code != 403 || len(calls) != 1 {
+		t.Fatalf("check outside the grant pattern %d", w.Code)
+	}
+	a.demo.User.Roles = []string{"outsider"}
+	if w := request("POST", "orders.created/compatibility", check); w.Code != 403 || len(calls) != 1 {
+		t.Fatalf("check without schema-read %d", w.Code)
+	}
+	audits, e := s.Audits(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, entry := range audits {
+		if strings.Contains(entry.Action, "schema") {
+			t.Fatalf("compatibility check audited as a mutation %+v", entry)
+		}
+	}
+}
