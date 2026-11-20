@@ -3,7 +3,7 @@ import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {ArrowRight,Check,CircleAlert,ShieldCheck} from 'lucide-react';
 import '@fontsource-variable/geist';
 import '@fontsource/newsreader/400-italic.css';
-import {api,type Session} from './api';
+import {api,ApiError,setCsrf,type Session} from './api';
 import {Logo} from './Logo';
 import {Login} from './Login';
 import {LoginBackdrop} from './LoginBackdrop';
@@ -26,10 +26,13 @@ export function McpConsent({requestId}:{requestId:string}){
   const client=useQueryClient();
   const session=useQuery({queryKey:['/auth/session'],queryFn:()=>api<Session>('/auth/session'),retry:false});
   const request=useQuery({queryKey:['mcp-oauth-request',requestId],queryFn:()=>api<ConsentRequest>(`/mcp/oauth/requests/${encodeURIComponent(requestId)}`),enabled:!!session.data,retry:false});
+  // Writes carry the session's CSRF token; this page loads the session itself, so it must hand the token to the API client.
+  if(session.data)setCsrf(session.data.data.csrfToken);
   const [scopes,setScopes]=useState<string[]|null>(null);const [allowed,setAllowed]=useState<string[]>([]);
   const [busy,setBusy]=useState<''|'allow'|'deny'>('');const [error,setError]=useState('');
   const card=useRef<HTMLDivElement>(null);
   const data=request.data?.data;
+  const blocked=request.error instanceof ApiError&&request.error.status===403;
   const chosen=scopes??data?.scopes.filter(s=>data.ownerScopes.includes(s))??[];
   const toggle=(list:string[],v:string)=>list.includes(v)?list.filter(x=>x!==v):[...list,v];
 
@@ -51,8 +54,8 @@ export function McpConsent({requestId}:{requestId:string}){
         <div className="login-head">
           <div className="brand"><Logo/><span>kaflux<i>.</i></span></div>
           {request.isError?<>
-            <h1><span className="login-shine">This request</span> <span className="login-serif">can't continue.</span></h1>
-            <p>The link expired or was already used. Start the connection again from your AI client.</p>
+            <h1><span className="login-shine">{blocked?'You can\'t approve':'This request'}</span> <span className="login-serif">{blocked?'this request.':"can't continue."}</span></h1>
+            <p>{blocked?request.error.message:'The link expired or was already used. Start the connection again from your AI client.'}</p>
           </>:<>
             <h1><span className="login-shine">Allow access to</span> <span className="login-serif">Kaflux?</span></h1>
             <p>{who?<>Signed in as <strong>{who}</strong>. </>:null}Choose what this client may do on your behalf.</p>

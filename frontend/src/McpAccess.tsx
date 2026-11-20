@@ -8,7 +8,7 @@ import {NumberStepper} from './NumberStepper';
 import {useTimeZone} from './TimeZone';
 import './McpAccess.css';
 
-export type McpToken={id:string;name:string;ownerId:string;ownerProvider:string;scopes:string[];clusters:string[];created:string;expires:string;lastUsed:string|null;revoked:string|null;status:'active'|'expired'|'revoked'};
+export type McpToken={id:string;name:string;ownerId:string;ownerProvider:string;scopes:string[];clusters:string[];created:string;expires:string;lastUsed:string|null;revoked:string|null;status:'active'|'expired'|'revoked';source?:'token'|'oauth'};
 export type McpMeta={enabled:boolean;writesEnabled:boolean;maxActive:number;maxExpiryDays:number};
 type Inventory={data:McpToken[];meta:McpMeta};
 type Reveal={name:string;secret:string};
@@ -88,7 +88,7 @@ export function McpAccess({session,clusters}:{session?:Session;clusters:{id:stri
         <div className="panel-title"><div><h2 id="mcp-tokens-title">{manager?'All MCP tokens':'Your MCP tokens'}</h2><p>{manager?'Tokens of every user. ':''}Up to {meta.maxActive} active tokens per user. Revoking a token disconnects its clients immediately.</p></div><button className="button" disabled={query.isFetching||busy} onClick={()=>query.refetch()}><RefreshCw size={13} aria-hidden="true"/>Refresh</button></div>
         {tokens.length?<div className="mcp-table-scroll"><table className="mcp-token-table"><thead><tr><th scope="col">Name</th>{manager&&<th scope="col">Owner</th>}<th scope="col">Scopes</th><th scope="col">Clusters</th><th scope="col">Status</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Last used</th><th scope="col"><span className="visually-hidden">Actions</span></th></tr></thead>
           <tbody>{tokens.map(t=><tr key={t.id} data-status={t.status}>
-            <td data-label="Name"><strong className="mcp-token-name">{t.name}</strong></td>
+            <td data-label="Name"><strong className="mcp-token-name">{t.name}</strong>{t.source==='oauth'&&<span className="tag mcp-source" title="Connected by signing in with OAuth">Signed in</span>}</td>
             {manager&&<td data-label="Owner"><span className="mcp-owner">{t.ownerId}<small>{t.ownerProvider}</small></span></td>}
             <td data-label="Scopes"><span className="mcp-chips">{t.scopes.map(s=><span key={s} className="tag" data-scope={s}>{s}</span>)}</span></td>
             <td data-label="Clusters">{t.clusters.length?<span className="mcp-chips">{t.clusters.map(c=><span key={c} className="tag">{c}</span>)}</span>:<span className="muted">All permitted clusters</span>}</td>
