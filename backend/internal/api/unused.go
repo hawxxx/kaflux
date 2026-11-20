@@ -8,7 +8,6 @@ import (
 	"github.com/hawxxx/kaflux/backend/internal/kafka"
 	"github.com/hawxxx/kaflux/backend/internal/model"
 	"net/http"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -82,7 +81,7 @@ func (a *API) unusedTimeout() time.Duration {
 }
 
 // unusedParams validates the shared query of the report and job endpoints.
-func (a *API) unusedParams(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) (days int, exclude *regexp.Regexp, ok bool) {
+func (a *API) unusedParams(w http.ResponseWriter, r *http.Request, u auth.User, id string, p kafka.Provider) (days int, exclude *nameExcluder, ok bool) {
 	if !(auth.Authorizer{Grants: a.o.Grants}).AnyAllowed(u, id, "read") {
 		fail(w, 403, "forbidden", "Permission denied")
 		return 0, nil, false
@@ -93,16 +92,10 @@ func (a *API) unusedParams(w http.ResponseWriter, r *http.Request, u auth.User, 
 		fail(w, 400, "invalid_request", "minAgeDays must be between 1 and 3650")
 		return 0, nil, false
 	}
-	if pattern := q.Get("exclude"); pattern != "" {
-		if len(pattern) > 200 {
-			fail(w, 400, "invalid_request", "exclude must be at most 200 characters")
-			return 0, nil, false
-		}
-		var e error
-		if exclude, e = regexp.Compile(pattern); e != nil {
-			fail(w, 400, "invalid_request", "exclude is not a valid regular expression")
-			return 0, nil, false
-		}
+	var e error
+	if exclude, e = parseExcluder(q.Get("exclude"), q.Get("rules")); e != nil {
+		fail(w, 400, "invalid_request", e.Error())
+		return 0, nil, false
 	}
 	if _, supported := p.(kafka.GroupUsageProvider); !supported {
 		fail(w, 422, "unsupported", "Provider cannot report consumer group usage")
@@ -194,7 +187,7 @@ type unusedOutcome struct {
 }
 
 // evaluateUnused classifies every topic with the synchronous report limits.
-func (a *API) evaluateUnused(parent context.Context, p kafka.Provider, now time.Time, minAge time.Duration, includeInternal bool, exclude *regexp.Regexp) ([]model.UnusedTopic, bool, string, error) {
+func (a *API) evaluateUnused(parent context.Context, p kafka.Provider, now time.Time, minAge time.Duration, includeInternal bool, exclude *nameExcluder) ([]model.UnusedTopic, bool, string, error) {
 	return a.evaluateUnusedWith(parent, p, now, minAge, includeInternal, exclude, unusedEval{timeout: a.unusedTimeout(), maxCandidates: unusedMaxCandidates})
 }
 
@@ -202,7 +195,7 @@ func (a *API) evaluateUnused(parent context.Context, p kafka.Provider, now time.
 // fresh; offsets and the newest record are read per remaining topic by a small
 // worker pool, all under one deadline. A topic whose evidence cannot be read is
 // left out, never reported.
-func (a *API) evaluateUnusedWith(parent context.Context, p kafka.Provider, now time.Time, minAge time.Duration, includeInternal bool, exclude *regexp.Regexp, opt unusedEval) ([]model.UnusedTopic, bool, string, error) {
+func (a *API) evaluateUnusedWith(parent context.Context, p kafka.Provider, now time.Time, minAge time.Duration, includeInternal bool, exclude *nameExcluder, opt unusedEval) ([]model.UnusedTopic, bool, string, error) {
 	ctx, cancel := context.WithTimeout(parent, opt.timeout)
 	defer cancel()
 	snapshot, e := p.Snapshot(ctx)
@@ -218,7 +211,7 @@ func (a *API) evaluateUnusedWith(parent context.Context, p kafka.Provider, now t
 	}
 	candidates := []model.Topic{}
 	for _, t := range snapshot.Topics {
-		if (t.IsInternal() && !includeInternal) || (exclude != nil && exclude.MatchString(t.Name)) {
+		if (t.IsInternal() && !includeInternal) || (exclude != nil && exclude.Match(t.Name)) {
 			continue
 		}
 		candidates = append(candidates, t)
