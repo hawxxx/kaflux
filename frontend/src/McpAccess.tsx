@@ -12,9 +12,9 @@ export type McpToken={id:string;name:string;ownerId:string;ownerProvider:string;
 export type McpMeta={enabled:boolean;writesEnabled:boolean;maxActive:number;maxExpiryDays:number};
 type Inventory={data:McpToken[];meta:McpMeta};
 type Reveal={name:string;secret:string};
-type Scope={id:string;label:string;description:string;warning?:string};
+export type Scope={id:string;label:string;description:string;warning?:string};
 
-const SCOPES:Scope[]=[
+export const SCOPES:Scope[]=[
   {id:'read',label:'Read',description:'Inspect topics, brokers, consumer groups, configuration, schemas, connectors, metrics and the audit log. No message contents.'},
   {id:'messages',label:'Messages',description:"Read message payloads. Payloads are sent to your AI client's model, so grant this only for data you may share with it."},
   {id:'write',label:'Write',description:'Produce messages and change topics, configuration, ACLs, schemas and connectors.',warning:'Write access means your AI client can change your clusters. Every change is prepared, shown to you and confirmed before it runs, and it is audited.'},
@@ -67,7 +67,7 @@ export function McpAccess({session,clusters}:{session?:Session;clusters:{id:stri
   const [reveal,setReveal]=useState<Reveal|null>(null);
   const [selected,setSelected]=useState<McpToken|null>(null);const [busy,setBusy]=useState(false);const [revokeError,setRevokeError]=useState('');const [notice,setNotice]=useState('');
   const createHeading=useRef<HTMLHeadingElement>(null);
-  const meta=query.data?.meta;const tokens=query.data?.data??[];
+  const meta=query.data?.meta;const tokens=(query.data?.data??[]).filter(t=>t.status!=='revoked');
   async function revoke(){
     if(!selected)return;setBusy(true);setRevokeError('');
     try{await api(`/admin/mcp-tokens/${encodeURIComponent(selected.id)}`,{method:'DELETE'});setSelected(null);setNotice('Token revoked.');await client.invalidateQueries({queryKey:QUERY_KEY})}

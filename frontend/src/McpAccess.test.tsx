@@ -138,8 +138,7 @@ it('lists tokens with status, last used and expiry',async()=>{
   expect(within(old).getByText('Never')).toBeVisible();
   expect(within(old).getByText('prod')).toBeVisible();
   expect(within(old).queryByRole('button',{name:/Revoke/})).toBeNull();
-  const lost=screen.getByText('lost-key').closest('tr') as HTMLElement;
-  expect(within(lost).getByText('Revoked')).toBeVisible();
+  expect(screen.queryByText('lost-key')).toBeNull();
   expect(screen.getByRole('columnheader',{name:'Owner'})).toBeInTheDocument();
 });
 
@@ -152,8 +151,7 @@ it('asks for confirmation before revoking and refreshes the list',async()=>{
   fireEvent.click(within(dialog).getByRole('button',{name:'Confirm revocation'}));
   await waitFor(()=>expect(fetcher).toHaveBeenCalledWith('/api/v1/admin/mcp-tokens/t1',expect.objectContaining({method:'DELETE',headers:expect.objectContaining({'X-CSRF-Token':'csrf'})})));
   await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
-  const row=screen.getByText('laptop').closest('tr') as HTMLElement;
-  await waitFor(()=>expect(within(row).getByText('Revoked')).toBeVisible());
+  await waitFor(()=>expect(screen.queryByText('laptop')).toBeNull());
   expect(fetcher.mock.calls.filter(([url,init])=>url==='/api/v1/admin/mcp-tokens'&&(init?.method??'GET')==='GET').length).toBeGreaterThan(1);
   expect(screen.getByText('Token revoked.')).toBeVisible();
 });

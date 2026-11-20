@@ -367,12 +367,15 @@ func TestRevokeOwnOrAdmin(t *testing.T) {
 	status := map[string]string{}
 	for _, v := range f.list("admin").Data {
 		status[v.ID] = v.Status
-		if v.Status == "revoked" && v.Revoked == nil {
-			t.Fatalf("revoked without time %+v", v)
-		}
 	}
-	if status[adminTok.ID] != "active" || status[b1.ID] != "revoked" || status[b2.ID] != "revoked" || status["viewertok"] != "revoked" {
+	// Revoked tokens drop out of the inventory; only the active one remains.
+	if status[adminTok.ID] != "active" {
 		t.Fatalf("status %v", status)
+	}
+	for _, id := range []string{b1.ID, b2.ID, "viewertok"} {
+		if _, listed := status[id]; listed {
+			t.Fatalf("revoked token %s still listed: %v", id, status)
+		}
 	}
 	if w := f.call("admin", "PUT", tokensPath+"/"+adminTok.ID, "{}"); w.Code != 405 {
 		t.Fatalf("PUT %d", w.Code)

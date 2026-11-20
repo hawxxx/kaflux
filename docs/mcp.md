@@ -85,7 +85,7 @@ MCP clients authenticate with a bearer token, never with a console session cooki
 
 A user can hold at most 25 active tokens and cannot have two active tokens with the same name. Users
 without `manage-mcp` cannot create tokens but can list and revoke their own. A user with `manage-mcp`
-can list and revoke every user's tokens. Revoked and expired tokens are rejected on the next request.
+can list and revoke every user's tokens. Revoked and expired tokens are rejected on the next request. Revoked tokens disappear from the list; expired ones stay listed until they are revoked.
 
 The creation call is audited as `mcp.token.create` and revocation as `mcp.token.revoke`, under the
 console user. Creation is refused if the audit record cannot be written.

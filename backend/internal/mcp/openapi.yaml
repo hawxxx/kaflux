@@ -131,8 +131,8 @@ paths:
       operationId: listMcpTokens
       description:
         Console sessions only; requests made with an MCP token are refused. Every signed-in user
-        sees their own tokens; global manage-mcp permission shows every user's tokens. Revoked and
-        expired tokens are included with their status. Never returns a secret or its hash. meta
+        sees their own tokens; global manage-mcp permission shows every user's tokens. Expired
+        tokens are included with their status; revoked tokens are not listed. Never returns a secret or its hash. meta
         reports whether MCP and MCP writes are enabled, since tokens are inert while MCP is off.
       responses:
         "200":

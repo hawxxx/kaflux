@@ -133,6 +133,11 @@ func (a *API) listMCPTokens(w http.ResponseWriter, r *http.Request, s auth.Sessi
 	now := time.Now()
 	out := make([]mcpTokenView, 0, len(tokens))
 	for _, t := range tokens {
+		// A revoked token is finished: it stays stored so a replayed secret is still refused and the audit
+		// trail keeps its history, but the inventory no longer lists it.
+		if t.Revoked != nil {
+			continue
+		}
 		out = append(out, viewMCPToken(t, now))
 	}
 	respond(w, out, map[string]any{"enabled": a.o.MCPEnabled, "writesEnabled": a.o.MCPWritesEnabled, "maxActive": mcpMaxActiveTokens, "maxExpiryDays": mcpMaxExpiryDays})
