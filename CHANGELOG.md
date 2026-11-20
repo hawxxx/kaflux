@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/hawxxx/kaflux/compare/v0.8.0...v0.9.0) (2026-11-20)
+
+
+### Features
+
+* **auth:** support Google and Azure broker IAM ([#94](https://github.com/hawxxx/kaflux/issues/94)) ([01552d2](https://github.com/hawxxx/kaflux/commit/01552d23b137b90d09c5c0db06e12ce4fa516141))
+* **cleanup:** filter topic names with keywords ([#91](https://github.com/hawxxx/kaflux/issues/91)) ([4097a13](https://github.com/hawxxx/kaflux/commit/4097a13c3823a926e7c90cfbe7a5c3c44bfa2037))
+* **mcp:** add MCP server with scoped tokens and confirmed write tools ([#92](https://github.com/hawxxx/kaflux/issues/92)) ([df9e34c](https://github.com/hawxxx/kaflux/commit/df9e34c31902d88f8569d51e23dfbd2e5e220ee4))
+* **mcp:** add OAuth sign-in for MCP clients ([#93](https://github.com/hawxxx/kaflux/issues/93)) ([d9611a8](https://github.com/hawxxx/kaflux/commit/d9611a83e45e1d00cf84a2c1803a9a1c6d8fe6ca))
+* **ui:** rename clusters in place and paginate names from ten clusters ([#88](https://github.com/hawxxx/kaflux/issues/88)) ([51007ea](https://github.com/hawxxx/kaflux/commit/51007ea0dbf1a7c608721a800a846dd08dffc64b))
+
+
+### Bug Fixes
+
+* **messages:** skip empty keys and document raw decoders ([#87](https://github.com/hawxxx/kaflux/issues/87)) ([d8a4831](https://github.com/hawxxx/kaflux/commit/d8a4831a6750a588c791308ad09af1a3ac28da84))
+* **sessions:** align revoke and current session tag ([#90](https://github.com/hawxxx/kaflux/issues/90)) ([35a3c16](https://github.com/hawxxx/kaflux/commit/35a3c16f23189b30e5e94884afd9359410e2f061))
+
 ## [0.8.0](https://github.com/hawxxx/kaflux/compare/v0.7.2...v0.8.0) (2026-11-19)
 
 
