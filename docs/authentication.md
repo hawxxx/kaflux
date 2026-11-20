@@ -152,6 +152,16 @@ Server sessions default to eight hours. Set `runtime.sessionLifetime` in `config
 - Changes apply to newly issued sessions; existing stored sessions retain their original expiration.
 - Demo access remains automatic.
 
+## API tokens for MCP
+
+User sessions and MCP tokens are different credentials. A session is a cookie issued after login,
+protected by CSRF checks, and acts with the user's full grants. An MCP token is a `kfx_` bearer secret
+sent in the `Authorization` header to `/mcp`; it is never accepted as a cookie, and it acts with the
+owner's grants narrowed by the token's scopes and cluster allowlist. Only users holding the global
+`manage-mcp` grant create tokens, in Administration, MCP access; no scope includes `manage-mcp`.
+Tokens last 1 to 90 days and record the owner's roles when created, so revoke them when a user's
+access changes. See [MCP server](mcp.md).
+
 ## Kafka connection authentication
 
 franz-go clients support plaintext only when explicitly configured, TLS, mTLS, PLAIN, SCRAM-256/512,

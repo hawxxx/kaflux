@@ -10,6 +10,7 @@ Kaflux is a Kafka operations console built with Go and React. Explore clusters a
 - **Message exploration:** filtering, JSON previews, and Avro/Protobuf decoding through Schema Registry.
 - **Monitoring:** metrics, consumer lag, partition balance, and per-topic broker distribution.
 - **Rebalancing:** plan review, approval, audited execution, and live throttle controls.
+- **MCP server (optional):** scoped tokens let AI agents read cluster state and, if enabled, prepare confirmed changes. See [MCP](docs/mcp.md).
 - **Integrations:** Kafka Connect, Schema Registry, OIDC, and LDAP.
 
 ## Screenshots

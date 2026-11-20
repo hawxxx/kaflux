@@ -172,6 +172,27 @@ ACTIVE, or it is Serverless. The worker and the provider check again before anyt
 application does not automatically pause MSK intelligent rebalancing. `/ready` checks the database; broker and telemetry availability are
 reported separately.
 
+## MCP server
+
+The optional MCP server (`/mcp`, see [MCP](mcp.md)) is implemented. What has and has not been
+verified:
+
+- Backend unit and handler tests cover scope narrowing, tool registry parity with the OpenAPI
+  document, dispatch through the REST handler, two-phase confirmation (expiry, replay, argument
+  binding, uncertain outcomes), rate and concurrency limits, origin checks and token management. They
+  use an in-process MCP client from the Go SDK and the REST handler with simulated Kafka.
+- The PostgreSQL token store is covered only by `TestPostgresMCPTokens`, which is skipped unless
+  `KAFLUX_TEST_DATABASE_URL` is set.
+- The token-management page was checked in a real browser against the demo server: creation and
+  secret reveal with copy, validation, revocation, the disabled notice, a failed-load retry and a
+  390px layout. The loading state and the user without `manage-mcp` were checked by component tests
+  only.
+- Helm lint and template rendering of the MCP values passed; no real Kubernetes deployment was made.
+- Not verified: behavior with Claude Desktop, `mcp-remote` or any client other than the Go SDK client;
+  sticky routing across several replicas; the PostgreSQL backend with replicas; load or latency under
+  concurrent agents; and any end-to-end write against a real Kafka cluster through MCP. No
+  compliance or security certification is claimed.
+
 ## Exploratory scale measurements
 
 On an AMD Ryzen 9 9950X3D, the command
