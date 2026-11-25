@@ -15,6 +15,14 @@
         {
           "type": "generic",
           "path": "docs/openapi.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "docker-compose.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "deploy/docker-compose.sqlite.yaml"
         }
       ],
       "include-component-in-tag": false,
