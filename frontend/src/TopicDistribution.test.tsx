@@ -22,4 +22,19 @@ describe('topic distribution analysis',()=>{
     fireEvent.click(screen.getByRole('button',{name:'Analyze'}));
     await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
   });
+  it('colors bars beyond the eighth broker and keeps their colors when sorted',async()=>{
+    const brokers=Array.from({length:12},(_,i)=>({...analysis.brokers[0],broker:i+1,leaders:i+1}));
+    vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({data:{...analysis,brokers}})}) as Response));
+    render(<QueryClientProvider client={new QueryClient()}><TopicDistribution clusterId="demo" topic="orders"/></QueryClientProvider>);
+    const barColor=(id:number)=>screen.getByText(`broker-${id}`,{selector:'.distribution-broker span'}).closest('.distribution-broker')?.querySelector<HTMLElement>('.bar-track>div:last-child')?.style.background;
+
+    await screen.findByText('broker-12',{selector:'.distribution-broker span'});
+    const ninth=barColor(9);
+    expect(ninth).toMatch(/^rgb\(/);
+    expect(barColor(12)).toMatch(/^rgb\(/);
+    expect(barColor(12)).not.toBe(ninth);
+    fireEvent.click(screen.getByRole('button',{name:/leaders/i}));
+    expect(barColor(9)).toBe(ninth);
+  });
+
 });
