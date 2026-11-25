@@ -1,4 +1,4 @@
-import {render,screen} from '@testing-library/react';
+import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it} from 'vitest';
 import {BalanceAnalysis} from './BalanceAnalysis';
 import type {Dimension} from './TopicDistribution';
@@ -16,9 +16,30 @@ describe('balance analysis',()=>{
   });
 
   it('colors brokers by position like the topic distribution view',()=>{
-    render(<BalanceAnalysis dimension={dimension('leaders',[4,4,4,4],'GOOD')}/>);
+    render(<BalanceAnalysis dimension={dimension('leaders',Array(24).fill(4),'GOOD')}/>);
     expect((row(1).querySelector('.bar-track>div') as HTMLElement).style.background).toBe('var(--series-1)');
     expect((row(4).querySelector('.bar-track>div') as HTMLElement).style.background).toBe('var(--series-4)');
+    const extended=Array.from({length:16},(_,i)=>(row(i+9).querySelector('.bar-track>div') as HTMLElement).style.background);
+    expect(extended.every(color=>color.startsWith('rgb('))).toBe(true);
+    expect(new Set(extended).size).toBe(extended.length);
+  });
+
+  it.each(['replicas','leaders','bytes'])('sorts %s by value or broker ID without changing colors',id=>{
+    render(<BalanceAnalysis dimension={dimension(id,[150,50,100])}/>);
+    const order=()=>Array.from(document.querySelectorAll('.broker-bar-row > span'),node=>node.textContent);
+    const metric=screen.getByRole('button',{name:new RegExp(id,'i')});
+    const color=(row(2).querySelector('.bar-track>div') as HTMLElement).style.background;
+    fireEvent.click(metric);
+    expect(order()).toEqual(['broker-2','broker-3','broker-1']);
+    expect((row(2).querySelector('.bar-track>div') as HTMLElement).style.background).toBe(color);
+    fireEvent.click(metric);
+    expect(order()).toEqual(['broker-1','broker-3','broker-2']);
+    fireEvent.click(metric);
+    expect(order()).toEqual(['broker-1','broker-2','broker-3']);
+    const broker=screen.getByRole('button',{name:'Broker'});
+    fireEvent.click(broker);
+    fireEvent.click(broker);
+    expect(order()).toEqual(['broker-3','broker-2','broker-1']);
   });
 
   it('marks the cluster mean on every bar',()=>{

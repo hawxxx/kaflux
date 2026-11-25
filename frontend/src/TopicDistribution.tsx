@@ -15,7 +15,12 @@ export type TopicAnalysis={topic:string;replicationFactor:number;brokers:TopicBr
 const statusLabel={GOOD:'Balanced',MODERATE:'Moderate skew',HIGH_SKEW:'High skew',UNAVAILABLE:'Unavailable'};
 const severityIcon={critical:CircleAlert,warning:AlertTriangle,info:Info};
 // Broker identity follows broker position in the cluster, never rank, so a broker keeps its color across views.
-export const brokerColor=(i:number)=>i<8?`var(--series-${i+1})`:'var(--muted)';
+export function brokerColor(position:number){
+  if(position<8)return `var(--series-${position+1})`;
+  // Step around the hue wheel by the golden angle to spread consecutive colors apart.
+  const hue=(185+(position-8)*137.507764)%360;
+  return `hsl(${hue.toFixed(2)}, 65%, 46%)`;
+}
 const percent=(x:number)=>`${(x*100).toFixed(1)}%`;
 
 export function SkewBadge({status}:{status:Dimension['status']}){return <span className={`skew-badge ${status.toLowerCase()}`}><i aria-hidden="true"/>{statusLabel[status]}</span>}
@@ -44,11 +49,16 @@ export function TopicDistribution({clusterId,topic,onPlan}:{clusterId:string;top
       </div>
       <div className="distribution-grid">
         <div className="distribution-brokers" aria-label="Per-broker placement">
-          <div className="distribution-sort"><h3>Per broker</h3><div role="group" aria-label="Sort brokers">{([['broker','Broker'],['replicas','Replicas'],['leaders','Leaders'],['bytes','Size']] as const).map(([key,label])=><SortButton key={key} direction={brokers.direction(key)} pressed={!!brokers.direction(key)} onClick={()=>brokers.toggle(key)}>{label}</SortButton>)}</div></div>
+          <div className="distribution-broker distribution-broker-header" role="group" aria-label="Sort brokers">
+            <SortButton direction={brokers.direction('broker')} pressed={!!brokers.direction('broker')} onClick={()=>brokers.toggle('broker')}>Broker</SortButton>
+            <div className="distribution-broker-metrics">
+              {([['replicas','Replicas'],['leaders','Leaders'],['bytes','Size']] as const).map(([key,label])=><SortButton key={key} direction={brokers.direction(key)} pressed={!!brokers.direction(key)} onClick={()=>brokers.toggle(key)}>{label}</SortButton>)}
+            </div>
+          </div>
           {brokers.sorted.map(b=><div className="distribution-broker" key={b.broker}>
             <div><span><i style={{background:b.color}} aria-hidden="true"/>broker-{b.broker}</span>{b.rack&&<small className="tag">{b.rack}</small>}</div>
             <div className="bar-track" title={`${b.replicas} replicas, ${b.leaders} leaders`}><div style={{width:`${b.replicas/maxReplicas*100}%`,background:`color-mix(in srgb,${b.color} 38%,transparent)`}}/><div style={{width:`${b.leaders/maxReplicas*100}%`,background:b.color}}/></div>
-            <dl><div><dt>Replicas</dt><dd>{b.replicas}<Delta value={deviation(replicas,b.broker)}/></dd></div><div><dt>Leaders</dt><dd>{b.leaders}<Delta value={deviation(leaders,b.broker)}/></dd></div><div><dt>Size</dt><dd>{b.bytes==null?'—':bytes(b.bytes)}<Delta value={deviation(storage,b.broker)}/></dd></div>{b.outOfSync>0&&<div><dt>Out of sync</dt><dd className="warn-text">{b.outOfSync}</dd></div>}</dl>
+            <dl className="distribution-broker-metrics"><div><dt>Replicas</dt><dd>{b.replicas}<Delta value={deviation(replicas,b.broker)}/></dd></div><div><dt>Leaders</dt><dd>{b.leaders}<Delta value={deviation(leaders,b.broker)}/></dd></div><div><dt>Size</dt><dd>{b.bytes==null?'—':bytes(b.bytes)}<Delta value={deviation(storage,b.broker)}/></dd></div>{b.outOfSync>0&&<div><dt>Out of sync</dt><dd className="warn-text">{b.outOfSync}</dd></div>}</dl>
           </div>)}
           <p className="distribution-legend"><span><i className="solid"/>Leaders</span><span><i className="tint"/>Replicas</span>{storage?.status==='UNAVAILABLE'&&<span>{storage.reason}</span>}</p>
         </div>

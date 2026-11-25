@@ -1,5 +1,5 @@
 import {useState,type ReactNode} from 'react';
-import {ArrowDown,ArrowUp,ArrowUpDown} from 'lucide-react';
+import {ArrowDown,ArrowUp,ArrowUpDown,CircleHelp} from 'lucide-react';
 
 export type SortDirection='asc'|'desc';
 export type SortState<K extends string>={key:K;direction:SortDirection}|null;
@@ -29,6 +29,10 @@ export function ariaSort(direction:SortDirection|false){return direction==='asc'
 export function SortButton({children,direction,onClick,pressed}:{children:ReactNode;direction:SortDirection|false;onClick:()=>void;pressed?:boolean}){
   const Icon=direction==='asc'?ArrowUp:direction==='desc'?ArrowDown:ArrowUpDown;
   return <button type="button" className={`sort-button${direction?' sorted':''}`} onClick={onClick} aria-pressed={pressed}>{children}<Icon size={11} aria-hidden="true"/></button>;
+}
+
+export function HeaderHelp({text}:{text:string}){
+  return <span className="table-header-help" role="img" aria-label={text} title={text}><CircleHelp size={12} aria-hidden="true"/></span>;
 }
 
 /** Header cell for plain tables backed by useSortedRows. */

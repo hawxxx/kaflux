@@ -62,7 +62,7 @@ export function LoginBackdrop(){
       const core=x.createRadialGradient(cx,cy,0,cx,cy,R*.75);
       core.addColorStop(0,`rgba(190,170,255,${.07+energy*.12})`);core.addColorStop(1,'rgba(0,0,0,0)');
       x.fillStyle=core;x.fillRect(cx-R,cy-R,R*2,R*2);
-      const ry=t*.06+(nx-.5)*.7,rx=.38+Math.sin(t*.05)*.1+(ny-.5)*.45;
+      const ry=t*.06,rx=.38+Math.sin(t*.05)*.1;
       const cr=Math.cos(ry),sr=Math.sin(ry),cxr=Math.cos(rx),sxr=Math.sin(rx),reach=(160*dpr)**2;
       for(let i=ripples.length-1;i>=0;i--)if(t-ripples[i].t0>2.4)ripples.splice(i,1);
       for(const p of particles){
