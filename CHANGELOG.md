@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/hawxxx/kaflux/compare/v0.9.1...v0.10.0) (2026-11-25)
+
+
+### Features
+
+* **console:** improve login and broker distribution views ([#99](https://github.com/hawxxx/kaflux/issues/99)) ([67cf5a3](https://github.com/hawxxx/kaflux/commit/67cf5a3ccee1eb1c9ec01eb47b1147b66d25aa93))
+
+
+### Bug Fixes
+
+* **deploy:** default Compose image to the current release ([#96](https://github.com/hawxxx/kaflux/issues/96)) ([1c8dcaf](https://github.com/hawxxx/kaflux/commit/1c8dcaf4d21eac4b85701e0a108d5bbfce670332))
+
 ## [0.9.1](https://github.com/hawxxx/kaflux/compare/v0.9.0...v0.9.1) (2026-11-20)
 
 
